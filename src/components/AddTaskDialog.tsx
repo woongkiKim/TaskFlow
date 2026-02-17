@@ -1,0 +1,397 @@
+import { useState } from 'react';
+import {
+    Dialog, DialogTitle, DialogContent, DialogActions,
+    TextField, Button, Box, ToggleButtonGroup, ToggleButton, Chip, Typography,
+    InputBase, IconButton, Avatar, Tooltip, FormControl, Select, MenuItem,
+    Switch, FormControlLabel, Collapse, Divider, AvatarGroup,
+} from '@mui/material';
+import FlagIcon from '@mui/icons-material/Flag';
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
+import AddIcon from '@mui/icons-material/Add';
+import LinkIcon from '@mui/icons-material/Link';
+import BlockIcon from '@mui/icons-material/Block';
+import NextPlanIcon from '@mui/icons-material/NextPlan';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import { useLanguage } from '../contexts/LanguageContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
+import type { TaskType, TaskOwner, PriorityLevel } from '../types';
+import { TASK_TYPES, TASK_TYPE_CONFIG, PRIORITY_CONFIG } from '../types';
+
+const CATEGORY_COLORS = [
+    '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+    '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
+];
+
+interface AddTaskDialogProps {
+    open: boolean;
+    onClose: () => void;
+    onSubmit: (data: {
+        text: string; description?: string; priority?: string;
+        category?: string; categoryColor?: string; dueDate?: string; tags?: string[];
+        date?: Date; assigneeId?: string; assigneeName?: string; assigneePhoto?: string;
+        sprintId?: string; type?: TaskType; owners?: TaskOwner[];
+        blockerStatus?: 'none' | 'blocked'; blockerDetail?: string;
+        nextAction?: string; links?: string[];
+    }) => void;
+    defaultDate?: Date;
+}
+
+const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogProps) => {
+    const { t } = useLanguage();
+    const { currentMembers, sprints, currentSprint } = useWorkspace();
+    const defaultDueDate = defaultDate ? defaultDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+
+    // Quick vs Detail mode
+    const [detailMode, setDetailMode] = useState(false);
+
+    // Core fields
+    const [text, setText] = useState('');
+    const [description, setDescription] = useState('');
+    const [priority, setPriority] = useState<PriorityLevel | ''>('');
+    const [taskType, setTaskType] = useState<TaskType>('task');
+    const [category, setCategory] = useState('');
+    const [categoryColor, setCategoryColor] = useState(CATEGORY_COLORS[0]);
+    const [dueDate, setDueDate] = useState(defaultDueDate);
+    const [tagText, setTagText] = useState('');
+    const [tags, setTags] = useState<string[]>([]);
+    const [sprintId, setSprintId] = useState(currentSprint?.id || '');
+
+    // Multi-owner
+    const [selectedOwners, setSelectedOwners] = useState<TaskOwner[]>([]);
+
+    // Enterprise fields
+    const [showAdvanced, setShowAdvanced] = useState(false);
+    const [isBlocked, setIsBlocked] = useState(false);
+    const [blockerDetail, setBlockerDetail] = useState('');
+    const [nextAction, setNextAction] = useState('');
+    const [linkText, setLinkText] = useState('');
+    const [links, setLinks] = useState<string[]>([]);
+
+    const handleAddTag = () => {
+        const trimmed = tagText.trim().replace(/^#/, '');
+        if (trimmed && !tags.includes(trimmed)) { setTags([...tags, trimmed]); setTagText(''); }
+    };
+
+    const handleTagKeyDown = (e: React.KeyboardEvent) => {
+        if ((e.key === 'Enter' || e.key === ' ') && tagText.trim()) { e.preventDefault(); handleAddTag(); }
+    };
+
+    const handleToggleOwner = (uid: string, name: string, photo?: string) => {
+        setSelectedOwners(prev => {
+            const exists = prev.some(o => o.uid === uid);
+            if (exists) return prev.filter(o => o.uid !== uid);
+            return [...prev, { uid, name, photo }];
+        });
+    };
+
+    const handleAddLink = () => {
+        const trimmed = linkText.trim();
+        if (trimmed && !links.includes(trimmed)) { setLinks([...links, trimmed]); setLinkText(''); }
+    };
+
+    const handleLinkKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && linkText.trim()) { e.preventDefault(); handleAddLink(); }
+    };
+
+    const handleSubmit = () => {
+        if (!text.trim()) return;
+        onSubmit({
+            text: text.trim(),
+            description: description.trim() || undefined,
+            priority: priority || undefined,
+            type: taskType,
+            category: category.trim() || undefined,
+            categoryColor: category.trim() ? categoryColor : undefined,
+            dueDate: dueDate || undefined,
+            tags: tags.length > 0 ? tags : undefined,
+            date: defaultDate,
+            owners: selectedOwners.length > 0 ? selectedOwners : undefined,
+            // Legacy single assignee fallback (first owner)
+            assigneeId: selectedOwners.length > 0 ? selectedOwners[0].uid : undefined,
+            assigneeName: selectedOwners.length > 0 ? selectedOwners[0].name : undefined,
+            assigneePhoto: selectedOwners.length > 0 ? selectedOwners[0].photo : undefined,
+            sprintId: sprintId || undefined,
+            blockerStatus: isBlocked ? 'blocked' : undefined,
+            blockerDetail: isBlocked ? (blockerDetail.trim() || undefined) : undefined,
+            nextAction: nextAction.trim() || undefined,
+            links: links.length > 0 ? links : undefined,
+        });
+        // Reset
+        setText(''); setDescription(''); setPriority(''); setTaskType('task');
+        setCategory(''); setCategoryColor(CATEGORY_COLORS[0]);
+        setDueDate(defaultDueDate);
+        setTagText(''); setTags([]); setSelectedOwners([]);
+        setSprintId(currentSprint?.id || ''); setIsBlocked(false); setBlockerDetail('');
+        setNextAction(''); setLinkText(''); setLinks([]); setShowAdvanced(false);
+        setDetailMode(false);
+        onClose();
+    };
+
+    return (
+        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+            <DialogTitle sx={{ fontWeight: 700, fontSize: '1.25rem', pb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box component="span" sx={{ fontSize: '1.25rem' }}>{TASK_TYPE_CONFIG[taskType].icon}</Box>
+                {t('addTask') as string}
+            </DialogTitle>
+            <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: '8px !important' }}>
+                {/* Title — always visible */}
+                <TextField autoFocus fullWidth placeholder={t('taskTitle') as string} value={text}
+                    onChange={e => setText(e.target.value)} variant="outlined"
+                    onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.nativeEvent.isComposing && !detailMode && text.trim()) {
+                            e.preventDefault();
+                            handleSubmit();
+                        }
+                    }}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontWeight: 600, fontSize: '1rem' } }} />
+
+                {/* Priority — always visible (quick mode essential) */}
+                <Box>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <FlagIcon sx={{ fontSize: 14 }} /> {t('priority') as string}
+                    </Typography>
+                    <ToggleButtonGroup value={priority} exclusive onChange={(_, val) => val !== null && setPriority(val)} size="small" sx={{ mt: 0.5 }}>
+                        {(['P0', 'P1', 'P2', 'P3'] as PriorityLevel[]).map(p => {
+                            const cfg = PRIORITY_CONFIG[p];
+                            return (
+                                <ToggleButton key={p} value={p} sx={{
+                                    px: 2, color: cfg.color, fontWeight: 700, fontSize: '0.8rem',
+                                    '&.Mui-selected': { bgcolor: cfg.bgColor, color: cfg.color, borderColor: cfg.color }
+                                }}>
+                                    {p}
+                                </ToggleButton>
+                            );
+                        })}
+                    </ToggleButtonGroup>
+                </Box>
+
+                {/* Quick mode hint */}
+                {!detailMode && (
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Button
+                            onClick={() => setDetailMode(true)}
+                            size="small" color="inherit"
+                            endIcon={<ExpandMoreIcon />}
+                            sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'none', fontSize: '0.8rem' }}
+                        >
+                            {t('moreDetails') as string || 'More details'}
+                        </Button>
+                        <Chip label="Enter ↵" size="small" variant="outlined"
+                            sx={{ height: 22, fontSize: '0.7rem', fontWeight: 600, borderRadius: 1.5 }} />
+                    </Box>
+                )}
+
+                {/* Detail Mode — all remaining fields */}
+                <Collapse in={detailMode}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                        {/* Description */}
+                        <TextField fullWidth placeholder={t('taskDescription') as string} value={description}
+                            onChange={e => setDescription(e.target.value)} multiline rows={2} variant="outlined"
+                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+
+                        {/* Task Type */}
+                        <Box>
+                            <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                                {t('type') as string}
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.5 }}>
+                                {TASK_TYPES.map(tt => {
+                                    const cfg = TASK_TYPE_CONFIG[tt];
+                                    const isSelected = taskType === tt;
+                                    return (
+                                        <Chip key={tt} label={`${cfg.icon} ${cfg.label}`} size="small"
+                                            onClick={() => setTaskType(tt)}
+                                            sx={{
+                                                fontWeight: isSelected ? 700 : 400,
+                                                bgcolor: isSelected ? cfg.color + '20' : 'transparent',
+                                                color: isSelected ? cfg.color : 'text.secondary',
+                                                border: '1px solid',
+                                                borderColor: isSelected ? cfg.color : 'divider',
+                                                '&:hover': { bgcolor: cfg.color + '10' },
+                                            }} />
+                                    );
+                                })}
+                            </Box>
+                        </Box>
+
+                        {/* Sprint selector */}
+                        {sprints.length > 0 && (
+                            <Box>
+                                <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    <RocketLaunchIcon sx={{ fontSize: 14 }} /> {t('sprint') as string}
+                                </Typography>
+                                <FormControl size="small" fullWidth sx={{ mt: 0.5 }}>
+                                    <Select value={sprintId} onChange={e => setSprintId(e.target.value)}
+                                        displayEmpty sx={{ borderRadius: 2 }}>
+                                        <MenuItem value="">{t('backlog') as string}</MenuItem>
+                                        {sprints.map(sp => (
+                                            <MenuItem key={sp.id} value={sp.id}>
+                                                {sp.type === 'sprint' ? '🏃' : sp.type === 'phase' ? '📋' : '🎯'} {sp.name}
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            </Box>
+                        )}
+
+                        {/* Multi-Owner */}
+                        {currentMembers.length > 1 && (
+                            <Box>
+                                <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    <PersonAddIcon sx={{ fontSize: 14 }} /> {t('owners') as string} {selectedOwners.length > 0 && `(${selectedOwners.length})`}
+                                </Typography>
+                                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.5 }}>
+                                    {currentMembers.map(member => {
+                                        const isSelected = selectedOwners.some(o => o.uid === member.uid);
+                                        return (
+                                            <Tooltip key={member.uid} title={member.displayName}>
+                                                <Box onClick={() => handleToggleOwner(member.uid, member.displayName, member.photoURL)}
+                                                    sx={{
+                                                        display: 'flex', alignItems: 'center', gap: 0.5, px: 1.5, py: 0.5, borderRadius: 2,
+                                                        cursor: 'pointer', border: '2px solid',
+                                                        borderColor: isSelected ? 'primary.main' : 'divider',
+                                                        bgcolor: isSelected ? 'primary.main' + '12' : 'transparent',
+                                                        '&:hover': { borderColor: 'primary.light' }
+                                                    }}>
+                                                    <Avatar src={member.photoURL} sx={{ width: 24, height: 24, fontSize: 11 }}>{member.displayName.charAt(0)}</Avatar>
+                                                    <Typography variant="caption" fontWeight={isSelected ? 700 : 400}>{member.displayName}</Typography>
+                                                </Box>
+                                            </Tooltip>
+                                        );
+                                    })}
+                                </Box>
+                                {selectedOwners.length > 0 && (
+                                    <Box sx={{ mt: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <AvatarGroup max={4} sx={{ '& .MuiAvatar-root': { width: 20, height: 20, fontSize: 10, border: '1px solid white' } }}>
+                                            {selectedOwners.map(o => <Avatar key={o.uid} src={o.photo} sx={{ width: 20, height: 20 }}>{o.name.charAt(0)}</Avatar>)}
+                                        </AvatarGroup>
+                                        <Typography variant="caption" color="text.secondary">{selectedOwners.map(o => o.name).join(', ')}</Typography>
+                                    </Box>
+                                )}
+                            </Box>
+                        )}
+
+                        {/* Due Date */}
+                        <Box>
+                            <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <CalendarTodayIcon sx={{ fontSize: 14 }} /> {t('dueDateLabel') as string}
+                            </Typography>
+                            <TextField type="date" size="small" value={dueDate} onChange={e => setDueDate(e.target.value)}
+                                sx={{ mt: 0.5, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                                slotProps={{ inputLabel: { shrink: true } }} />
+                        </Box>
+
+                        {/* Category */}
+                        <Box>
+                            <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>{t('categoryLabel') as string}</Typography>
+                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                                <TextField size="small" placeholder={t('categoryPlaceholder') as string} value={category}
+                                    onChange={e => setCategory(e.target.value)} sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                    {CATEGORY_COLORS.slice(0, 5).map(c => (
+                                        <Box key={c} onClick={() => setCategoryColor(c)}
+                                            sx={{
+                                                width: 24, height: 24, borderRadius: '50%', bgcolor: c, cursor: 'pointer',
+                                                border: categoryColor === c ? '3px solid' : '2px solid transparent',
+                                                borderColor: categoryColor === c ? 'text.primary' : 'transparent'
+                                            }} />
+                                    ))}
+                                </Box>
+                            </Box>
+                        </Box>
+
+                        {/* Tags */}
+                        <Box>
+                            <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <LocalOfferIcon sx={{ fontSize: 14 }} /> {t('tags') as string}
+                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                                <InputBase placeholder={t('tagPlaceholder') as string} value={tagText} onChange={e => setTagText(e.target.value)} onKeyDown={handleTagKeyDown}
+                                    sx={{ flex: 1, px: 1.5, py: 0.5, border: '1px solid', borderColor: 'divider', borderRadius: 2, fontSize: '0.875rem' }} />
+                                <IconButton size="small" onClick={handleAddTag} disabled={!tagText.trim()}><AddIcon fontSize="small" /></IconButton>
+                            </Box>
+                            {tags.length > 0 && (
+                                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 1 }}>
+                                    {tags.map(tag => <Chip key={tag} label={`#${tag}`} size="small" onDelete={() => setTags(tags.filter(tg => tg !== tag))} sx={{ fontWeight: 600 }} />)}
+                                </Box>
+                            )}
+                        </Box>
+
+                        {/* Advanced Section Toggle */}
+                        <Divider />
+                        <Button
+                            onClick={() => setShowAdvanced(!showAdvanced)}
+                            size="small" color="inherit"
+                            endIcon={showAdvanced ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                            sx={{ alignSelf: 'flex-start', fontWeight: 600, color: 'text.secondary', textTransform: 'none' }}
+                        >
+                            {t('advancedFields') as string}
+                        </Button>
+
+                        <Collapse in={showAdvanced}>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                {/* Blocker */}
+                                <Box>
+                                    <FormControlLabel
+                                        control={<Switch checked={isBlocked} onChange={e => setIsBlocked(e.target.checked)} color="error" size="small" />}
+                                        label={
+                                            <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                <BlockIcon sx={{ fontSize: 14, color: isBlocked ? '#ef4444' : 'inherit' }} /> {t('blocker') as string}
+                                            </Typography>
+                                        }
+                                    />
+                                    <Collapse in={isBlocked}>
+                                        <TextField fullWidth size="small" placeholder={t('blockerPlaceholder') as string} value={blockerDetail}
+                                            onChange={e => setBlockerDetail(e.target.value)}
+                                            sx={{ mt: 0.5, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                                    </Collapse>
+                                </Box>
+
+                                {/* Next Action */}
+                                <Box>
+                                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <NextPlanIcon sx={{ fontSize: 14 }} /> {t('nextAction') as string}
+                                    </Typography>
+                                    <TextField fullWidth size="small" placeholder={t('nextActionPlaceholder') as string} value={nextAction}
+                                        onChange={e => setNextAction(e.target.value)}
+                                        sx={{ mt: 0.5, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                                </Box>
+
+                                {/* Links */}
+                                <Box>
+                                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <LinkIcon sx={{ fontSize: 14 }} /> {t('linksLabel') as string}
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                                        <InputBase placeholder="https://..." value={linkText} onChange={e => setLinkText(e.target.value)} onKeyDown={handleLinkKeyDown}
+                                            sx={{ flex: 1, px: 1.5, py: 0.5, border: '1px solid', borderColor: 'divider', borderRadius: 2, fontSize: '0.875rem' }} />
+                                        <IconButton size="small" onClick={handleAddLink} disabled={!linkText.trim()}><AddIcon fontSize="small" /></IconButton>
+                                    </Box>
+                                    {links.length > 0 && (
+                                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 1 }}>
+                                            {links.map((link, i) => (
+                                                <Chip key={i} icon={<LinkIcon />} label={link.length > 40 ? link.substring(0, 40) + '...' : link}
+                                                    size="small" onDelete={() => setLinks(links.filter((_, j) => j !== i))}
+                                                    sx={{ fontWeight: 500 }} />
+                                            ))}
+                                        </Box>
+                                    )}
+                                </Box>
+                            </Box>
+                        </Collapse>
+                    </Box>
+                </Collapse>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2.5 }}>
+                <Button onClick={onClose} color="inherit" sx={{ borderRadius: 2, fontWeight: 600 }}>{t('cancel') as string}</Button>
+                <Button onClick={handleSubmit} variant="contained" disabled={!text.trim()} sx={{ borderRadius: 2, fontWeight: 700, px: 3 }}>{t('addTask') as string}</Button>
+            </DialogActions>
+        </Dialog>
+    );
+};
+
+export default AddTaskDialog;

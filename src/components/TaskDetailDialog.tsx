@@ -1,0 +1,423 @@
+import { useState, useEffect } from 'react';
+import {
+    Dialog, DialogTitle, DialogContent, DialogActions, Box, Typography, TextField, Chip,
+    IconButton, Checkbox, InputBase, Divider, ToggleButtonGroup, ToggleButton,
+    LinearProgress, Avatar, AvatarGroup, Switch, FormControlLabel, Collapse,
+    Select, MenuItem, FormControl, Button,
+} from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
+import FlagIcon from '@mui/icons-material/Flag';
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import AddIcon from '@mui/icons-material/Add';
+import ChecklistIcon from '@mui/icons-material/Checklist';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import LinkIcon from '@mui/icons-material/Link';
+import BlockIcon from '@mui/icons-material/Block';
+import NextPlanIcon from '@mui/icons-material/NextPlan';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import type { Task, Subtask, PriorityLevel, TaskType } from '../types';
+import {
+    PRIORITY_CONFIG, TASK_TYPE_CONFIG, TASK_TYPES, STATUS_CONFIG,
+    normalizePriority, STATUS_PRESETS,
+} from '../types';
+import { updateTaskDetailInDB, updateSubtasksInDB } from '../services/taskService';
+import { getTagColor } from './TagInput';
+import { useLanguage } from '../contexts/LanguageContext';
+
+interface TaskDetailDialogProps {
+    open: boolean;
+    task: Task | null;
+    onClose: () => void;
+    onUpdate: (task: Task) => void;
+}
+
+const TaskDetailDialog = ({ open, task, onClose, onUpdate }: TaskDetailDialogProps) => {
+    const { t } = useLanguage();
+    const [text, setText] = useState('');
+    const [description, setDescription] = useState('');
+    const [priority, setPriority] = useState<PriorityLevel | ''>('');
+    const [taskType, setTaskType] = useState<TaskType>('task');
+    const [status, setStatus] = useState('');
+    const [dueDate, setDueDate] = useState('');
+    const [subtasks, setSubtasks] = useState<Subtask[]>([]);
+    const [newSubtaskText, setNewSubtaskText] = useState('');
+
+    // Enterprise fields
+    const [blockerStatus, setBlockerStatus] = useState<'none' | 'blocked'>('none');
+    const [blockerDetail, setBlockerDetail] = useState('');
+    const [nextAction, setNextAction] = useState('');
+    const [linkText, setLinkText] = useState('');
+    const [links, setLinks] = useState<string[]>([]);
+    const [aiUsage, setAiUsage] = useState('');
+    const [delayReason, setDelayReason] = useState('');
+
+    useEffect(() => {
+        if (task) {
+            setText(task.text);
+            setDescription(task.description || '');
+            const norm = normalizePriority(task.priority);
+            setPriority(norm || '');
+            setTaskType(task.type || 'task');
+            setStatus(task.status || 'todo');
+            setDueDate(task.dueDate || '');
+            setSubtasks(task.subtasks || []);
+            setBlockerStatus(task.blockerStatus || 'none');
+            setBlockerDetail(task.blockerDetail || '');
+            setNextAction(task.nextAction || '');
+            setLinks(task.links || []);
+            setAiUsage(task.aiUsage || '');
+            setDelayReason(task.delayReason || '');
+        }
+    }, [task]);
+
+    if (!task) return null;
+
+    const handleSave = async () => {
+        const updates: Partial<Task> = {};
+        if (text !== task.text) updates.text = text;
+        if (description !== (task.description || '')) updates.description = description;
+        const normPriority = normalizePriority(task.priority) || '';
+        if (priority !== normPriority) updates.priority = priority || undefined;
+        if (taskType !== (task.type || 'task')) updates.type = taskType;
+        if (status !== (task.status || 'todo')) updates.status = status;
+        if (dueDate !== (task.dueDate || '')) updates.dueDate = dueDate || undefined;
+        if (blockerStatus !== (task.blockerStatus || 'none')) updates.blockerStatus = blockerStatus;
+        if (blockerDetail !== (task.blockerDetail || '')) updates.blockerDetail = blockerDetail;
+        if (nextAction !== (task.nextAction || '')) updates.nextAction = nextAction;
+        if (aiUsage !== (task.aiUsage || '')) updates.aiUsage = aiUsage;
+        if (delayReason !== (task.delayReason || '')) updates.delayReason = delayReason;
+        if (JSON.stringify(links) !== JSON.stringify(task.links || [])) updates.links = links;
+
+        if (Object.keys(updates).length > 0) {
+            try {
+                await updateTaskDetailInDB(task.id, updates);
+            } catch { /* silently fail */ }
+        }
+
+        const updatedTask: Task = {
+            ...task, text, description: description || undefined,
+            priority: priority || undefined, type: taskType, status,
+            dueDate: dueDate || undefined, subtasks,
+            blockerStatus, blockerDetail, nextAction, links, aiUsage, delayReason,
+        };
+        onUpdate(updatedTask);
+    };
+
+    const handleClose = () => { onClose(); };
+
+    // Subtasks
+    const handleAddSubtask = () => {
+        const trimmed = newSubtaskText.trim();
+        if (!trimmed) return;
+        const newSub: Subtask = { id: Date.now().toString(), text: trimmed, completed: false };
+        const updated = [...subtasks, newSub];
+        setSubtasks(updated); setNewSubtaskText('');
+        updateSubtasksInDB(task.id, updated).catch(() => { });
+    };
+    const handleSubtaskKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); handleAddSubtask(); }
+    };
+    const handleToggleSubtask = (subId: string) => {
+        const updated = subtasks.map(s => s.id === subId ? { ...s, completed: !s.completed } : s);
+        setSubtasks(updated); updateSubtasksInDB(task.id, updated).catch(() => { });
+    };
+    const handleDeleteSubtask = (subId: string) => {
+        const updated = subtasks.filter(s => s.id !== subId);
+        setSubtasks(updated); updateSubtasksInDB(task.id, updated).catch(() => { });
+    };
+    const handleAddLink = () => {
+        const trimmed = linkText.trim();
+        if (trimmed && !links.includes(trimmed)) { setLinks([...links, trimmed]); setLinkText(''); }
+    };
+    const handleLinkKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') { e.preventDefault(); handleAddLink(); }
+    };
+
+    const completedSubtasks = subtasks.filter(s => s.completed).length;
+    const subtaskProgress = subtasks.length > 0 ? (completedSubtasks / subtasks.length) * 100 : 0;
+    const normalizedPriority = normalizePriority(priority);
+    const priorityCfg = normalizedPriority ? PRIORITY_CONFIG[normalizedPriority] : null;
+    const typeCfg = TASK_TYPE_CONFIG[taskType];
+    const statusCfg = STATUS_CONFIG[status] || STATUS_CONFIG['todo'];
+
+    // Overdue calculation
+    const isOverdue = dueDate && !task.completed && new Date(dueDate) < new Date(new Date().toISOString().split('T')[0]);
+
+    // Owners display
+    const owners = task.owners || (task.assigneeId ? [{ uid: task.assigneeId, name: task.assigneeName || '', photo: task.assigneePhoto }] : []);
+
+    return (
+        <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3, maxHeight: '85vh' } }}>
+            <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {/* Task Code */}
+                    {task.taskCode && (
+                        <Chip label={task.taskCode} size="small" sx={{ fontWeight: 700, bgcolor: 'action.hover', fontFamily: 'monospace', fontSize: '0.75rem' }} />
+                    )}
+                    {/* Type Badge */}
+                    <Chip label={`${typeCfg.icon} ${typeCfg.label}`} size="small"
+                        sx={{ fontWeight: 600, bgcolor: typeCfg.color + '18', color: typeCfg.color }} />
+                    {/* Status */}
+                    <Chip label={statusCfg.label} size="small"
+                        sx={{ fontWeight: 600, bgcolor: statusCfg.bgColor, color: statusCfg.color }} />
+                    {/* Blocker */}
+                    {blockerStatus === 'blocked' && (
+                        <Chip icon={<BlockIcon />} label="Blocked" size="small" color="error" sx={{ fontWeight: 600 }} />
+                    )}
+                </Box>
+                <IconButton onClick={handleClose} size="small"><CloseIcon /></IconButton>
+            </DialogTitle>
+
+            <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                {/* Overdue Warning */}
+                {isOverdue && (
+                    <Box sx={{ bgcolor: '#fef2f2', border: '1px solid #fecaca', borderRadius: 2, px: 2, py: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <ScheduleIcon sx={{ color: '#dc2626', fontSize: 18 }} />
+                        <Typography variant="body2" color="#dc2626" fontWeight={600}>
+                            Overdue — Due {dueDate}
+                        </Typography>
+                    </Box>
+                )}
+
+                {/* Tags & Category */}
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    {task.category && (
+                        <Chip label={task.category} size="small"
+                            sx={{ fontWeight: 700, bgcolor: (task.categoryColor || '#3b82f6') + '20', color: task.categoryColor || '#3b82f6' }} />
+                    )}
+                    {task.tags?.map(tag => (
+                        <Chip key={tag} label={`#${tag}`} size="small"
+                            sx={{ fontWeight: 600, bgcolor: getTagColor(tag) + '18', color: getTagColor(tag) }} />
+                    ))}
+                </Box>
+
+                {/* Owners */}
+                {owners.length > 0 && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="caption" fontWeight={600} color="text.secondary">Owners:</Typography>
+                        <AvatarGroup max={5} sx={{ '& .MuiAvatar-root': { width: 24, height: 24, fontSize: 10, border: '1px solid white' } }}>
+                            {owners.map(o => <Avatar key={o.uid} src={o.photo} sx={{ width: 24, height: 24 }}>{o.name?.charAt(0)}</Avatar>)}
+                        </AvatarGroup>
+                        <Typography variant="caption" color="text.secondary">{owners.map(o => o.name).join(', ')}</Typography>
+                    </Box>
+                )}
+
+                {/* Title */}
+                <TextField fullWidth value={text} onChange={e => setText(e.target.value)} variant="standard"
+                    sx={{ '& .MuiInputBase-input': { fontSize: '1.25rem', fontWeight: 700 } }} />
+
+                {/* Description */}
+                <TextField fullWidth placeholder={t('taskDescription') as string} value={description}
+                    onChange={e => setDescription(e.target.value)} multiline rows={3} variant="outlined"
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+
+                <Divider />
+
+                {/* Type Selector */}
+                <Box>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>Type</Typography>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                        {TASK_TYPES.map(tt => {
+                            const cfg = TASK_TYPE_CONFIG[tt];
+                            return (
+                                <Chip key={tt} label={`${cfg.icon} ${cfg.label}`} size="small"
+                                    onClick={() => setTaskType(tt)}
+                                    sx={{
+                                        fontWeight: taskType === tt ? 700 : 400,
+                                        bgcolor: taskType === tt ? cfg.color + '20' : 'transparent',
+                                        color: taskType === tt ? cfg.color : 'text.secondary',
+                                        border: '1px solid', borderColor: taskType === tt ? cfg.color : 'divider',
+                                    }} />
+                            );
+                        })}
+                    </Box>
+                </Box>
+
+                {/* Status */}
+                <Box>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>Status</Typography>
+                    <FormControl size="small" fullWidth>
+                        <Select value={status} onChange={e => setStatus(e.target.value)} sx={{ borderRadius: 2 }}>
+                            {STATUS_PRESETS.map(s => {
+                                const cfg = STATUS_CONFIG[s] || { label: s, color: '#6b7280' };
+                                return (
+                                    <MenuItem key={s} value={s}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: cfg.color }} />
+                                            {cfg.label}
+                                        </Box>
+                                    </MenuItem>
+                                );
+                            })}
+                        </Select>
+                    </FormControl>
+                </Box>
+
+                {/* Priority */}
+                <Box>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                        <FlagIcon sx={{ fontSize: 14, color: priorityCfg?.color || 'inherit' }} /> {t('priority') as string}
+                    </Typography>
+                    <ToggleButtonGroup value={priority} exclusive onChange={(_, val) => val !== null && setPriority(val)} size="small">
+                        {(['P0', 'P1', 'P2', 'P3'] as PriorityLevel[]).map(p => {
+                            const cfg = PRIORITY_CONFIG[p];
+                            return (
+                                <ToggleButton key={p} value={p} sx={{
+                                    px: 1.5, fontWeight: 700, fontSize: '0.8rem', color: cfg.color,
+                                    '&.Mui-selected': { bgcolor: cfg.bgColor, color: cfg.color }
+                                }}>{p}</ToggleButton>
+                            );
+                        })}
+                    </ToggleButtonGroup>
+                </Box>
+
+                {/* Due Date */}
+                <Box>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                        <CalendarTodayIcon sx={{ fontSize: 14 }} /> {t('dueDateLabel') as string}
+                    </Typography>
+                    <TextField type="date" size="small" value={dueDate} onChange={e => setDueDate(e.target.value)}
+                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        slotProps={{ inputLabel: { shrink: true } }} />
+                </Box>
+
+                <Divider />
+
+                {/* Blocker */}
+                <Box>
+                    <FormControlLabel
+                        control={<Switch checked={blockerStatus === 'blocked'} onChange={e => setBlockerStatus(e.target.checked ? 'blocked' : 'none')} color="error" size="small" />}
+                        label={
+                            <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <BlockIcon sx={{ fontSize: 14, color: blockerStatus === 'blocked' ? '#ef4444' : 'inherit' }} /> Blocker
+                            </Typography>
+                        }
+                    />
+                    <Collapse in={blockerStatus === 'blocked'}>
+                        <TextField fullWidth size="small" placeholder="What is needed to unblock?" value={blockerDetail}
+                            onChange={e => setBlockerDetail(e.target.value)} multiline rows={2}
+                            sx={{ mt: 0.5, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                    </Collapse>
+                </Box>
+
+                {/* Next Action */}
+                <Box>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                        <NextPlanIcon sx={{ fontSize: 14 }} /> Next Action
+                    </Typography>
+                    <TextField fullWidth size="small" placeholder="Who / What / When" value={nextAction}
+                        onChange={e => setNextAction(e.target.value)}
+                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                </Box>
+
+                {/* Links */}
+                <Box>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                        <LinkIcon sx={{ fontSize: 14 }} /> Links
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <InputBase placeholder="https://..." value={linkText} onChange={e => setLinkText(e.target.value)} onKeyDown={handleLinkKeyDown}
+                            sx={{ flex: 1, px: 1.5, py: 0.5, border: '1px solid', borderColor: 'divider', borderRadius: 2, fontSize: '0.875rem' }} />
+                        <IconButton size="small" onClick={handleAddLink} disabled={!linkText.trim()}><AddIcon fontSize="small" /></IconButton>
+                    </Box>
+                    {links.length > 0 && (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 1 }}>
+                            {links.map((link, i) => (
+                                <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    <Chip icon={<OpenInNewIcon />} label={link.length > 50 ? link.substring(0, 50) + '...' : link}
+                                        size="small" component="a" href={link} target="_blank" clickable
+                                        onDelete={() => setLinks(links.filter((_, j) => j !== i))}
+                                        sx={{ fontWeight: 500, maxWidth: '100%' }} />
+                                </Box>
+                            ))}
+                        </Box>
+                    )}
+                </Box>
+
+                {/* AI Usage */}
+                <Box>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                        <SmartToyIcon sx={{ fontSize: 14 }} /> AI Usage
+                    </Typography>
+                    <TextField fullWidth size="small" placeholder="e.g., Antigravity (High Usage ~5), Gemini Pro..." value={aiUsage}
+                        onChange={e => setAiUsage(e.target.value)} multiline rows={2}
+                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                </Box>
+
+                {/* Delay Reason */}
+                {isOverdue && (
+                    <Box>
+                        <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                            <ScheduleIcon sx={{ fontSize: 14 }} /> Delay Reason
+                        </Typography>
+                        <TextField fullWidth size="small" placeholder="Reason for delay..." value={delayReason}
+                            onChange={e => setDelayReason(e.target.value)}
+                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                    </Box>
+                )}
+
+                <Divider />
+
+                {/* Subtasks */}
+                <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                        <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <ChecklistIcon sx={{ fontSize: 14 }} /> {t('subtasks') as string}
+                            {subtasks.length > 0 && (
+                                <Typography component="span" variant="caption" color="text.disabled" sx={{ ml: 0.5 }}>
+                                    ({completedSubtasks}/{subtasks.length})
+                                </Typography>
+                            )}
+                        </Typography>
+                    </Box>
+                    {subtasks.length > 0 && (
+                        <LinearProgress variant="determinate" value={subtaskProgress}
+                            sx={{ borderRadius: 4, height: 6, mb: 1.5, bgcolor: 'action.hover' }} />
+                    )}
+                    {subtasks.map(sub => (
+                        <Box key={sub.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, py: 0.5, '&:hover .sub-delete': { opacity: 1 } }}>
+                            <Checkbox checked={sub.completed} onChange={() => handleToggleSubtask(sub.id)} size="small" sx={{ p: 0.5 }} />
+                            <Typography variant="body2" sx={{
+                                flex: 1, textDecoration: sub.completed ? 'line-through' : 'none',
+                                color: sub.completed ? 'text.secondary' : 'text.primary',
+                            }}>{sub.text}</Typography>
+                            <IconButton className="sub-delete" size="small" onClick={() => handleDeleteSubtask(sub.id)}
+                                sx={{ opacity: 0, transition: 'opacity 0.15s', p: 0.5 }}>
+                                <DeleteOutlineIcon sx={{ fontSize: 16, color: 'error.main' }} />
+                            </IconButton>
+                        </Box>
+                    ))}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                        <AddIcon sx={{ fontSize: 18, color: 'text.disabled', ml: 0.5 }} />
+                        <InputBase placeholder={t('addSubtask') as string} value={newSubtaskText}
+                            onChange={e => setNewSubtaskText(e.target.value)} onKeyDown={handleSubtaskKeyDown}
+                            sx={{ flex: 1, fontSize: '0.875rem' }} />
+                    </Box>
+                </Box>
+
+                <Divider />
+
+                {/* Audit Trail Footer */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    <Typography variant="caption" color="text.disabled">
+                        {t('created') as string}: {task.createdAt}
+                    </Typography>
+                    {task.updatedAt && (
+                        <Typography variant="caption" color="text.disabled">
+                            Last Updated: {task.updatedAt}
+                            {task.updatedByName && ` by ${task.updatedByName}`}
+                        </Typography>
+                    )}
+                </Box>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+                <Button onClick={handleClose} color="inherit" sx={{ borderRadius: 2 }}>{t('cancel') as string}</Button>
+                <Button variant="contained" onClick={() => { handleSave(); onClose(); }} sx={{ borderRadius: 2, fontWeight: 600 }}>{t('save') as string}</Button>
+            </DialogActions>
+        </Dialog>
+    );
+};
+
+export default TaskDetailDialog;

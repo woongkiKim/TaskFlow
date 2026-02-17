@@ -1,0 +1,125 @@
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* ===== Dopamine Burst Checkbox ===== */
+.dopamine-checkbox {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #cbd5e1;
+  border-radius: 50%;
+  position: relative;
+  cursor: pointer;
+  transition: border-color 0.3s ease, background-color 0.3s ease;
+  flex-shrink: 0;
+}
+
+.dopamine-checkbox:hover {
+  border-color: #3b82f6;
+}
+
+/* 체크마크 */
+.dopamine-checkbox::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 5px;
+  border-left: 2px solid white;
+  border-bottom: 2px solid white;
+  transform: translate(-50%, -60%) rotate(-45deg) scale(0);
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Checked 상태 */
+.dopamine-checkbox.checked {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+  animation: pulse-burst 0.4s ease-out;
+}
+
+.dopamine-checkbox.checked::after {
+  transform: translate(-50%, -60%) rotate(-45deg) scale(1);
+}
+
+/* Ring Burst 효과 */
+@keyframes pulse-burst {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+  }
+
+  50% {
+    transform: scale(0.9);
+  }
+
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 15px rgba(59, 130, 246, 0);
+  }
+}
+
+/* 완료된 텍스트 전환 */
+.task-text-completed {
+  color: #94a3b8 !important;
+  text-decoration: line-through;
+  transition: color 0.3s, text-decoration 0.3s;
+}
+
+/* ===== Task Card Burst (전체 카드 효과) ===== */
+.task-card-burst {
+  animation: card-burst 0.5s ease-out forwards !important;
+  box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6) !important;
+  position: relative;
+  overflow: visible;
+  z-index: 10;
+}
+
+.task-card-burst::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(139, 92, 246, 0.1));
+  opacity: 0;
+  animation: card-flash 0.5s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes card-burst {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5);
+  }
+
+  25% {
+    transform: scale(0.97);
+    box-shadow: 0 0 8px 2px rgba(59, 130, 246, 0.4);
+  }
+
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 20px 4px rgba(59, 130, 246, 0.3);
+  }
+
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 20px rgba(59, 130, 246, 0);
+  }
+}
+
+@keyframes card-flash {
+  0% {
+    opacity: 0;
+  }
+
+  30% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
