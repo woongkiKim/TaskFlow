@@ -1,15 +1,17 @@
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
-import { Box, Typography, IconButton, Paper, Grid, InputBase, Button, CircularProgress, Divider } from '@mui/material';
+import { Box, Typography, IconButton, Paper, Grid, InputBase, Button, CircularProgress, Divider, Tooltip } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AddIcon from '@mui/icons-material/Add';
-import { format, isSameDay } from 'date-fns';
+import { format, isSameDay, parseISO } from 'date-fns';
 
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { fetchTasks, addTaskToDB, toggleTaskStatusInDB, updateTaskTextInDB, deleteTaskFromDB } from '../services/taskService';
 import TaskItem from './TaskItem';
+import IterationTimeline from './IterationTimeline';
 import type { Task } from '../types';
 import { getDaysInMonthGrid, getNextMonth, getPrevMonth, isSameMonthDate } from '../utils/dateUtils';
 import { getWeeklyPlannerPreferences } from '../utils/plannerPreferences';
@@ -22,11 +24,13 @@ interface MonthlyViewProps {
 const MonthlyView = ({ currentDate, setCurrentDate }: MonthlyViewProps) => {
   const { user } = useAuth();
   const { t } = useLanguage();
+  const { sprints } = useWorkspace();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [newTaskText, setNewTaskText] = useState('');
   const [weekStartsOn, setWeekStartsOn] = useState<0 | 1>(() => getWeeklyPlannerPreferences(user?.uid).weekStartsOn);
+  const [timelineExpanded, setTimelineExpanded] = useState(true);
 
   const days = useMemo(() => getDaysInMonthGrid(currentDate, weekStartsOn), [currentDate, weekStartsOn]);
   const dayNames = useMemo(() => {
@@ -175,6 +179,16 @@ const MonthlyView = ({ currentDate, setCurrentDate }: MonthlyViewProps) => {
           </Paper>
         </Box>
 
+        {/* ── Iteration Timeline ── */}
+        {sprints.length > 0 && (
+          <IterationTimeline
+            sprints={sprints}
+            currentDate={currentDate}
+            expanded={timelineExpanded}
+            onToggle={() => setTimelineExpanded(!timelineExpanded)}
+          />
+        )}
+
         <Grid container columns={7} sx={{ mb: 1, textAlign: 'center' }}>
           {dayNames.map((day, index) => (
             <Grid key={`${day}-${index}`} size={1}>
@@ -230,6 +244,24 @@ const MonthlyView = ({ currentDate, setCurrentDate }: MonthlyViewProps) => {
                     </Typography>
                     {isSelected && <AddIcon fontSize="small" color="primary" sx={{ opacity: 0.5 }} />}
                   </Box>
+
+                  {/* Milestone markers on date cells */}
+                  {sprints.filter(s => s.type === 'milestone' && s.endDate).map(ms => {
+                    const msDate = parseISO(ms.endDate!);
+                    if (!isSameDay(msDate, day)) return null;
+                    return (
+                      <Tooltip key={ms.id} title={`🎯 ${ms.name}`} arrow>
+                        <Box sx={{
+                          position: 'absolute', top: 4, right: 4,
+                          width: 10, height: 10,
+                          transform: 'rotate(45deg)',
+                          bgcolor: ms.status === 'completed' ? 'success.main' : 'error.main',
+                          borderRadius: 0.5,
+                          opacity: 0.85,
+                        }} />
+                      </Tooltip>
+                    );
+                  })}
 
                   {/* Task Indicators */}
                   <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>

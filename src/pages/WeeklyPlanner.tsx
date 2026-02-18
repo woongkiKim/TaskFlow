@@ -230,6 +230,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
   const { user } = useAuth();
   const { currentWorkspace: workspace } = useWorkspace(); // Use workspace context
   const { t, lang } = useLanguage();
+  const textByLang = (enText: string, koText: string) => (lang === 'ko' ? koText : enText);
   const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(initialDate || new Date());
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -285,8 +286,10 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
     if (Array.isArray(raw) && raw.length === 7) {
       return raw.map(String);
     }
-    return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  }, [t]);
+    return lang === 'ko'
+      ? ['월', '화', '수', '목', '금', '토', '일']
+      : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  }, [lang, t]);
   const dayLabelsByWeekday = useMemo(
     () => [translatedDayNames[6], ...translatedDayNames.slice(0, 6)],
     [translatedDayNames]
@@ -437,7 +440,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
       setAddingDay(null);
       setSelectedProject(null);
     } catch {
-      toast.error('Add failed');
+      toast.error(textByLang('Add failed', '추가에 실패했습니다'));
     } finally {
       setSaving(false);
     }
@@ -462,7 +465,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
       await toggleTaskStatusInDB(id, taskToToggle.completed);
     } catch {
       setTasks(previousTasks);
-      toast.error('Toggle failed');
+      toast.error(textByLang('Toggle failed', '상태 변경에 실패했습니다'));
     }
   };
 
@@ -482,7 +485,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
         await updateTaskTextInDB(editingTaskId, trimmed);
       } catch {
         setTasks(previousTasks);
-        toast.error('Edit failed');
+        toast.error(textByLang('Edit failed', '수정에 실패했습니다'));
       }
     }
     setEditingTaskId(null);
@@ -508,7 +511,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
       await deleteTaskFromDB(id);
     } catch {
       setTasks(previousTasks);
-      toast.error('Delete failed');
+      toast.error(textByLang('Delete failed', '삭제에 실패했습니다'));
     }
   };
 
@@ -598,7 +601,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
         await updateTaskOrdersInDB(updates);
       } catch {
         setTasks(previousTasks);
-        toast.error('Move failed');
+        toast.error(textByLang('Move failed', '이동에 실패했습니다'));
       }
       return;
     }
@@ -646,7 +649,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
       await updateTaskOrdersInDB([...sourceUpdates, ...targetUpdates]);
     } catch {
       setTasks(previousTasks);
-      toast.error('Move failed');
+      toast.error(textByLang('Move failed', '이동에 실패했습니다'));
     }
   };
 
@@ -660,7 +663,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
       await rolloverTasksToDate(taskIds, thisWeekMonday);
     } catch {
       setTasks(previousTasks);
-      toast.error('Rollover failed');
+      toast.error(textByLang('Rollover failed', '이월에 실패했습니다'));
     }
   };
 
@@ -693,7 +696,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
               size="small"
               onClick={() => navigate(`/calendar?view=month&date=${format(currentDate, 'yyyy-MM-dd')}`)}
               sx={{ border: '1px solid', borderColor: 'divider' }}
-              title="Go to calendar"
+              title={textByLang('Go to calendar', '캘린더로 이동')}
             >
               <CalendarMonthIcon fontSize="small" />
             </IconButton>
@@ -704,7 +707,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
               size="small"
               onClick={(e) => setPlannerMenuAnchor(e.currentTarget)}
               sx={{ border: '1px solid', borderColor: 'divider' }}
-              title="Weekly settings"
+              title={textByLang('Weekly settings', '주간 설정')}
             >
               <TuneIcon fontSize="small" />
             </IconButton>
@@ -718,7 +721,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
           slotProps={{ paper: { sx: { p: 1.5, borderRadius: 2, minWidth: 280 } } }}
         >
           <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
-            Week Starts On
+            {textByLang('Week Starts On', '주 시작 요일')}
           </Typography>
           <ToggleButtonGroup
             value={plannerPrefs.weekStartsOn}
@@ -732,7 +735,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
           </ToggleButtonGroup>
 
           <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
-            Visible Weekdays
+            {textByLang('Visible Weekdays', '표시할 요일')}
           </Typography>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8, mt: 0.8, mb: 1.2 }}>
             {weekDayOrder.map((weekday) => {
@@ -751,7 +754,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
           </Box>
           <Divider sx={{ my: 0.8 }} />
           <MenuItem onClick={handleResetPlannerPrefs}>
-            Reset to default
+            {textByLang('Reset to default', '기본값으로 재설정')}
           </MenuItem>
         </Menu>
 
@@ -780,7 +783,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
 
         {days.length === 0 ? (
           <Paper sx={{ p: 3, mx: 1, borderRadius: 2, textAlign: 'center', color: 'text.secondary' }}>
-            No visible weekdays. Select weekdays in weekly settings.
+            {textByLang('No visible weekdays. Select weekdays in weekly settings.', '표시할 요일이 없습니다. 주간 설정에서 요일을 선택해 주세요.')}
           </Paper>
         ) : (
           <Box sx={{
@@ -842,7 +845,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
                     {isAdding && (
                       <Paper elevation={2} sx={{ p: 1.5, borderRadius: 2, border: '2px solid', borderColor: 'primary.main', bgcolor: 'background.paper' }}>
                         <InputBase
-                          inputRef={inputRef} fullWidth placeholder="Add task... (#tags)"
+                          inputRef={inputRef} fullWidth placeholder={textByLang('Add task... (#tags)', '할 일을 입력하세요... (#태그)')}
                           value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)}
                           onKeyDown={(e) => handleAddKeyDown(e, day)}
                           disabled={saving} autoFocus sx={{ fontSize: '0.875rem' }}
@@ -855,14 +858,14 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
                               ) : <FolderIcon sx={{ fontSize: 16, color: 'text.disabled' }} />}
                             </Box>
                             <Menu anchorEl={projectAnchorEl} open={Boolean(projectAnchorEl)} onClose={() => setProjectAnchorEl(null)} slotProps={{ paper: { sx: { borderRadius: 2, minWidth: 140, mt: 1 } } }}>
-                              <MenuItem onClick={() => { setSelectedProject(null); setProjectAnchorEl(null); }}>None</MenuItem>
+                              <MenuItem onClick={() => { setSelectedProject(null); setProjectAnchorEl(null); }}>{textByLang('None', '없음')}</MenuItem>
                               {projects.map((p) => (
                                 <MenuItem key={p.id} onClick={() => { setSelectedProject(p); setProjectAnchorEl(null); }} sx={{ gap: 1 }}>
                                   <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: p.color }} />{p.name}
                                 </MenuItem>
                               ))}
                               <Divider />
-                              <MenuItem onClick={() => { setProjectAnchorEl(null); navigate('/settings'); }} sx={{ color: 'text.secondary' }}><SettingsIcon sx={{ fontSize: 14, mr: 1 }} />{t('goToSettings') || 'Manage Projects'}</MenuItem>
+                              <MenuItem onClick={() => { setProjectAnchorEl(null); navigate('/settings'); }} sx={{ color: 'text.secondary' }}><SettingsIcon sx={{ fontSize: 14, mr: 1 }} />{(t('goToSettings') as string) || textByLang('Manage Projects', '프로젝트 관리')}</MenuItem>
                             </Menu>
                           </Box>
                           <IconButton size="small" onClick={handleCancelAdd} sx={{ p: 0.5 }}><CloseIcon sx={{ fontSize: 16 }} /></IconButton>

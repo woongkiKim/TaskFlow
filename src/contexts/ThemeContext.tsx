@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useMemo, useCallback, type ReactNode } from 'react';
+import { useLanguage } from './LanguageContext';
 import { createTheme, ThemeProvider as MuiThemeProvider, alpha } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { koKR } from '@mui/material/locale';
@@ -89,6 +90,13 @@ const getDesignTokens = (mode: Mode) => {
             font-display: swap;
             src: url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/woff2/Pretendard-Regular.woff2') format('woff2');
           }
+          /* Smooth scrollbar */
+          ::-webkit-scrollbar { width: 6px; height: 6px; }
+          ::-webkit-scrollbar-track { background: transparent; }
+          ::-webkit-scrollbar-thumb { background: ${mode === 'light' ? '#cbd5e1' : '#475569'}; border-radius: 3px; }
+          ::-webkit-scrollbar-thumb:hover { background: ${mode === 'light' ? '#94a3b8' : '#64748b'}; }
+          /* Page transition */
+          .MuiBox-root { transition: background-color 0.2s ease; }
         `,
       },
       MuiButton: {
@@ -129,7 +137,9 @@ const getDesignTokens = (mode: Mode) => {
         styleOverrides: {
           root: {
             borderRadius: 16,
-            boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.05), 0px 10px 15px -5px rgba(0, 0, 0, 0.04)',
+            boxShadow: mode === 'light'
+              ? '0px 1px 3px rgba(0, 0, 0, 0.05), 0px 10px 15px -5px rgba(0, 0, 0, 0.04)'
+              : '0px 1px 3px rgba(0, 0, 0, 0.2), 0px 10px 15px -5px rgba(0, 0, 0, 0.15)',
             border: `1px solid ${mode === 'light' ? '#E2E8F0' : '#334155'}`,
             backgroundImage: 'none',
           },
@@ -138,7 +148,10 @@ const getDesignTokens = (mode: Mode) => {
       MuiPaper: {
         defaultProps: { elevation: 0 },
         styleOverrides: {
-          root: { backgroundImage: 'none' },
+          root: {
+            backgroundImage: 'none',
+            transition: 'box-shadow 0.2s ease, border-color 0.2s ease',
+          },
         },
       },
       MuiTextField: {
@@ -164,6 +177,50 @@ const getDesignTokens = (mode: Mode) => {
           root: { fontWeight: 600 },
         },
       },
+      MuiDialog: {
+        styleOverrides: {
+          root: {
+            '& .MuiBackdrop-root': {
+              backdropFilter: 'blur(4px)',
+              backgroundColor: mode === 'light' ? 'rgba(15, 23, 42, 0.3)' : 'rgba(0, 0, 0, 0.5)',
+            },
+          },
+          paper: {
+            borderRadius: 16,
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          },
+        },
+      },
+      MuiListItemButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: 8,
+            transition: 'all 0.15s ease',
+            '&:hover': {
+              backgroundColor: alpha(primaryMain, 0.06),
+            },
+            '&.Mui-selected': {
+              backgroundColor: alpha(primaryMain, 0.1),
+              '&:hover': {
+                backgroundColor: alpha(primaryMain, 0.14),
+              },
+            },
+          },
+        },
+      },
+      MuiTooltip: {
+        styleOverrides: {
+          tooltip: {
+            borderRadius: 8,
+            fontSize: '0.75rem',
+            fontWeight: 500,
+            backgroundColor: mode === 'light' ? '#1e293b' : '#f1f5f9',
+            color: mode === 'light' ? '#f1f5f9' : '#0f172a',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            padding: '6px 12px',
+          },
+        },
+      },
     },
   };
 };
@@ -182,7 +239,7 @@ export const ThemeContextProvider = ({ children }: { children: ReactNode }) => {
     });
   }, []);
 
-  const lang = localStorage.getItem('taskflow-lang') || 'ko';
+  const { lang } = useLanguage();
   const theme = useMemo(() => createTheme(getDesignTokens(mode), lang === 'ko' ? koKR : enUS), [mode, lang]);
 
   return (

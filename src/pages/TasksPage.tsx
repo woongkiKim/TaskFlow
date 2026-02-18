@@ -1,13 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
+import { useOutletContext } from 'react-router-dom';
 import {
     Box, ToggleButtonGroup, ToggleButton, CircularProgress, Typography, Chip,
     InputBase, Paper, Grow, IconButton, Tooltip, Snackbar, Button, LinearProgress,
 } from '@mui/material';
-import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
-import ViewKanbanIcon from '@mui/icons-material/ViewKanban';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import TableChartIcon from '@mui/icons-material/TableChart';
 import AddIcon from '@mui/icons-material/Add';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import FlagIcon from '@mui/icons-material/Flag';
@@ -25,7 +22,7 @@ import {
     updateTaskOrdersInDB,
 } from '../services/taskService';
 import { updateProjectColumns, DEFAULT_KANBAN_COLUMNS } from '../services/projectService';
-import type { Task, KanbanColumn, TaskType, TaskOwner } from '../types';
+import type { Task, KanbanColumn, TaskType, TaskOwner, PriorityLevel } from '../types';
 import ListView from '../components/ListView';
 import BoardView from '../components/BoardView';
 import TableView from '../components/TableView';
@@ -46,14 +43,26 @@ const sortTasksByOrder = (arr: Task[]) => [...arr].sort((a, b) => {
 const TasksPage = () => {
     const { user } = useAuth();
     const { t } = useLanguage();
-    const { currentProject, setCurrentProject, currentWorkspace, currentSprint, scope, sprints, updateCurrentSprint } = useWorkspace();
+    const { currentProject, setCurrentProject, currentWorkspace, currentSprint, scope, sprints, updateCurrentSprint, currentViewMode, setCurrentViewMode, activeViewFilter, setActiveViewFilter, projects } = useWorkspace();
+
+    // Receive shortcut-triggered addTask state from MainLayout
+    const outletCtx = useOutletContext<{ addTaskOpen?: boolean; setAddTaskOpen?: (v: boolean) => void } | undefined>();
 
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
-    const [viewMode, setViewMode] = useState<ViewMode>('list');
+    const viewMode = currentViewMode;
+    const setViewMode = setCurrentViewMode;
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
     const [addDialogOpen, setAddDialogOpen] = useState(false);
     const [detailTask, setDetailTask] = useState<Task | null>(null);
+
+    // Open add dialog when keyboard shortcut fires
+    useEffect(() => {
+        if (outletCtx?.addTaskOpen) {
+            setAddDialogOpen(true);
+            outletCtx.setAddTaskOpen?.(false);
+        }
+    }, [outletCtx?.addTaskOpen]);
     const [calendarDate, setCalendarDate] = useState(new Date());
     const [taskScope, setTaskScope] = useState<TaskScope>('personal');
 
@@ -70,7 +79,7 @@ const TasksPage = () => {
         if (!availableViews.includes(viewMode)) {
             setViewMode('list');
         }
-    }, [availableViews, viewMode]);
+    }, [availableViews, viewMode, setViewMode]);
 
 
     // Quick-Add bar state
@@ -84,10 +93,17 @@ const TasksPage = () => {
         const load = async () => {
             setLoading(true);
             try {
-                let data: Task[];
+                let data: Task[] = [];
                 if (currentProject) {
                     // Project selected → always show project tasks
                     data = await fetchProjectTasks(currentProject.id);
+                } else if (activeViewFilter?.initiativeId && currentWorkspace) {
+                    // Initiative View: Fetch tasks from all linked projects
+                    const linkedProjs = projects.filter(p => p.initiativeId === activeViewFilter.initiativeId);
+                    if (linkedProjs.length > 0) {
+                        const results = await Promise.all(linkedProjs.map(p => fetchProjectTasks(p.id)));
+                        data = results.flat();
+                    }
                 } else if (taskScope === 'work' && currentWorkspace) {
                     // Work tab → all tasks where I'm tagged in this workspace
                     data = await fetchMyWorkTasks(user.uid, currentWorkspace.id);
@@ -100,14 +116,19 @@ const TasksPage = () => {
             finally { setLoading(false); }
         };
         load();
-    }, [user, currentProject, currentWorkspace, taskScope]);
+    }, [user, currentProject, currentWorkspace, taskScope, activeViewFilter, projects]);
 
     // Filter: scope + sprint
     const filteredTasks = useMemo(() => {
-        let result = tasks;
+        // Exclude archived tasks
+        let result = tasks.filter(t => !t.archived);
 
+        // Initiative View: Skip sprint filtering to show all tasks
+        if (activeViewFilter?.initiativeId) {
+            // Pass through
+        }
         // Sprint filter — hierarchy-aware
-        if (currentSprint) {
+        else if (currentSprint) {
             if (currentSprint.type === 'phase') {
                 // Phase: include tasks in the phase itself + all child sprints
                 const childIds = sprints.filter(s => s.parentId === currentSprint.id).map(s => s.id);
@@ -127,7 +148,7 @@ const TasksPage = () => {
             } else {
                 result = result.filter(t => t.sprintId === currentSprint.id);
             }
-        } else if (sprints.length > 0) {
+        } else if (currentProject && sprints.length > 0) {
             const sprintIds = new Set(sprints.map(s => s.id));
             result = result.filter(t => !t.sprintId || !sprintIds.has(t.sprintId));
         }
@@ -138,15 +159,58 @@ const TasksPage = () => {
         }
 
         return result;
-    }, [tasks, scope, user, currentSprint, sprints]);
+    }, [tasks, scope, user, currentSprint, sprints, currentProject, activeViewFilter]);
+
+    // Apply custom view filter on top of filteredTasks
+    const viewFilteredTasks = useMemo(() => {
+        if (!activeViewFilter) return filteredTasks;
+        let result = filteredTasks;
+        const f = activeViewFilter;
+
+        if (f.statuses && f.statuses.length > 0) {
+            result = result.filter(t => f.statuses!.includes(t.status || 'todo'));
+        }
+        if (f.priorities && f.priorities.length > 0) {
+            result = result.filter(t => {
+                const np = t.priority ? (t.priority as string) : undefined;
+                return np && f.priorities!.includes(np as PriorityLevel);
+            });
+        }
+        if (f.types && f.types.length > 0) {
+            result = result.filter(t => f.types!.includes(t.type || 'task'));
+        }
+        if (f.tags && f.tags.length > 0) {
+            result = result.filter(t =>
+                f.tags!.some(tag => t.tags?.includes(tag) || t.category === tag)
+            );
+        }
+        if (f.hideCompleted) {
+            result = result.filter(t => !t.completed);
+        }
+        if (f.hasBlocker) {
+            result = result.filter(t => t.blockerStatus === 'blocked');
+        }
+        if (f.hasDueDate) {
+            const today = new Date().toISOString().split('T')[0];
+            const weekEnd = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+            if (f.hasDueDate === 'overdue') {
+                result = result.filter(t => t.dueDate && !t.completed && t.dueDate < today);
+            } else if (f.hasDueDate === 'today') {
+                result = result.filter(t => t.dueDate === today);
+            } else if (f.hasDueDate === 'thisWeek') {
+                result = result.filter(t => t.dueDate && t.dueDate >= today && t.dueDate <= weekEnd);
+            }
+        }
+        return result;
+    }, [filteredTasks, activeViewFilter]);
 
     // Progress stats for phase/milestone
     const progressStats = useMemo(() => {
-        const total = filteredTasks.length;
-        const done = filteredTasks.filter(t => t.completed).length;
+        const total = viewFilteredTasks.length;
+        const done = viewFilteredTasks.filter(t => t.completed).length;
         const percent = total > 0 ? Math.round((done / total) * 100) : 0;
         return { total, done, percent };
-    }, [filteredTasks]);
+    }, [viewFilteredTasks]);
 
     const allTags = useMemo(() => {
         const s = new Set<string>();
@@ -195,8 +259,8 @@ const TasksPage = () => {
                 status: statusOverride || 'todo',
             });
             setTasks(prev => [savedTask, ...prev]);
-        } catch { /* silently fail */ }
-    }, [user, currentProject, currentWorkspace, currentSprint]);
+        } catch { toast.error(t('quickAddFailed') as string); }
+    }, [user, currentProject, currentWorkspace, currentSprint, t]);
 
     const handleQuickAddSubmit = () => {
         if (quickAddText.trim()) {
@@ -229,8 +293,8 @@ const TasksPage = () => {
                 status,
             });
             setTasks(prev => [savedTask, ...prev]);
-        } catch { /* silently fail */ }
-    }, [user, currentProject, currentWorkspace, currentSprint]);
+        } catch { toast.error(t('quickAddFailed') as string); }
+    }, [user, currentProject, currentWorkspace, currentSprint, t]);
 
     // --- Handlers ---
     const handleAddInline = async (text: string, tags: string[]) => {
@@ -387,6 +451,26 @@ const TasksPage = () => {
         setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
     };
 
+    // Sub-issue creation
+    const handleCreateSubIssue = async (parentTask: Task, subIssueText: string) => {
+        if (!user) return;
+        try {
+            const savedTask = await addTaskToDB(subIssueText, user.uid, undefined, undefined, {
+                status: 'todo',
+                projectId: parentTask.projectId,
+                workspaceId: parentTask.workspaceId,
+                sprintId: parentTask.sprintId,
+                parentTaskId: parentTask.id,
+                parentTaskText: parentTask.text,
+                assigneeId: user.uid,
+                assigneeName: user.displayName || 'User',
+                assigneePhoto: user.photoURL || '',
+            });
+            setTasks(prev => [savedTask, ...prev]);
+            toast.success(`Sub-issue created: ${subIssueText}`);
+        } catch { toast.error('Failed to create sub-issue'); }
+    };
+
     const applyOrderUpdates = useCallback(async (orderedIds: string[]) => {
         if (orderedIds.length < 2) return;
         const updates = orderedIds.map((id, order) => ({ id, order }));
@@ -458,7 +542,7 @@ const TasksPage = () => {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [availableViews]);
+    }, [availableViews, setViewMode]);
 
     if (loading) {
         return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}><CircularProgress /></Box>;
@@ -535,20 +619,6 @@ const TasksPage = () => {
                 </Box>
 
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <ToggleButtonGroup value={viewMode} exclusive onChange={(_, v) => v && setViewMode(v)} size="small"
-                        sx={{
-                            bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 0.5,
-                            '& .MuiToggleButton-root': {
-                                border: 'none', borderRadius: '8px !important', px: 1.5, py: 0.5, fontWeight: 600,
-                                fontSize: '0.75rem', textTransform: 'none', gap: 0.5,
-                                '&.Mui-selected': { bgcolor: 'primary.main', color: 'white', '&:hover': { bgcolor: 'primary.dark' } }
-                            }
-                        }}>
-                        {availableViews.includes('list') && <ToggleButton value="list"><FormatListBulletedIcon sx={{ fontSize: 16 }} />{t('listView') as string}</ToggleButton>}
-                        {availableViews.includes('board') && <ToggleButton value="board"><ViewKanbanIcon sx={{ fontSize: 16 }} />{t('boardView') as string}</ToggleButton>}
-                        {availableViews.includes('calendar') && <ToggleButton value="calendar"><CalendarMonthIcon sx={{ fontSize: 16 }} />{t('calendarView') as string}</ToggleButton>}
-                        {availableViews.includes('table') && <ToggleButton value="table"><TableChartIcon sx={{ fontSize: 16 }} />{t('tableView') as string}</ToggleButton>}
-                    </ToggleButtonGroup>
                     {allTags.length > 0 && viewMode !== 'calendar' && (
                         <CategoryFilter allTags={allTags} selectedTag={selectedTag} onSelectTag={setSelectedTag} />
                     )}
@@ -672,16 +742,42 @@ const TasksPage = () => {
                 </Paper>
             )}
 
+            {/* Active View Filter Indicator */}
+            {activeViewFilter && (
+                <Paper elevation={0} sx={{
+                    mb: 1, p: 1, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    bgcolor: 'primary.main', color: 'white',
+                    background: 'linear-gradient(135deg, #6366f1 0%, #3b82f6 100%)',
+                }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                        <Typography sx={{ fontSize: '0.85rem' }}>🔍</Typography>
+                        <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.78rem' }}>
+                            Custom view active
+                        </Typography>
+                        <Chip
+                            label={`${viewFilteredTasks.length} tasks`}
+                            size="small"
+                            sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }}
+                        />
+                    </Box>
+                    <Button size="small" variant="text"
+                        onClick={() => setActiveViewFilter(null)}
+                        sx={{ color: 'white', fontSize: '0.7rem', fontWeight: 600, minWidth: 0, '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}>
+                        ✕ Clear
+                    </Button>
+                </Paper>
+            )}
+
             {/* Views */}
             <Box sx={{ flex: 1, overflow: 'hidden' }}>
-                {viewMode === 'list' && <ListView tasks={filteredTasks} selectedTag={selectedTag} onAddInline={handleAddInline} onToggle={handleToggle} onDelete={handleDelete} onEdit={handleEdit} onTaskClick={setDetailTask} onMoveTask={handleMoveListTask} onReorderTodayTasks={handleReorderTodayTasks} sprintGroups={sprintGroups} />}
-                {viewMode === 'board' && <BoardView tasks={filteredTasks} columns={currentSprint?.kanbanColumns || currentProject?.kanbanColumns || DEFAULT_KANBAN_COLUMNS} selectedTag={selectedTag} onKanbanStatusChange={handleKanbanStatusChange} onMoveTaskInColumn={handleMoveBoardTask} onReorderTasksInColumn={handleReorderBoardTasks} onTaskClick={setDetailTask} onColumnsChange={handleColumnsChange} onAddTask={handleBoardInlineAdd} />}
+                {viewMode === 'list' && <ListView tasks={viewFilteredTasks} selectedTag={selectedTag} onAddInline={handleAddInline} onToggle={handleToggle} onDelete={handleDelete} onEdit={handleEdit} onTaskClick={setDetailTask} onMoveTask={handleMoveListTask} onReorderTodayTasks={handleReorderTodayTasks} sprintGroups={sprintGroups} allTasks={tasks} />}
+                {viewMode === 'board' && <BoardView tasks={viewFilteredTasks} columns={currentSprint?.kanbanColumns || currentProject?.kanbanColumns || DEFAULT_KANBAN_COLUMNS} selectedTag={selectedTag} onKanbanStatusChange={handleKanbanStatusChange} onMoveTaskInColumn={handleMoveBoardTask} onReorderTasksInColumn={handleReorderBoardTasks} onTaskClick={setDetailTask} onColumnsChange={handleColumnsChange} onAddTask={handleBoardInlineAdd} />}
                 {viewMode === 'calendar' && <MonthlyView currentDate={calendarDate} setCurrentDate={setCalendarDate} />}
-                {viewMode === 'table' && <TableView tasks={filteredTasks} selectedTag={selectedTag} onToggle={handleToggle} onTaskClick={setDetailTask} />}
+                {viewMode === 'table' && <TableView tasks={viewFilteredTasks} selectedTag={selectedTag} onToggle={handleToggle} onTaskClick={setDetailTask} />}
             </Box>
 
             <AddTaskDialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} onSubmit={handleAddDialog} />
-            <TaskDetailDialog open={!!detailTask} task={detailTask} onClose={() => setDetailTask(null)} onUpdate={handleTaskUpdate} />
+            <TaskDetailDialog open={!!detailTask} task={detailTask} allTasks={tasks} onClose={() => setDetailTask(null)} onUpdate={handleTaskUpdate} onCreateSubIssue={handleCreateSubIssue} onTaskClick={(task) => setDetailTask(task)} />
 
             {/* Undo Delete Snackbar */}
             <Snackbar

@@ -1,10 +1,12 @@
 import {
   collection, addDoc, getDocs, updateDoc, deleteDoc,
-  doc, query, where, writeBatch,
+  doc, query, where, orderBy, limit, startAfter, Timestamp,
+  getCountFromServer, writeBatch, arrayRemove,
 } from "firebase/firestore";
 import type { Task, Subtask, TaskOwner, TaskType } from '../types';
 import { db } from '../FBase';
 import { format } from 'date-fns';
+import { triggerAutomations } from './automationService';
 
 const COLLECTION_NAME = "tasks";
 
@@ -95,6 +97,9 @@ export interface AddTaskOptions {
   updatedBy?: string;
   updatedByName?: string;
   scope?: 'personal' | 'work';
+  parentTaskId?: string;
+  parentTaskText?: string;
+  estimate?: number;
 }
 
 export const addTaskToDB = async (
@@ -142,6 +147,13 @@ export const addTaskToDB = async (
       newTask.assigneePhoto = options.assigneePhoto || '';
     }
 
+    // Triage Logic: If assigned to someone else, set triageStatus to 'pending'
+    if (options?.assigneeId && options.assigneeId !== userId) {
+      newTask.triageStatus = 'pending';
+    } else {
+      newTask.triageStatus = 'accepted'; // Assigned to self or unassigned
+    }
+
     // Auto-build ownerUids for Firestore array-contains queries
     const uidSet = new Set<string>();
     uidSet.add(userId); // creator is always included
@@ -157,6 +169,13 @@ export const addTaskToDB = async (
     setIfDefined(newTask, 'updatedBy', options?.updatedBy);
     setIfDefined(newTask, 'updatedByName', options?.updatedByName);
     if (options?.links && options.links.length > 0) newTask.links = options.links;
+
+    // Sub-issue
+    setIfDefined(newTask, 'parentTaskId', options?.parentTaskId);
+    setIfDefined(newTask, 'parentTaskText', options?.parentTaskText);
+
+    // Estimate
+    setIfDefined(newTask, 'estimate', options?.estimate);
 
     const docRef = await addDoc(collection(db, COLLECTION_NAME), newTask);
 
@@ -188,6 +207,8 @@ export const addTaskToDB = async (
       ...(options?.aiUsage ? { aiUsage: options.aiUsage } : {}),
       ...(options?.updatedBy ? { updatedBy: options.updatedBy } : {}),
       ...(options?.updatedByName ? { updatedByName: options.updatedByName } : {}),
+      ...(options?.parentTaskId ? { parentTaskId: options.parentTaskId, parentTaskText: options.parentTaskText } : {}),
+      ...(options?.estimate ? { estimate: options.estimate } : {}),
       // order not set here yet?
     };
   } catch (error) { console.error("Error adding task:", error); throw error; }
@@ -236,9 +257,16 @@ export const rolloverTasksToDate = async (taskIds: string[], newDate: Date): Pro
 };
 
 // 10. Kanban status
-export const updateTaskKanbanStatusInDB = async (id: string, status: string): Promise<void> => {
+export const updateTaskKanbanStatusInDB = async (
+  id: string, status: string, workspaceId?: string, oldStatus?: string
+): Promise<void> => {
   const now = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
   await updateDoc(doc(db, COLLECTION_NAME, id), { status, completed: status === 'done', updatedAt: now });
+
+  // Fire automations in background (non-blocking)
+  if (workspaceId) {
+    triggerAutomations(workspaceId, id, status, oldStatus).catch(() => { });
+  }
 };
 
 // 11. Task detail update (enterprise fields 포함)
@@ -249,19 +277,38 @@ export const updateTaskDetailInDB = async (
     'tags' | 'status' | 'assigneeId' | 'assigneeName' | 'assigneePhoto' | 'sprintId' |
     'type' | 'taskCode' | 'owners' | 'blockerStatus' | 'blockerDetail' |
     'nextAction' | 'links' | 'delayPeriod' | 'delayReason' | 'aiUsage' |
-    'updatedAt' | 'updatedBy' | 'updatedByName' | 'order'
-  >>
+    'updatedAt' | 'updatedBy' | 'updatedByName' | 'order' | 'relations' |
+    'estimate' | 'parentTaskId' | 'parentTaskText'
+  >>,
+  workspaceId?: string,
+  oldStatus?: string,
 ): Promise<void> => {
   const clean: Record<string, unknown> = {};
   Object.entries(updates).forEach(([k, v]) => { if (v !== undefined) clean[k] = v; });
   clean.updatedAt = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
   await updateDoc(doc(db, COLLECTION_NAME, id), clean);
+
+  // Fire automations if status changed
+  if (updates.status && workspaceId) {
+    triggerAutomations(workspaceId, id, updates.status, oldStatus).catch(() => { });
+  }
 };
 
 // 12. Subtasks update
 export const updateSubtasksInDB = async (id: string, subtasks: Subtask[]): Promise<void> => {
   const now = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
   await updateDoc(doc(db, COLLECTION_NAME, id), { subtasks, updatedAt: now });
+};
+
+// 12b. Archive/Unarchive
+export const archiveTask = async (id: string): Promise<void> => {
+  const now = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
+  await updateDoc(doc(db, COLLECTION_NAME, id), { archived: true, updatedAt: now });
+};
+
+export const unarchiveTask = async (id: string): Promise<void> => {
+  const now = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
+  await updateDoc(doc(db, COLLECTION_NAME, id), { archived: false, updatedAt: now });
 };
 
 // --- From Feature/Kim ---
@@ -307,4 +354,66 @@ export const updateTaskOrdersInDB = async (updates: { id: string; order: number 
     console.error("Error updating task orders: ", error);
     throw error;
   }
+};
+
+// 16. Project Stats (Total / Completed Tasks) for Initiatives
+export const fetchProjectStats = async (projectId: string): Promise<{ total: number, completed: number }> => {
+  const coll = collection(db, COLLECTION_NAME);
+  const qTotal = query(coll, where("projectId", "==", projectId));
+  const qCompleted = query(coll, where("projectId", "==", projectId), where("completed", "==", true));
+
+  try {
+    const snapTotal = await getCountFromServer(qTotal);
+    const snapCompleted = await getCountFromServer(qCompleted);
+    return { total: snapTotal.data().count, completed: snapCompleted.data().count };
+  } catch (e) {
+    console.error("Error fetching project stats:", e);
+    return { total: 0, completed: 0 };
+  }
+};
+
+
+// 17. Triage Tasks
+export const fetchTriageTasks = async (userId: string): Promise<Task[]> => {
+  try {
+    // Tasks assigned to me with triageStatus == 'pending'
+    const q = query(
+      collection(db, COLLECTION_NAME),
+      where("assigneeId", "==", userId),
+      where("triageStatus", "==", "pending")
+    );
+    const snap = await getDocs(q);
+    const tasks = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Task[];
+    return tasks.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  } catch (e) {
+    console.error("Error fetching triage tasks:", e);
+    throw e;
+  }
+};
+
+export const updateTaskTriageStatus = async (taskId: string, status: 'pending' | 'accepted' | 'declined' | 'snoozed'): Promise<void> => {
+  try {
+    const ref = doc(db, COLLECTION_NAME, taskId);
+    const updates: any = { triageStatus: status, updatedAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss') };
+
+    // If declined, the UI should call unassignTask separately to remove the user.
+    // We just update the status here to 'declined' for record keeping if needed.
+
+    await updateDoc(ref, updates);
+  } catch (e) {
+    console.error("Error updating triage status:", e);
+    throw e;
+  }
+};
+
+export const unassignTask = async (taskId: string, userId: string): Promise<void> => {
+  // Helper to unassign self
+  const ref = doc(db, COLLECTION_NAME, taskId);
+  await updateDoc(ref, {
+    assigneeId: null,
+    assigneeName: null,
+    assigneePhoto: null,
+    ownerUids: arrayRemove(userId),
+    updatedAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
+  });
 };

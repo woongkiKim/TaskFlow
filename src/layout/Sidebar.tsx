@@ -1,17 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
   Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText,
-  Typography, Divider, Avatar, Chip, IconButton, Menu, MenuItem, TextField,
-  Dialog, DialogTitle, DialogContent, DialogActions, Button,
-  ToggleButtonGroup, ToggleButton, AvatarGroup, Tooltip, Collapse,
-  Select, FormControl, InputLabel, Checkbox, FormControlLabel,
+  Typography, Divider, Avatar, Chip, IconButton, Menu, MenuItem,
+  AvatarGroup, Tooltip, Collapse,
 } from '@mui/material';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
 import HubIcon from '@mui/icons-material/Hub';
 import BarChartIcon from '@mui/icons-material/BarChart';
-import SettingsIcon from '@mui/icons-material/Settings';
 import GroupsIcon from '@mui/icons-material/Groups';
 import AddIcon from '@mui/icons-material/Add';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -19,16 +16,24 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import LoginIcon from '@mui/icons-material/Login';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
-import FlagIcon from '@mui/icons-material/Flag';
-import ListAltIcon from '@mui/icons-material/ListAlt';
 import FolderIcon from '@mui/icons-material/Folder';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
+import ViewKanbanIcon from '@mui/icons-material/ViewKanban';
+import TableChartIcon from '@mui/icons-material/TableChart';
+import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined';
+import TimelineIcon from '@mui/icons-material/Timeline';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
 import { joinWorkspaceByCode } from '../services/workspaceService';
 import { useAuth } from '../contexts/AuthContext';
-import InviteDialog from '../components/InviteDialog';
+import { fetchUnreadCount } from '../services/notificationService';
+import type { CustomView } from '../types';
+import { useCustomViews } from '../hooks/useCustomViews';
 import type { TranslationKeys } from '../locales/en';
+import SidebarDialogs from './SidebarDialogs';
 
 export const DRAWER_WIDTH = 280;
 
@@ -37,16 +42,15 @@ interface SidebarProps {
   handleDrawerToggle: () => void;
 }
 
-const WS_COLORS = ['#6366f1', '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6'];
-const PROJECT_COLORS = ['#6366f1', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 
-// Media query matches md breakpoint (900px) — mobile when below
+
+// Media query matches md breakpoint (900px) ??mobile when below
 const isMobileQuery = () => window.innerWidth < 900;
 
 const Sidebar = ({ mobileOpen, handleDrawerToggle }: SidebarProps) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { user } = useAuth();
   const {
     workspaces, currentWorkspace, setCurrentWorkspace,
@@ -55,6 +59,9 @@ const Sidebar = ({ mobileOpen, handleDrawerToggle }: SidebarProps) => {
     sprints, currentSprint, setCurrentSprint,
     currentMembers,
     addWorkspace, addProject, addSprint, refreshWorkspaces,
+    currentViewMode, setCurrentViewMode,
+    setActiveViewFilter,
+    initiatives, addInitiative,
   } = useWorkspace();
 
   const [wsMenuAnchor, setWsMenuAnchor] = useState<null | HTMLElement>(null);
@@ -64,92 +71,148 @@ const Sidebar = ({ mobileOpen, handleDrawerToggle }: SidebarProps) => {
   const [joinWsOpen, setJoinWsOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
 
-  const [newWsName, setNewWsName] = useState('');
-  const [newWsType, setNewWsType] = useState<'personal' | 'team' | 'organization'>('team');
-  const [newProjectName, setNewProjectName] = useState('');
-  const [newSprintName, setNewSprintName] = useState('');
-  const [newSprintType, setNewSprintType] = useState<'sprint' | 'phase' | 'milestone'>('sprint');
-  const [newSprintStartDate, setNewSprintStartDate] = useState('');
-  const [newSprintEndDate, setNewSprintEndDate] = useState('');
-  const [joinCode, setJoinCode] = useState('');
-  const [newWsColor, setNewWsColor] = useState(WS_COLORS[0]);
-  const [newProjectColor, setNewProjectColor] = useState(PROJECT_COLORS[0]);
-  const [newSprintParentId, setNewSprintParentId] = useState<string>('');
-  const [newSprintLinkedIds, setNewSprintLinkedIds] = useState<string[]>([]);
+  const myRole = currentMembers.find(m => m.uid === user?.uid)?.role || 'member';
+  const canCreateInitiative = myRole === 'owner' || myRole === 'admin';
+  const roadmapLabel = lang === 'ko' ? '\uB85C\uB4DC\uB9F5' : 'Roadmap';
+  const noInitiativesLabel = lang === 'ko' ? '\uC774\uB2C8\uC2DC\uC5D0\uC774\uD2F0\uBE0C\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4' : 'No initiatives';
 
-  const [sprintsExpanded, setSprintsExpanded] = useState(true);
   const [projectsExpanded, setProjectsExpanded] = useState(true);
+  const [initiativesExpanded, setInitiativesExpanded] = useState(true);
   const [hideCompleted, setHideCompleted] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const [createInitiativeOpen, setCreateInitiativeOpen] = useState(false);
+
+
+  // Custom Views (managed by dedicated hook — avoids synchronous setState in useEffect)
+  const [activeCustomViewId, setActiveCustomViewId] = useState<string | null>(null);
+  const {
+    customViews,
+    createViewOpen, setCreateViewOpen,
+    editingView, setEditingView,
+    deleteConfirmView, setDeleteConfirmView,
+    viewMenuAnchor, viewMenuTarget,
+    handleCreateOrUpdateView,
+    handleDeleteView,
+    handleOpenViewMenu,
+    handleCloseViewMenu,
+  } = useCustomViews({
+    projectId: currentProject?.id,
+    workspaceId: currentWorkspace?.id,
+    userId: user?.uid,
+    activeCustomViewId,
+    setActiveCustomViewId,
+    setActiveViewFilter,
+    setCurrentViewMode,
+  });
+
+  // Collapsible sections
+  const [viewsExpanded, setViewsExpanded] = useState(true);
+  const [myViewsExpanded, setMyViewsExpanded] = useState(true);
+  const [sprintsExpanded, setSprintsExpanded] = useState(true);
+
+  // Fetch unread notification count
+  const loadUnreadCount = useCallback(async () => {
+    if (!user) return;
+    try {
+      const count = await fetchUnreadCount(user.uid);
+      setUnreadCount(count);
+    } catch (e) {
+      console.error('Failed to fetch unread count:', e);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      if (!user) return;
+      try {
+        const count = await fetchUnreadCount(user.uid);
+        if (!cancelled) setUnreadCount(count);
+      } catch (e) {
+        console.error('Failed to fetch unread count:', e);
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [user]);
+
+
+  const handleApplyView = (view: CustomView) => {
+    if (activeCustomViewId === view.id) {
+      // Toggle off
+      setActiveCustomViewId(null);
+      setActiveViewFilter(null);
+    } else {
+      setActiveCustomViewId(view.id);
+      if (view.viewMode) setCurrentViewMode(view.viewMode as 'list' | 'board' | 'calendar' | 'table');
+      setActiveViewFilter(view.filters);
+    }
+    navigate('/');
+    closeMobileDrawer();
+  };
 
   // Close the mobile drawer after a navigation action
   const closeMobileDrawer = () => {
     if (mobileOpen && isMobileQuery()) handleDrawerToggle();
   };
 
-  // nav items — dashboard path set to '/' to match route
+  // nav items ??dashboard path set to '/' to match route
   // "My Tasks" (formerly Dashboard) should clear project/sprint
-  // Weekly planner is accessed via Calendar → Week tab, no separate nav entry needed
+  // Weekly planner is accessed via Calendar ??Week tab, no separate nav entry needed
   const navItems = [
     { textKey: 'myTasks' as TranslationKeys, icon: <HomeIcon sx={{ fontSize: 20 }} />, path: '/' },
-    { textKey: 'calendar' as TranslationKeys, icon: <CalendarMonthIcon sx={{ fontSize: 20 }} />, path: '/calendar' },
     { textKey: 'reports' as TranslationKeys, icon: <BarChartIcon sx={{ fontSize: 20 }} />, path: '/reports' },
     { textKey: 'opsCenter' as TranslationKeys, icon: <HubIcon sx={{ fontSize: 20 }} />, path: '/ops' },
-    { textKey: 'settings' as TranslationKeys, icon: <SettingsIcon sx={{ fontSize: 20 }} />, path: '/settings' },
     { textKey: 'teamSettings' as TranslationKeys, icon: <GroupsIcon sx={{ fontSize: 20 }} />, path: '/team-settings' },
   ];
 
   // handlers
-  const handleCreateWs = async () => {
-    if (!newWsName.trim()) return;
+  const handleCreateWs = async (name: string, color: string, type: 'personal' | 'team' | 'organization') => {
     try {
-      const ws = await addWorkspace(newWsName.trim(), newWsColor, newWsType);
+      const ws = await addWorkspace(name, color, type);
       setCurrentWorkspace(ws);
-      setCreateWsOpen(false); setNewWsName('');
+      setCreateWsOpen(false);
     } catch (e) {
       console.error(e);
-      toast.error('Failed to create workspace');
+      toast.error(t('createWorkspaceFailed') as string);
     }
   };
 
-  const handleCreateProject = async () => {
-    if (!newProjectName.trim()) return;
+  const handleCreateProject = async (name: string, color: string, initiativeId?: string) => {
     try {
-      const proj = await addProject(newProjectName.trim(), newProjectColor, currentTeamGroup?.id);
+      const proj = await addProject(name, color, currentTeamGroup?.id, initiativeId);
       setCurrentProject(proj);
-      setCreateProjectOpen(false); setNewProjectName('');
+      setCreateProjectOpen(false);
     } catch (e) {
       console.error(e);
-      toast.error('Failed to create project');
+      toast.error(t('createProjectFailed') as string || 'Failed to create project');
     }
   };
 
-  const handleCreateSprint = async () => {
-    if (!newSprintName.trim()) return;
+  const handleCreateSprint = async (name: string, type: 'sprint' | 'phase' | 'milestone', startDate?: string, endDate?: string, parentId?: string, linkedIds?: string[]) => {
     try {
-      const startDate = newSprintType === 'milestone' ? undefined : (newSprintStartDate || undefined);
-      const endDate = newSprintType === 'milestone' ? (newSprintEndDate || undefined) : (newSprintEndDate || undefined);
-      const parentId = newSprintType === 'sprint' && newSprintParentId ? newSprintParentId : undefined;
-      const linkedIds = newSprintType === 'milestone' && newSprintLinkedIds.length > 0 ? newSprintLinkedIds : undefined;
-      const sp = await addSprint(newSprintName.trim(), newSprintType, startDate, endDate, parentId, linkedIds);
+      const sp = await addSprint(name, type, startDate, endDate, parentId, linkedIds);
       setCurrentSprint(sp);
-      setCreateSprintOpen(false); setNewSprintName(''); setNewSprintStartDate(''); setNewSprintEndDate(''); setNewSprintParentId(''); setNewSprintLinkedIds([]);
+      setCreateSprintOpen(false);
     } catch (e) {
       console.error(e);
-      toast.error('Failed to create sprint');
+      toast.error(t('createSprintFailed') as string);
     }
   };
 
-  const handleJoinWs = async () => {
-    if (!joinCode.trim() || !user) return;
+  const handleJoinWs = async (code: string) => {
+    if (!user) return;
     try {
-      const ws = await joinWorkspaceByCode(joinCode.trim(), {
+      const ws = await joinWorkspaceByCode(code, {
         uid: user.uid, displayName: user.displayName, email: user.email, photoURL: user.photoURL,
       });
-      if (ws) { await refreshWorkspaces(); setCurrentWorkspace(ws); setJoinWsOpen(false); setJoinCode(''); }
+      if (ws) { await refreshWorkspaces(); setCurrentWorkspace(ws); setJoinWsOpen(false); }
       else toast.error(t('invalidInviteCode') as string);
     } catch (e) {
       console.error(e);
-      toast.error('Failed to join workspace');
+      toast.error(t('joinWorkspaceFailed') as string);
     }
   };
 
@@ -159,8 +222,45 @@ const Sidebar = ({ mobileOpen, handleDrawerToggle }: SidebarProps) => {
       {/* Logo */}
       <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1 }}>
         <RocketLaunchIcon color="primary" sx={{ fontSize: 28 }} />
-        <Typography variant="h6" fontWeight={700} color="text.primary">TaskFlow</Typography>
+        <Typography variant="h6" fontWeight={700} color="text.primary" sx={{ flex: 1 }}>TaskFlow</Typography>
       </Box>
+
+      {/* Inbox ??Linear-style top navigation */}
+      <Box sx={{ px: 2, mb: 1 }}>
+        <ListItemButton
+          component={NavLink} to="/inbox"
+          selected={location.pathname === '/inbox'}
+          onClick={() => { closeMobileDrawer(); loadUnreadCount(); }}
+          sx={{
+            borderRadius: 2, py: 0.8, px: 1.5,
+            '&.Mui-selected': {
+              bgcolor: 'rgba(99,102,241,0.1)',
+              '&:hover': { bgcolor: 'rgba(99,102,241,0.15)' },
+            },
+          }}
+        >
+          <ListItemIcon sx={{ minWidth: 32 }}>
+            <InboxOutlinedIcon sx={{ fontSize: 20, color: location.pathname === '/inbox' ? '#6366f1' : 'text.secondary' }} />
+          </ListItemIcon>
+          <ListItemText
+            primary={t('inbox') as string}
+            primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: location.pathname === '/inbox' ? 700 : 500 }}
+          />
+          {unreadCount > 0 && (
+            <Chip
+              label={unreadCount > 99 ? '99+' : unreadCount}
+              size="small"
+              sx={{
+                height: 20, minWidth: 20, fontWeight: 700, fontSize: '0.65rem',
+                bgcolor: '#6366f1', color: 'white',
+                '& .MuiChip-label': { px: 0.6 },
+              }}
+            />
+          )}
+        </ListItemButton>
+      </Box>
+
+      <Divider sx={{ mx: 2, mb: 1 }} />
 
       {/* Workspace Selector */}
       <Box sx={{ px: 2, mb: 1 }}>
@@ -280,116 +380,297 @@ const Sidebar = ({ mobileOpen, handleDrawerToggle }: SidebarProps) => {
           </List>
         </Collapse>
 
-        {/* Sprints/Phases (within current project) */}
-        {currentProject && (
-          <>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1, mt: 1.5, mb: 0.5 }}>
-              <Box role="button" tabIndex={0} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 } }} onClick={() => setSprintsExpanded(!sprintsExpanded)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSprintsExpanded(!sprintsExpanded); } }}>
-                {sprintsExpanded ? <ExpandLessIcon sx={{ fontSize: 14, color: 'text.secondary' }} /> : <ExpandMoreIcon sx={{ fontSize: 14, color: 'text.secondary' }} />}
-                <Typography variant="caption" color="text.secondary" fontWeight={600}>{t('sprints') as string}</Typography>
-              </Box>
-              <IconButton size="small" onClick={() => setHideCompleted(!hideCompleted)} sx={{ p: 0.3, mr: 0.3 }}>
-                <Tooltip title={hideCompleted ? (t('showCompleted') as string) : (t('hideCompleted') as string)} arrow>
-                  <Typography sx={{ fontSize: 12, color: hideCompleted ? 'primary.main' : 'text.disabled', cursor: 'pointer' }}>{hideCompleted ? '◉' : '◎'}</Typography>
-                </Tooltip>
-              </IconButton>
-              <IconButton size="small" onClick={() => setCreateSprintOpen(true)} sx={{ p: 0.3 }}>
+        {/* Roadmap Link */}
+        <Box sx={{ px: 2, mt: 1 }}>
+          <Box
+            onClick={() => { navigate('/roadmap'); if (mobileOpen) handleDrawerToggle(); }}
+            sx={{
+              display: 'flex', alignItems: 'center', p: 1, borderRadius: 1.5, cursor: 'pointer',
+              bgcolor: location.pathname === '/roadmap' ? 'action.selected' : 'transparent',
+              '&:hover': { bgcolor: 'action.hover' }
+            }}
+          >
+            <TimelineIcon sx={{ fontSize: 18, color: 'text.secondary', mr: 1.5 }} />
+            <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ fontSize: '0.85rem' }}>{roadmapLabel}</Typography>
+          </Box>
+        </Box>
+
+        {/* Initiatives */}
+        <Box sx={{ px: 2, pt: 1.5, flexShrink: 0 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1, mb: 0.5 }}>
+            <Box role="button" tabIndex={0} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 } }} onClick={() => setInitiativesExpanded(!initiativesExpanded)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setInitiativesExpanded(!initiativesExpanded); } }}>
+              {initiativesExpanded ? <ExpandLessIcon sx={{ fontSize: 14, color: 'text.secondary' }} /> : <ExpandMoreIcon sx={{ fontSize: 14, color: 'text.secondary' }} />}
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>{t('initiatives') || 'INITIATIVES'}</Typography>
+            </Box>
+            {canCreateInitiative && (
+              <IconButton size="small" onClick={() => setCreateInitiativeOpen(true)} sx={{ p: 0.3 }}>
                 <AddIcon sx={{ fontSize: 16 }} />
               </IconButton>
-            </Box>
-            <Collapse in={sprintsExpanded}>
-              <List dense disablePadding>
-                {(() => {
-                  // Build tree: top-level items = phases + sprints without parent + milestones
-                  const visibleSprints = hideCompleted ? sprints.filter(s => s.status !== 'completed') : sprints;
-                  const phases = visibleSprints.filter(s => s.type === 'phase');
-                  const topLevelSprints = visibleSprints.filter(s => s.type === 'sprint' && !s.parentId);
-                  const milestones = visibleSprints.filter(s => s.type === 'milestone');
-                  const childSprintsByPhase = (phaseId: string) => visibleSprints.filter(s => s.type === 'sprint' && s.parentId === phaseId);
-
-                  const renderItem = (sp: typeof sprints[0], indent: boolean = false) => {
-                    const typeIcon = sp.type === 'milestone' ? <FlagIcon sx={{ fontSize: 14, color: sp.status === 'active' ? 'error.main' : sp.status === 'completed' ? 'success.main' : 'text.disabled', mr: 1.5 }} />
-                      : sp.type === 'phase' ? <ListAltIcon sx={{ fontSize: 14, color: sp.status === 'active' ? 'success.main' : sp.status === 'completed' ? 'success.main' : 'text.disabled', mr: 1.5 }} />
-                        : <RocketLaunchIcon sx={{ fontSize: 14, color: sp.status === 'active' ? 'primary.main' : sp.status === 'completed' ? 'success.main' : 'text.disabled', mr: 1.5 }} />;
-                    const selectedColor = sp.type === 'milestone' ? 'rgba(239,68,68,0.15)' : sp.type === 'phase' ? 'rgba(16,185,129,0.15)' : 'rgba(99,102,241,0.15)';
-                    const selectedHover = sp.type === 'milestone' ? 'rgba(239,68,68,0.22)' : sp.type === 'phase' ? 'rgba(16,185,129,0.22)' : 'rgba(99,102,241,0.22)';
-                    const statusColor = sp.type === 'milestone' ? 'error.main' : sp.type === 'phase' ? 'success.main' : 'primary.main';
-                    const dateLabel = sp.type === 'milestone' ? (sp.endDate ? `\u2192 ${sp.endDate}` : '') : (sp.startDate && sp.endDate ? `${sp.startDate} ~ ${sp.endDate}` : '');
-                    return (
-                      <ListItem key={sp.id} disablePadding sx={{ mb: 0.3 }}>
-                        <ListItemButton selected={currentSprint?.id === sp.id} onClick={() => { setCurrentSprint(currentSprint?.id === sp.id ? null : sp); navigate('/'); closeMobileDrawer(); }}
-                          sx={{ borderRadius: 1.5, py: 0.5, pl: indent ? 4.5 : 1, '&.Mui-selected': { bgcolor: selectedColor, '&:hover': { bgcolor: selectedHover } } }}>
-                          {typeIcon}
-                          <ListItemText primary={sp.name} secondary={dateLabel || undefined}
-                            primaryTypographyProps={{ fontSize: indent ? '0.75rem' : '0.8rem', fontWeight: currentSprint?.id === sp.id ? 600 : 400 }}
-                            secondaryTypographyProps={{ fontSize: '0.65rem', color: 'text.disabled' }} />
-                          <Tooltip title={sp.status === 'active' ? t('active') as string : sp.status === 'completed' ? t('completed') as string : t('planned') as string} arrow>
-                            <Chip label={sp.status === 'active' ? '\u25cf' : sp.status === 'completed' ? '\u2713' : '\u25cb'} size="small"
-                              sx={{
-                                height: 16, minWidth: 16, fontSize: '0.6rem', p: 0, bgcolor: 'transparent',
-                                color: sp.status === 'active' ? statusColor : sp.status === 'completed' ? 'success.main' : 'text.disabled'
-                              }} />
-                          </Tooltip>
-                        </ListItemButton>
-                      </ListItem>
-                    );
-                  };
-
-                  return (
-                    <>
-                      {/* PHASES section */}
-                      {phases.length > 0 && (
-                        <>
-                          <Typography variant="caption" sx={{ pl: 1.5, pt: 0.8, pb: 0.3, display: 'block', fontSize: '0.65rem', fontWeight: 700, color: 'success.main', letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                            📋 Phases
-                          </Typography>
-                          {phases.map(phase => {
-                            const children = childSprintsByPhase(phase.id);
-                            return (
-                              <Box key={phase.id} sx={{ mb: 0.5 }}>
-                                {renderItem(phase)}
-                                {children.length > 0 && (
-                                  <Box sx={{ ml: 2.5, borderLeft: '2px solid', borderColor: 'success.main', pl: 0.5, opacity: 0.95 }}>
-                                    {children.map(child => renderItem(child, true))}
-                                  </Box>
-                                )}
-                              </Box>
-                            );
-                          })}
-                        </>
-                      )}
-                      {/* SPRINTS section */}
-                      {topLevelSprints.length > 0 && (
-                        <>
-                          <Typography variant="caption" sx={{ pl: 1.5, pt: 0.8, pb: 0.3, display: 'block', fontSize: '0.65rem', fontWeight: 700, color: 'primary.main', letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                            🚀 Sprints
-                          </Typography>
-                          {topLevelSprints.map(sp => renderItem(sp))}
-                        </>
-                      )}
-                      {/* MILESTONES section */}
-                      {milestones.length > 0 && (
-                        <>
-                          <Typography variant="caption" sx={{ pl: 1.5, pt: 0.8, pb: 0.3, display: 'block', fontSize: '0.65rem', fontWeight: 700, color: 'error.main', letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                            🎯 Milestones
-                          </Typography>
-                          {milestones.map(ms => renderItem(ms))}
-                        </>
-                      )}
-                    </>
-                  );
-                })()}
-                {/* Backlog */}
-                <ListItem disablePadding sx={{ mb: 0.3 }}>
-                  <ListItemButton selected={currentSprint === null && sprints.length > 0} onClick={() => { setCurrentSprint(null); navigate('/'); closeMobileDrawer(); }}
-                    sx={{ borderRadius: 1.5, py: 0.6, opacity: 0.7 }}>
-                    <Typography variant="caption" color="text.secondary" fontWeight={500} sx={{ pl: 3.5 }}>
-                      {t('backlog') as string}
-                    </Typography>
+            )}
+          </Box>
+          <Collapse in={initiativesExpanded}>
+            <List dense disablePadding>
+              {initiatives.map(init => (
+                <ListItem key={init.id} disablePadding sx={{ mb: 0.3 }}>
+                  <ListItemButton
+                    // For now, initiatives don't have a dedicated page, maybe just filter projects?
+                    // We'll leave onclick empty or maybe set a filter later
+                    onClick={() => {
+                      navigate(`/initiative/${init.id}`);
+                      closeMobileDrawer();
+                    }}
+                    sx={{ borderRadius: 1.5, py: 0.7 }}>
+                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: init.color || '#3b82f6', mr: 1.5 }} />
+                    <ListItemText primary={init.name} primaryTypographyProps={{ fontSize: '0.83rem' }} />
                   </ListItemButton>
                 </ListItem>
-              </List>
-            </Collapse>
+              ))}
+              {initiatives.length === 0 && (
+                <Typography variant="caption" color="text.disabled" sx={{ px: 2, py: 1, display: 'block' }}>
+                  {noInitiativesLabel}
+                </Typography>
+              )}
+            </List>
+          </Collapse>
+        </Box>
+
+        {/* View Navigation + Sprint Selector (Linear/Jira style) */}
+        {currentProject && (
+          <>
+            {/* View Navigation */}
+            <Box sx={{ px: 2, mt: 1 }}>
+              <Box role="button" tabIndex={0} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, mb: 0.3, cursor: 'pointer' }} onClick={() => setViewsExpanded(!viewsExpanded)}>
+                {viewsExpanded ? <ExpandLessIcon sx={{ fontSize: 12, color: 'text.secondary' }} /> : <ExpandMoreIcon sx={{ fontSize: 12, color: 'text.secondary' }} />}
+                <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'uppercase', fontSize: '0.6rem', letterSpacing: 0.8 }}>
+                  {t('views') as string || 'Views'}
+                </Typography>
+              </Box>
+              <Collapse in={viewsExpanded}>
+                <List dense disablePadding>
+                  {[
+                    { key: 'list', icon: <FormatListBulletedIcon sx={{ fontSize: 17 }} />, label: t('listView') as string },
+                    { key: 'board', icon: <ViewKanbanIcon sx={{ fontSize: 17 }} />, label: t('boardView') as string },
+                    { key: 'calendar', icon: <CalendarMonthIcon sx={{ fontSize: 17 }} />, label: t('calendarView') as string },
+                    { key: 'table', icon: <TableChartIcon sx={{ fontSize: 17 }} />, label: t('tableView') as string },
+                  ].map(v => (
+                    <ListItem key={v.key} disablePadding sx={{ mb: 0.2 }}>
+                      <ListItemButton
+                        selected={currentViewMode === v.key}
+                        onClick={() => { setCurrentViewMode(v.key as 'list' | 'board' | 'calendar' | 'table'); navigate('/'); closeMobileDrawer(); }}
+                        sx={{
+                          borderRadius: 1.5, py: 0.6,
+                          '&.Mui-selected': { bgcolor: 'primary.main', color: 'white', '& .MuiListItemIcon-root': { color: 'white' } },
+                        }}>
+                        <ListItemIcon sx={{ minWidth: 30, color: currentViewMode === v.key ? 'white' : 'text.secondary' }}>
+                          {v.icon}
+                        </ListItemIcon>
+                        <ListItemText primary={v.label}
+                          primaryTypographyProps={{ fontSize: '0.82rem', fontWeight: currentViewMode === v.key ? 600 : 400 }} />
+                      </ListItemButton>
+                    </ListItem>
+                  ))}
+                </List>
+
+                {/* My Views ??saved filters */}
+                {customViews.length > 0 && (
+                  <Box sx={{ mt: 1 }}>
+                    <Box role="button" tabIndex={0} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, mb: 0.3, cursor: 'pointer' }} onClick={() => setMyViewsExpanded(!myViewsExpanded)}>
+                      {myViewsExpanded ? <ExpandLessIcon sx={{ fontSize: 12, color: 'text.secondary' }} /> : <ExpandMoreIcon sx={{ fontSize: 12, color: 'text.secondary' }} />}
+                      <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'uppercase', fontSize: '0.6rem', letterSpacing: 0.8 }}>
+                        {t('myViews') as string || 'My Views'}
+                      </Typography>
+                    </Box>
+                    <Collapse in={myViewsExpanded}>
+                      <List dense disablePadding>
+                        {customViews.map(view => {
+                          const isActive = activeCustomViewId === view.id;
+                          return (
+                            <ListItem key={view.id} disablePadding sx={{ mb: 0.2, '&:hover .view-actions': { opacity: 1 } }}>
+                              <ListItemButton
+                                selected={isActive}
+                                onClick={() => handleApplyView(view)}
+                                sx={{
+                                  borderRadius: 1.5, py: 0.5,
+                                  '&.Mui-selected': { bgcolor: view.color + '15', '&:hover': { bgcolor: view.color + '20' } },
+                                }}>
+                                <Typography sx={{ fontSize: '0.9rem', mr: 0.8, lineHeight: 1 }}>{view.icon}</Typography>
+                                <ListItemText primary={view.name}
+                                  primaryTypographyProps={{ fontSize: '0.8rem', fontWeight: isActive ? 600 : 400, color: isActive ? view.color : 'text.primary' }} />
+                                {/* Filter count badge */}
+                                {(() => {
+                                  const fc = Object.values(view.filters).filter(v => v !== undefined && v !== false && (Array.isArray(v) ? v.length > 0 : true)).length;
+                                  return fc > 0 ? (
+                                    <Chip label={fc} size="small" sx={{ height: 16, minWidth: 16, fontWeight: 700, fontSize: '0.55rem', bgcolor: view.color + '20', color: view.color }} />
+                                  ) : null;
+                                })()}
+                                <IconButton className="view-actions" size="small"
+                                  onClick={(e) => handleOpenViewMenu(e, view)}
+                                  sx={{ opacity: 0, transition: 'opacity 0.15s', p: 0.3, ml: 0.3 }}>
+                                  <MoreVertIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+                                </IconButton>
+                              </ListItemButton>
+                            </ListItem>
+                          );
+                        })}
+                      </List>
+                    </Collapse>
+                  </Box>
+                )}
+
+                {/* Add View button */}
+                <Box sx={{ mt: 0.5, px: 1 }}>
+                  <ListItemButton onClick={() => { setEditingView(null); setCreateViewOpen(true); }}
+                    sx={{ borderRadius: 1.5, py: 0.4, justifyContent: 'center', border: '1px dashed', borderColor: 'divider' }}>
+                    <BookmarkBorderIcon sx={{ fontSize: 14, color: 'text.disabled', mr: 0.5 }} />
+                    <Typography variant="caption" color="text.disabled" fontWeight={500} sx={{ fontSize: '0.72rem' }}>
+                      {t('saveCurrentFilter') as string || 'Save as View'}
+                    </Typography>
+                  </ListItemButton>
+                </Box>
+              </Collapse>
+            </Box>
+
+            <Divider sx={{ mx: 2, my: 1 }} />
+
+            {/* Sprint Selector ??collapsible */}
+            <Box sx={{ px: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1, mb: 0.5 }}>
+                <Box role="button" tabIndex={0} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer' }} onClick={() => setSprintsExpanded(!sprintsExpanded)}>
+                  {sprintsExpanded ? <ExpandLessIcon sx={{ fontSize: 12, color: 'text.secondary' }} /> : <ExpandMoreIcon sx={{ fontSize: 12, color: 'text.secondary' }} />}
+                  <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'uppercase', fontSize: '0.6rem', letterSpacing: 0.8 }}>
+                    {t('sprints') as string}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.2 }}>
+                  <IconButton size="small" onClick={() => setHideCompleted(!hideCompleted)} sx={{ p: 0.3 }}>
+                    <Tooltip title={hideCompleted ? (t('showCompleted') as string) : (t('hideCompleted') as string)} arrow>
+                      <Typography sx={{ fontSize: 12, color: hideCompleted ? 'primary.main' : 'text.disabled', cursor: 'pointer' }}>{hideCompleted ? '\u25C9' : '\u25CE'}</Typography>
+                    </Tooltip>
+                  </IconButton>
+                  <IconButton size="small" onClick={() => setCreateSprintOpen(true)} sx={{ p: 0.3 }}>
+                    <AddIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Box>
+              </Box>
+
+              <Collapse in={sprintsExpanded}>
+                <List dense disablePadding>
+                  {(() => {
+                    const visibleSprints = hideCompleted ? sprints.filter(s => s.status !== 'completed') : sprints;
+                    const activeSprints = visibleSprints.filter(s => s.type === 'sprint');
+                    const phases = visibleSprints.filter(s => s.type === 'phase');
+                    const milestones = visibleSprints.filter(s => s.type === 'milestone');
+
+                    if (visibleSprints.length === 0 && !hideCompleted) {
+                      return (
+                        <Box sx={{ py: 2, px: 1, textAlign: 'center' }}>
+                          <Typography variant="caption" color="text.secondary">{t('noSprints') as string}</Typography>
+                        </Box>
+                      );
+                    }
+
+                    const renderSprintItem = (sp: typeof sprints[0]) => {
+                      const isSelected = currentSprint?.id === sp.id;
+                      const dotColor = sp.status === 'active'
+                        ? (sp.type === 'milestone' ? '#ef4444' : sp.type === 'phase' ? '#10b981' : '#6366f1')
+                        : sp.status === 'completed' ? '#22c55e' : '#94a3b8';
+                      return (
+                        <ListItem key={sp.id} disablePadding sx={{ mb: 0.2 }}>
+                          <ListItemButton
+                            selected={isSelected}
+                            onClick={() => { setCurrentSprint(isSelected ? null : sp); navigate('/'); closeMobileDrawer(); }}
+                            sx={{
+                              borderRadius: 1.5, py: 0.4, minHeight: 32,
+                              opacity: sp.status === 'completed' ? 0.55 : 1,
+                              '&.Mui-selected': { bgcolor: 'rgba(99,102,241,0.1)', '&:hover': { bgcolor: 'rgba(99,102,241,0.15)' } },
+                            }}>
+                            {/* Status dot */}
+                            <Box sx={{
+                              width: 7, height: 7, borderRadius: '50%', bgcolor: dotColor, mr: 1.2, flexShrink: 0,
+                              ...(sp.status === 'active' && {
+                                animation: 'pulse-dot 2s ease-in-out infinite',
+                                '@keyframes pulse-dot': {
+                                  '0%, 100%': { opacity: 1 },
+                                  '50%': { opacity: 0.4 },
+                                },
+                              }),
+                            }} />
+                            <ListItemText
+                              primary={sp.name}
+                              primaryTypographyProps={{
+                                fontSize: '0.78rem', fontWeight: isSelected ? 600 : 400,
+                                sx: sp.status === 'completed' ? { textDecoration: 'line-through' } : {},
+                                noWrap: true,
+                              }}
+                            />
+                            {sp.type === 'phase' && (
+                              <Chip label="P" size="small" sx={{ height: 16, fontSize: '0.55rem', fontWeight: 700, bgcolor: 'rgba(16,185,129,0.15)', color: '#10b981', minWidth: 20 }} />
+                            )}
+                          </ListItemButton>
+                        </ListItem>
+                      );
+                    };
+
+                    return (
+                      <>
+                        {/* Active sprints first */}
+                        {activeSprints.map(sp => renderSprintItem(sp))}
+
+                        {/* Phases with children */}
+                        {phases.length > 0 && (
+                          <>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, pl: 1, pt: 0.8, pb: 0.3 }}>
+                              <Box sx={{ width: 3, height: 10, borderRadius: 1, bgcolor: '#10b981' }} />
+                              <Typography variant="caption" sx={{ fontSize: '0.55rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                Phases
+                              </Typography>
+                            </Box>
+                            {phases.map(phase => {
+                              const children = visibleSprints.filter(s => s.type === 'sprint' && s.parentId === phase.id);
+                              return (
+                                <Box key={phase.id}>
+                                  {renderSprintItem(phase)}
+                                  {children.length > 0 && (
+                                    <Box sx={{ ml: 2.5, borderLeft: '1.5px solid rgba(16,185,129,0.25)', pl: 0.3 }}>
+                                      {children.map(child => renderSprintItem(child))}
+                                    </Box>
+                                  )}
+                                </Box>
+                              );
+                            })}
+                          </>
+                        )}
+
+                        {/* Milestones */}
+                        {milestones.length > 0 && (
+                          <>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, pl: 1, pt: 0.8, pb: 0.3 }}>
+                              <Box sx={{ width: 3, height: 10, borderRadius: 1, bgcolor: '#ef4444' }} />
+                              <Typography variant="caption" sx={{ fontSize: '0.55rem', fontWeight: 700, color: '#ef4444', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                Milestones
+                              </Typography>
+                            </Box>
+                            {milestones.map(ms => renderSprintItem(ms))}
+                          </>
+                        )}
+
+                        {/* Backlog */}
+                        <Box sx={{ mt: 0.5, borderTop: '1px solid', borderColor: 'divider', pt: 0.5 }}>
+                          <ListItem disablePadding>
+                            <ListItemButton selected={currentSprint === null && sprints.length > 0} onClick={() => { setCurrentSprint(null); navigate('/'); closeMobileDrawer(); }}
+                              sx={{ borderRadius: 1.5, py: 0.4, '&.Mui-selected': { bgcolor: 'rgba(100,116,139,0.1)' } }}>
+                              <Typography variant="caption" color="text.secondary" fontWeight={500} sx={{ pl: 0.5, display: 'flex', alignItems: 'center', gap: 0.8, fontSize: '0.78rem' }}>
+                                ?벀 {t('backlog') as string}
+                              </Typography>
+                            </ListItemButton>
+                          </ListItem>
+                        </Box>
+                      </>
+                    );
+                  })()}
+                </List>
+              </Collapse>
+            </Box>
           </>
         )}
       </Box>
@@ -439,160 +720,25 @@ const Sidebar = ({ mobileOpen, handleDrawerToggle }: SidebarProps) => {
         </Drawer>
       </Box>
 
-      {/* --- Dialogs (Outside Drawer) --- */}
-
-      <Dialog open={createWsOpen} onClose={() => setCreateWsOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700 }}>{t('createWorkspace') as string}</DialogTitle>
-        <DialogContent>
-          <TextField autoFocus fullWidth label={t('workspaceName') as string} value={newWsName}
-            onChange={e => setNewWsName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreateWs()}
-            sx={{ mt: 1, mb: 2 }} />
-          <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>{t('workspaceType') as string}</Typography>
-          <ToggleButtonGroup value={newWsType} exclusive onChange={(_, v) => v && setNewWsType(v)} size="small" fullWidth sx={{
-            mb: 2,
-            '& .MuiToggleButton-root': { textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }
-          }}>
-            <ToggleButton value="personal">{t('typePersonal') as string}</ToggleButton>
-            <ToggleButton value="team">{t('typeTeam') as string}</ToggleButton>
-            <ToggleButton value="organization">{t('typeOrg') as string}</ToggleButton>
-          </ToggleButtonGroup>
-          <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>{t('teamColor') as string}</Typography>
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            {WS_COLORS.map(c => (
-              <Box key={c} role="button" tabIndex={0} aria-label={`Color ${c}`}
-                onClick={() => setNewWsColor(c)}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setNewWsColor(c); } }}
-                sx={{
-                  width: 28, height: 28, borderRadius: '50%', bgcolor: c, cursor: 'pointer',
-                  border: newWsColor === c ? '3px solid' : '2px solid transparent', borderColor: newWsColor === c ? 'text.primary' : 'transparent',
-                  '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
-                }} />
-            ))}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateWsOpen(false)}>{t('cancel') as string}</Button>
-          <Button variant="contained" onClick={handleCreateWs} disabled={!newWsName.trim()}>{t('save') as string}</Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={joinWsOpen} onClose={() => setJoinWsOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700 }}>{t('joinWorkspace') as string}</DialogTitle>
-        <DialogContent>
-          <TextField autoFocus fullWidth label={t('inviteCode') as string} placeholder="ABC123"
-            value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())}
-            onKeyDown={e => e.key === 'Enter' && handleJoinWs()} sx={{ mt: 1 }}
-            inputProps={{ style: { letterSpacing: 4, fontWeight: 700, textAlign: 'center' } }} />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setJoinWsOpen(false)}>{t('cancel') as string}</Button>
-          <Button variant="contained" onClick={handleJoinWs} disabled={joinCode.length < 6}>{t('joinWorkspace') as string}</Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={createProjectOpen} onClose={() => setCreateProjectOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700 }}>{t('createProject') as string}</DialogTitle>
-        <DialogContent>
-          <TextField autoFocus fullWidth label={t('projectName') as string} value={newProjectName}
-            onChange={e => setNewProjectName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
-            sx={{ mt: 1, mb: 2 }} />
-          <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>{t('projectColor') as string}</Typography>
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            {PROJECT_COLORS.map(c => (
-              <Box key={c} role="button" tabIndex={0} aria-label={`Color ${c}`}
-                onClick={() => setNewProjectColor(c)}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setNewProjectColor(c); } }}
-                sx={{
-                  width: 28, height: 28, borderRadius: '50%', bgcolor: c, cursor: 'pointer',
-                  border: newProjectColor === c ? '3px solid' : '2px solid transparent', borderColor: newProjectColor === c ? 'text.primary' : 'transparent',
-                  '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
-                }} />
-            ))}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateProjectOpen(false)}>{t('cancel') as string}</Button>
-          <Button variant="contained" onClick={handleCreateProject} disabled={!newProjectName.trim()}>{t('save') as string}</Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={createSprintOpen} onClose={() => { setCreateSprintOpen(false); setNewSprintStartDate(''); setNewSprintEndDate(''); setNewSprintParentId(''); setNewSprintLinkedIds([]); }} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700 }}>{t('createSprint') as string}</DialogTitle>
-        <DialogContent>
-          <TextField autoFocus fullWidth label={t('sprintName') as string} value={newSprintName}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewSprintName(e.target.value)} onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && handleCreateSprint()}
-            sx={{ mt: 1, mb: 2 }} />
-          <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>{t('sprintType') as string}</Typography>
-          <ToggleButtonGroup value={newSprintType} exclusive onChange={(_: React.MouseEvent, v: string | null) => { if (v) { setNewSprintType(v as 'sprint' | 'phase' | 'milestone'); setNewSprintStartDate(''); setNewSprintEndDate(''); setNewSprintParentId(''); setNewSprintLinkedIds([]); } }} size="small" fullWidth
-            sx={{ '& .MuiToggleButton-root': { textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' } }}>
-            <ToggleButton value="sprint">🏃 Sprint</ToggleButton>
-            <ToggleButton value="phase">📋 Phase</ToggleButton>
-            <ToggleButton value="milestone">🎯 Milestone</ToggleButton>
-          </ToggleButtonGroup>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, mb: 1.5, minHeight: 20, fontSize: '0.8rem', lineHeight: 1.5 }}>
-            {newSprintType === 'sprint' && (t('sprintDesc') as string)}
-            {newSprintType === 'phase' && (t('phaseDesc') as string)}
-            {newSprintType === 'milestone' && (t('milestoneDesc') as string)}
-          </Typography>
-
-          {/* Parent Phase selector (Sprint type only) */}
-          {newSprintType === 'sprint' && sprints.filter(s => s.type === 'phase').length > 0 && (
-            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-              <InputLabel>{t('parentPhase') as string}</InputLabel>
-              <Select value={newSprintParentId} label={t('parentPhase') as string}
-                onChange={(e) => setNewSprintParentId(e.target.value as string)}>
-                <MenuItem value="">{t('noParent') as string}</MenuItem>
-                {sprints.filter(s => s.type === 'phase').map(phase => (
-                  <MenuItem key={phase.id} value={phase.id}>📋 {phase.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-
-          {/* Linked Sprints selector (Milestone type only) */}
-          {newSprintType === 'milestone' && sprints.filter(s => s.type !== 'milestone').length > 0 && (
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                {t('selectLinkedSprints') as string}
-              </Typography>
-              {sprints.filter(s => s.type !== 'milestone').map(sp => (
-                <FormControlLabel key={sp.id} sx={{ display: 'block', ml: 0 }}
-                  control={
-                    <Checkbox size="small" checked={newSprintLinkedIds.includes(sp.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) setNewSprintLinkedIds(prev => [...prev, sp.id]);
-                        else setNewSprintLinkedIds(prev => prev.filter(id => id !== sp.id));
-                      }} />
-                  }
-                  label={<Typography variant="body2">{sp.type === 'phase' ? '📋' : '🚀'} {sp.name}</Typography>}
-                />
-              ))}
-            </Box>
-          )}
-
-          {/* Date fields based on type */}
-          {newSprintType === 'milestone' ? (
-            <TextField fullWidth type="date" label={t('targetDate') as string} value={newSprintEndDate}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewSprintEndDate(e.target.value)}
-              InputLabelProps={{ shrink: true }} sx={{ mt: 1 }} />
-          ) : (
-            <Box sx={{ display: 'flex', gap: 1.5, mt: 1 }}>
-              <TextField fullWidth type="date" label={t('startDate') as string} value={newSprintStartDate}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewSprintStartDate(e.target.value)}
-                InputLabelProps={{ shrink: true }} />
-              <TextField fullWidth type="date" label={t('endDate') as string} value={newSprintEndDate}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewSprintEndDate(e.target.value)}
-                InputLabelProps={{ shrink: true }} />
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => { setCreateSprintOpen(false); setNewSprintStartDate(''); setNewSprintEndDate(''); setNewSprintParentId(''); setNewSprintLinkedIds([]); }}>{t('cancel') as string}</Button>
-          <Button variant="contained" onClick={handleCreateSprint} disabled={!newSprintName.trim()}>{t('save') as string}</Button>
-        </DialogActions>
-      </Dialog>
-
-      <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
+      <SidebarDialogs
+        createWsOpen={createWsOpen} setCreateWsOpen={setCreateWsOpen} onCreateWs={handleCreateWs}
+        joinWsOpen={joinWsOpen} setJoinWsOpen={setJoinWsOpen} onJoinWs={handleJoinWs}
+        inviteOpen={inviteOpen} setInviteOpen={setInviteOpen}
+        createProjectOpen={createProjectOpen} setCreateProjectOpen={setCreateProjectOpen}
+        onCreateProject={handleCreateProject} initiatives={initiatives}
+        createSprintOpen={createSprintOpen} setCreateSprintOpen={setCreateSprintOpen}
+        onCreateSprint={handleCreateSprint} sprints={sprints}
+        customViews={customViews}
+        createViewOpen={createViewOpen} setCreateViewOpen={setCreateViewOpen}
+        editingView={editingView} setEditingView={setEditingView}
+        onCreateOrUpdateView={handleCreateOrUpdateView}
+        deleteConfirmView={deleteConfirmView} setDeleteConfirmView={setDeleteConfirmView}
+        onDeleteView={handleDeleteView}
+        viewMenuAnchor={viewMenuAnchor} viewMenuTarget={viewMenuTarget}
+        onCloseViewMenu={handleCloseViewMenu}
+        createInitiativeOpen={createInitiativeOpen} setCreateInitiativeOpen={setCreateInitiativeOpen}
+        onAddInitiative={addInitiative}
+      />
     </>
   );
 };

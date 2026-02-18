@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
-import { Box, Typography, Paper, Divider, Chip } from '@mui/material';
+import { Box, Typography, Paper, Divider, Chip, CircularProgress } from '@mui/material';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
@@ -19,6 +19,7 @@ import TagInput from './TagInput';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import type { Task } from '../types';
+import type { TranslationKeys } from '../locales/en';
 
 interface ListViewProps {
   tasks: Task[];
@@ -31,6 +32,7 @@ interface ListViewProps {
   onTaskClick: (task: Task) => void;
   onMoveTask?: (taskId: string, direction: 'up' | 'down', orderedIds: string[]) => void;
   onReorderTodayTasks?: (orderedIds: string[]) => void;
+  allTasks?: Task[];  // for sub-issue count calculation
 }
 
 const sortByOrder = (arr: Task[]) => [...arr].sort((a, b) => {
@@ -102,6 +104,8 @@ const ListView = ({
   onTaskClick,
   onMoveTask,
   onReorderTodayTasks,
+  sprintGroups,
+  allTasks,
 }: ListViewProps) => {
   const { user } = useAuth();
   const { lang, t } = useLanguage();
@@ -124,6 +128,18 @@ const ListView = ({
     if (!selectedTag) return tasks;
     return tasks.filter(tk => tk.tags?.includes(selectedTag) || tk.category === selectedTag);
   }, [tasks, selectedTag]);
+
+  // Sub-issue count map
+  const subIssueCountMap = useMemo(() => {
+    const sourceList = allTasks || tasks;
+    const map: Record<string, number> = {};
+    sourceList.forEach(t => {
+      if (t.parentTaskId) {
+        map[t.parentTaskId] = (map[t.parentTaskId] || 0) + 1;
+      }
+    });
+    return map;
+  }, [allTasks, tasks]);
 
   const todayIncompleteTasks = useMemo(
     () => sortByOrder(filteredTasks.filter(task => !task.completed && task.createdAt.startsWith(todayKey))),
@@ -150,6 +166,33 @@ const ListView = ({
     const sortedEntries = Object.entries(grouped).sort(([a], [b]) => b.localeCompare(a));
     return Object.fromEntries(sortedEntries);
   }, [pastIncompleteTasks]);
+
+  // Sprint-grouped tasks for Phase/Milestone views
+  const sprintGroupedTasks = useMemo(() => {
+    if (!sprintGroups) return null;
+    const groups: { sprintId: string; sprintName: string; tasks: Task[] }[] = [];
+    const ungrouped: Task[] = [];
+    const groupIds = Object.keys(sprintGroups);
+
+    // Build groups in order of sprintGroups keys
+    groupIds.forEach(sid => {
+      groups.push({
+        sprintId: sid,
+        sprintName: sprintGroups[sid],
+        tasks: filteredTasks.filter(tk => tk.sprintId === sid),
+      });
+    });
+    // Tasks without a matching sprintId
+    filteredTasks.forEach(tk => {
+      if (!tk.sprintId || !groupIds.includes(tk.sprintId)) {
+        ungrouped.push(tk);
+      }
+    });
+    if (ungrouped.length > 0) {
+      groups.push({ sprintId: '__ungrouped', sprintName: 'Other', tasks: ungrouped });
+    }
+    return groups.filter(g => g.tasks.length > 0);
+  }, [sprintGroups, filteredTasks]);
 
   const handleTodayDragOver = useCallback((event: DragOverEvent) => {
     const { active, over } = event;
@@ -211,23 +254,59 @@ const ListView = ({
     onReorderTodayTasks(reordered.map(task => task.id));
   }, [todayDropHint, onReorderTodayTasks, todayIncompleteTasks]);
 
+  // Time-aware greeting
+  const getGreetingKey = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'goodMorning';
+    if (hour < 18) return 'goodAfternoon';
+    return 'goodEvening';
+  };
+
   return (
     <Box sx={{ maxWidth: '800px', mx: 'auto', pb: 4 }}>
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 2 }}>
+      <Box sx={{
+        mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
+        flexWrap: 'wrap', gap: 2,
+      }}>
         <Box>
-          <Typography variant="h4" fontWeight="800" gutterBottom>
-            {t('goodMorning') as string}{user?.displayName ? `, ${user.displayName}` : ''}
+          <Typography variant="h4" fontWeight="800" gutterBottom sx={{
+            background: 'linear-gradient(135deg, #2563eb, #6366f1)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}>
+            {t(getGreetingKey() as TranslationKeys) as string}{user?.displayName ? `, ${user.displayName}` : ''} 👋
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CalendarTodayIcon fontSize="small" color="primary" />
             {t('todayComma') as string} {todayDate}
           </Typography>
         </Box>
-        <Paper sx={{ p: 2, borderRadius: 3, display: 'flex', alignItems: 'center', gap: 2, border: '1px solid', borderColor: 'divider' }}>
-          <Typography variant="h6" color="primary" fontWeight="bold">{progress}%</Typography>
+        <Paper sx={{
+          p: 2, borderRadius: 3, display: 'flex', alignItems: 'center', gap: 2,
+          border: '1px solid', borderColor: 'divider',
+          background: (theme) => theme.palette.mode === 'dark'
+            ? 'linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(99, 102, 241, 0.05))'
+            : 'linear-gradient(135deg, rgba(37, 99, 235, 0.04), rgba(99, 102, 241, 0.02))',
+        }}>
+          <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+            <CircularProgress
+              variant="determinate" value={progress} size={44}
+              sx={{ color: progress === 100 ? 'success.main' : 'primary.main' }}
+            />
+            <Box sx={{
+              top: 0, left: 0, bottom: 0, right: 0, position: 'absolute',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Typography variant="caption" fontWeight="bold" color="text.primary" sx={{ fontSize: '0.65rem' }}>
+                {progress}%
+              </Typography>
+            </Box>
+          </Box>
           <Box sx={{ textAlign: 'right' }}>
             <Typography variant="subtitle2" fontWeight="bold">{completedCount}/{tasks.length} {t('completed') as string}</Typography>
-            <Typography variant="caption" color="text.secondary">{t('keepItUp') as string}</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {progress === 100 ? (t('allDone') as string) : (t('keepItUp') as string)}
+            </Typography>
           </Box>
         </Paper>
       </Box>
@@ -237,13 +316,73 @@ const ListView = ({
       </Box>
 
       <Box sx={{ mb: 4 }}>
-        {filteredTasks.filter(tk => !tk.completed).length === 0 && (
-          <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
-            {t('noTasks') as string}
-          </Typography>
+        {todayIncompleteTasks.length === 0 && pastIncompleteTasks.length === 0 && !sprintGroupedTasks && (
+          <Box sx={{
+            py: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5,
+            opacity: 0.7,
+          }}>
+            <Typography fontSize="2.5rem">🎯</Typography>
+            <Typography color="text.secondary" align="center" fontWeight={500}>
+              {t('noTasks') as string}
+            </Typography>
+          </Box>
         )}
 
-        {todayIncompleteTasks.length > 0 && (
+        {/* Sprint-grouped view for Phase/Milestone */}
+        {sprintGroupedTasks && sprintGroupedTasks.length > 0 && (
+          <Box sx={{ mb: 4 }}>
+            {sprintGroupedTasks.map(group => {
+              const groupDone = group.tasks.filter(tk => tk.completed).length;
+              const groupTotal = group.tasks.length;
+              const groupPct = groupTotal > 0 ? Math.round((groupDone / groupTotal) * 100) : 0;
+              return (
+                <Box key={group.sprintId} sx={{ mb: 3 }}>
+                  {/* Sprint group header */}
+                  <Box sx={{
+                    display: 'flex', alignItems: 'center', gap: 1, mb: 1,
+                    px: 1, py: 0.5,
+                    borderRadius: 1.5,
+                    bgcolor: 'action.hover',
+                  }}>
+                    <Box sx={{
+                      width: 3, height: 20, borderRadius: 2,
+                      bgcolor: group.sprintId === '__ungrouped' ? 'text.disabled' : '#6366f1',
+                    }} />
+                    <Typography variant="subtitle2" fontWeight={700} sx={{ flex: 1, fontSize: '0.8rem' }}>
+                      🚀 {group.sprintName}
+                    </Typography>
+                    <Chip
+                      label={`${groupDone}/${groupTotal}`}
+                      size="small"
+                      sx={{
+                        fontWeight: 600, fontSize: '0.65rem', height: 20,
+                        bgcolor: groupPct === 100 ? 'success.main' : 'primary.main',
+                        color: '#fff',
+                      }}
+                    />
+                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+                      {groupPct}%
+                    </Typography>
+                  </Box>
+                  {/* Tasks in this sprint */}
+                  {sortByOrder(group.tasks.filter(tk => !tk.completed)).map(task => (
+                    <TaskItem key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onClick={onTaskClick} subIssueCount={subIssueCountMap[task.id] || 0} />
+                  ))}
+                  {group.tasks.some(tk => tk.completed) && (
+                    <Box sx={{ opacity: 0.6, mt: 0.5 }}>
+                      {sortByOrder(group.tasks.filter(tk => tk.completed)).map(task => (
+                        <TaskItem key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onClick={onTaskClick} subIssueCount={subIssueCountMap[task.id] || 0} />
+                      ))}
+                    </Box>
+                  )}
+                </Box>
+              );
+            })}
+          </Box>
+        )}
+
+        {/* Normal date-grouped view (hidden when sprint-grouped) */}
+        {!sprintGroupedTasks && todayIncompleteTasks.length > 0 && (
           <Box sx={{ mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
               <Chip label={t('todayTasks') as string} size="small" color="primary" sx={{ fontWeight: 600 }} />
@@ -275,6 +414,7 @@ const ListView = ({
                         onMoveDown={onMoveTask ? (id) => onMoveTask(id, 'down', todayIncompleteTasks.map(tk => tk.id)) : undefined}
                         disableMoveUp={index === 0}
                         disableMoveDown={index === todayIncompleteTasks.length - 1}
+                        subIssueCount={subIssueCountMap[task.id] || 0}
                       />
                     </SortableTodayTaskRow>
                   ))}
@@ -293,13 +433,14 @@ const ListView = ({
                   onMoveDown={onMoveTask ? (id) => onMoveTask(id, 'down', todayIncompleteTasks.map(tk => tk.id)) : undefined}
                   disableMoveUp={index === 0}
                   disableMoveDown={index === todayIncompleteTasks.length - 1}
+                  subIssueCount={subIssueCountMap[task.id] || 0}
                 />
               ))
             )}
           </Box>
         )}
 
-        {Object.keys(pastGrouped).length > 0 && (
+        {!sprintGroupedTasks && Object.keys(pastGrouped).length > 0 && (
           <Box sx={{ mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
               <Chip label={t('pastTasks') as string} size="small" variant="outlined" sx={{ fontWeight: 600 }} />
@@ -311,7 +452,7 @@ const ListView = ({
                   {format(new Date(dateKey), lang === 'ko' ? 'MM-dd (EEEE)' : 'MMM d (EEE)', { locale: dateLocale })}
                 </Typography>
                 {sortByOrder(dateTasks).map(task => (
-                  <TaskItem key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onClick={onTaskClick} />
+                  <TaskItem key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onClick={onTaskClick} subIssueCount={subIssueCountMap[task.id] || 0} />
                 ))}
               </Box>
             ))}
@@ -331,7 +472,7 @@ const ListView = ({
 
       <Box sx={{ opacity: 0.8 }}>
         {completedTasks.map(task => (
-          <TaskItem key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onClick={onTaskClick} />
+          <TaskItem key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onClick={onTaskClick} subIssueCount={subIssueCountMap[task.id] || 0} />
         ))}
       </Box>
     </Box>

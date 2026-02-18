@@ -3,7 +3,7 @@ import {
     Dialog, DialogTitle, DialogContent, DialogActions, Box, Typography, TextField, Chip,
     IconButton, Checkbox, InputBase, Divider, ToggleButtonGroup, ToggleButton,
     LinearProgress, Avatar, AvatarGroup, Switch, FormControlLabel, Collapse,
-    Select, MenuItem, FormControl, Button,
+    Select, MenuItem, FormControl, Button, Autocomplete,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import FlagIcon from '@mui/icons-material/Flag';
@@ -17,23 +17,29 @@ import NextPlanIcon from '@mui/icons-material/NextPlan';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import ScheduleIcon from '@mui/icons-material/Schedule';
-import type { Task, Subtask, PriorityLevel, TaskType } from '../types';
+import SubdirectoryArrowRightIcon from '@mui/icons-material/SubdirectoryArrowRight';
+import type { Task, Subtask, PriorityLevel, TaskType, TaskRelation, RelationType, EstimatePoint } from '../types';
 import {
     PRIORITY_CONFIG, TASK_TYPE_CONFIG, TASK_TYPES, STATUS_CONFIG,
-    normalizePriority, STATUS_PRESETS,
+    normalizePriority, STATUS_PRESETS, RELATION_TYPES, RELATION_TYPE_CONFIG,
+    ESTIMATE_POINTS, ESTIMATE_CONFIG,
 } from '../types';
 import { updateTaskDetailInDB, updateSubtasksInDB } from '../services/taskService';
 import { getTagColor } from './TagInput';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface TaskDetailDialogProps {
     open: boolean;
     task: Task | null;
+    allTasks?: Task[];  // all project tasks for relation autocomplete
     onClose: () => void;
     onUpdate: (task: Task) => void;
+    onCreateSubIssue?: (parentTask: Task, subIssueText: string) => void;
+    onTaskClick?: (task: Task) => void;
 }
 
-const TaskDetailDialog = ({ open, task, onClose, onUpdate }: TaskDetailDialogProps) => {
+const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCreateSubIssue, onTaskClick }: TaskDetailDialogProps) => {
     const { t } = useLanguage();
     const [text, setText] = useState('');
     const [description, setDescription] = useState('');
@@ -53,6 +59,17 @@ const TaskDetailDialog = ({ open, task, onClose, onUpdate }: TaskDetailDialogPro
     const [aiUsage, setAiUsage] = useState('');
     const [delayReason, setDelayReason] = useState('');
 
+    // Issue Relations
+    const [relations, setRelations] = useState<TaskRelation[]>([]);
+    const [relationSearchText, setRelationSearchText] = useState('');
+    const [selectedRelationType, setSelectedRelationType] = useState<RelationType>('blocks');
+
+    // Estimate
+    const [estimate, setEstimate] = useState<EstimatePoint | null>(null);
+
+    // Sub-issues
+    const [newSubIssueText, setNewSubIssueText] = useState('');
+
     useEffect(() => {
         if (task) {
             setText(task.text);
@@ -69,6 +86,8 @@ const TaskDetailDialog = ({ open, task, onClose, onUpdate }: TaskDetailDialogPro
             setLinks(task.links || []);
             setAiUsage(task.aiUsage || '');
             setDelayReason(task.delayReason || '');
+            setRelations(task.relations || []);
+            setEstimate((task.estimate ?? null) as EstimatePoint | null);
         }
     }, [task]);
 
@@ -89,6 +108,8 @@ const TaskDetailDialog = ({ open, task, onClose, onUpdate }: TaskDetailDialogPro
         if (aiUsage !== (task.aiUsage || '')) updates.aiUsage = aiUsage;
         if (delayReason !== (task.delayReason || '')) updates.delayReason = delayReason;
         if (JSON.stringify(links) !== JSON.stringify(task.links || [])) updates.links = links;
+        if (JSON.stringify(relations) !== JSON.stringify(task.relations || [])) updates.relations = relations;
+        if ((estimate ?? undefined) !== (task.estimate ?? undefined)) updates.estimate = estimate ?? undefined;
 
         if (Object.keys(updates).length > 0) {
             try {
@@ -100,7 +121,8 @@ const TaskDetailDialog = ({ open, task, onClose, onUpdate }: TaskDetailDialogPro
             ...task, text, description: description || undefined,
             priority: priority || undefined, type: taskType, status,
             dueDate: dueDate || undefined, subtasks,
-            blockerStatus, blockerDetail, nextAction, links, aiUsage, delayReason,
+            blockerStatus, blockerDetail, nextAction, links, aiUsage, delayReason, relations,
+            estimate: estimate ?? undefined,
         };
         onUpdate(updatedTask);
     };
@@ -135,6 +157,61 @@ const TaskDetailDialog = ({ open, task, onClose, onUpdate }: TaskDetailDialogPro
         if (e.key === 'Enter') { e.preventDefault(); handleAddLink(); }
     };
 
+    // Issue Relations handlers
+    const handleAddRelation = (targetTask: Task) => {
+        if (!targetTask || targetTask.id === task.id) return;
+        // Prevent duplicate
+        if (relations.some(r => r.targetTaskId === targetTask.id && r.type === selectedRelationType)) return;
+
+        const newRelation: TaskRelation = {
+            type: selectedRelationType,
+            targetTaskId: targetTask.id,
+            targetTaskCode: targetTask.taskCode,
+            targetTaskText: targetTask.text,
+        };
+        const updatedRelations = [...relations, newRelation];
+        setRelations(updatedRelations);
+        setRelationSearchText('');
+
+        // Sync inverse relation on the target task
+        const inverseCfg = RELATION_TYPE_CONFIG[selectedRelationType];
+        const inverseRelation: TaskRelation = {
+            type: inverseCfg.inverse,
+            targetTaskId: task.id,
+            targetTaskCode: task.taskCode,
+            targetTaskText: task.text,
+        };
+        const targetRelations = targetTask.relations || [];
+        if (!targetRelations.some(r => r.targetTaskId === task.id && r.type === inverseCfg.inverse)) {
+            updateTaskDetailInDB(targetTask.id, {
+                relations: [...targetRelations, inverseRelation],
+            }).catch(() => { });
+        }
+    };
+
+    const handleRemoveRelation = (idx: number) => {
+        const removed = relations[idx];
+        const updatedRelations = relations.filter((_, i) => i !== idx);
+        setRelations(updatedRelations);
+
+        // Remove inverse from target
+        if (removed) {
+            const targetTask = allTasks.find(t => t.id === removed.targetTaskId);
+            if (targetTask) {
+                const inverseCfg = RELATION_TYPE_CONFIG[removed.type];
+                const targetRelations = (targetTask.relations || []).filter(
+                    r => !(r.targetTaskId === task.id && r.type === inverseCfg.inverse)
+                );
+                updateTaskDetailInDB(targetTask.id, { relations: targetRelations }).catch(() => { });
+            }
+        }
+    };
+
+    // Available tasks for relation (exclude self and already related)
+    const relationCandidates = allTasks.filter(t =>
+        t.id !== task.id && !relations.some(r => r.targetTaskId === t.id && r.type === selectedRelationType)
+    );
+
     const completedSubtasks = subtasks.filter(s => s.completed).length;
     const subtaskProgress = subtasks.length > 0 ? (completedSubtasks / subtasks.length) * 100 : 0;
     const normalizedPriority = normalizePriority(priority);
@@ -144,6 +221,10 @@ const TaskDetailDialog = ({ open, task, onClose, onUpdate }: TaskDetailDialogPro
 
     // Overdue calculation
     const isOverdue = dueDate && !task.completed && new Date(dueDate) < new Date(new Date().toISOString().split('T')[0]);
+
+    // Sub-issues (computed)
+    const childTasks = allTasks.filter(t => t.parentTaskId === task.id);
+    const completedChildTasks = childTasks.filter(t => t.completed).length;
 
     // Owners display
     const owners = task.owners || (task.assigneeId ? [{ uid: task.assigneeId, name: task.assigneeName || '', photo: task.assigneePhoto }] : []);
@@ -192,6 +273,26 @@ const TaskDetailDialog = ({ open, task, onClose, onUpdate }: TaskDetailDialogPro
                             sx={{ fontWeight: 600, bgcolor: getTagColor(tag) + '18', color: getTagColor(tag) }} />
                     ))}
                 </Box>
+
+                {/* Parent Task Breadcrumb */}
+                {task.parentTaskId && (
+                    <Box
+                        onClick={() => {
+                            const parentTask = allTasks.find(t => t.id === task.parentTaskId);
+                            if (parentTask && onTaskClick) onTaskClick(parentTask);
+                        }}
+                        sx={{
+                            display: 'flex', alignItems: 'center', gap: 0.5, px: 1.5, py: 0.5,
+                            bgcolor: 'action.hover', borderRadius: 1.5, cursor: 'pointer',
+                            '&:hover': { bgcolor: 'action.selected' },
+                        }}
+                    >
+                        <SubdirectoryArrowRightIcon sx={{ fontSize: 14, color: 'text.secondary', transform: 'rotate(180deg)' }} />
+                        <Typography variant="caption" fontWeight={600} color="primary.main">
+                            {t('parentTask') as string}: {task.parentTaskText || task.parentTaskId}
+                        </Typography>
+                    </Box>
+                )}
 
                 {/* Owners */}
                 {owners.length > 0 && (
@@ -271,6 +372,36 @@ const TaskDetailDialog = ({ open, task, onClose, onUpdate }: TaskDetailDialogPro
                             );
                         })}
                     </ToggleButtonGroup>
+                </Box>
+
+                {/* Estimate (Story Points) */}
+                <Box>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                        🎯 {t('estimate') as string || 'Estimate'}
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        {ESTIMATE_POINTS.filter(p => p > 0).map(pt => {
+                            const cfg = ESTIMATE_CONFIG[pt];
+                            const isSelected = estimate === pt;
+                            return (
+                                <Chip key={pt} label={pt} size="small"
+                                    onClick={() => setEstimate(isSelected ? null : pt)}
+                                    sx={{
+                                        minWidth: 36, fontWeight: 700, fontSize: '0.8rem',
+                                        bgcolor: isSelected ? cfg.bgColor : 'transparent',
+                                        color: isSelected ? cfg.color : 'text.secondary',
+                                        border: '1px solid',
+                                        borderColor: isSelected ? cfg.color : 'divider',
+                                        '&:hover': { bgcolor: cfg.bgColor },
+                                    }} />
+                            );
+                        })}
+                    </Box>
+                    {estimate !== null && estimate > 0 && (
+                        <Typography variant="caption" color="text.disabled" sx={{ mt: 0.3, display: 'block', fontSize: '0.65rem' }}>
+                            {ESTIMATE_CONFIG[estimate].label} — {estimate} {estimate === 1 ? 'point' : 'points'}
+                        </Typography>
+                    )}
                 </Box>
 
                 {/* Due Date */}
@@ -360,6 +491,106 @@ const TaskDetailDialog = ({ open, task, onClose, onUpdate }: TaskDetailDialogPro
 
                 <Divider />
 
+                {/* Issue Relations */}
+                <Box>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                        <AccountTreeIcon sx={{ fontSize: 14 }} /> Issue Relations
+                    </Typography>
+
+                    {/* Existing relations */}
+                    {relations.length > 0 && (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mb: 1.5 }}>
+                            {relations.map((rel, idx) => {
+                                const cfg = RELATION_TYPE_CONFIG[rel.type];
+                                return (
+                                    <Box key={idx} sx={{
+                                        display: 'flex', alignItems: 'center', gap: 1, py: 0.6, px: 1,
+                                        borderRadius: 1.5, bgcolor: 'action.hover',
+                                        '&:hover .relation-delete': { opacity: 1 },
+                                    }}>
+                                        <Chip label={`${cfg.icon} ${cfg.label}`} size="small"
+                                            sx={{ height: 22, fontWeight: 600, fontSize: '0.65rem', bgcolor: cfg.color + '18', color: cfg.color }} />
+                                        {rel.targetTaskCode && (
+                                            <Chip label={rel.targetTaskCode} size="small"
+                                                sx={{ height: 20, fontFamily: 'monospace', fontWeight: 700, fontSize: '0.65rem' }} />
+                                        )}
+                                        <Typography variant="body2" noWrap sx={{ flex: 1, fontSize: '0.82rem', minWidth: 0 }}>
+                                            {rel.targetTaskText || rel.targetTaskId}
+                                        </Typography>
+                                        <IconButton className="relation-delete" size="small"
+                                            onClick={() => handleRemoveRelation(idx)}
+                                            sx={{ opacity: 0, transition: 'opacity 0.15s', p: 0.3 }}>
+                                            <DeleteOutlineIcon sx={{ fontSize: 14, color: 'error.main' }} />
+                                        </IconButton>
+                                    </Box>
+                                );
+                            })}
+                        </Box>
+                    )}
+
+                    {/* Add new relation */}
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                        <FormControl size="small" sx={{ minWidth: 130 }}>
+                            <Select value={selectedRelationType}
+                                onChange={e => setSelectedRelationType(e.target.value as RelationType)}
+                                sx={{ borderRadius: 2, fontSize: '0.78rem', fontWeight: 600 }}>
+                                {RELATION_TYPES.map(rt => {
+                                    const cfg = RELATION_TYPE_CONFIG[rt];
+                                    return (
+                                        <MenuItem key={rt} value={rt}>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                <Typography sx={{ fontSize: '0.9rem' }}>{cfg.icon}</Typography>
+                                                <Typography variant="body2" fontWeight={500} sx={{ fontSize: '0.78rem' }}>{cfg.label}</Typography>
+                                            </Box>
+                                        </MenuItem>
+                                    );
+                                })}
+                            </Select>
+                        </FormControl>
+                        <Autocomplete
+                            size="small"
+                            sx={{ flex: 1 }}
+                            options={relationCandidates}
+                            inputValue={relationSearchText}
+                            onInputChange={(_, val) => setRelationSearchText(val)}
+                            onChange={(_, val) => { if (val) handleAddRelation(val as Task); }}
+                            getOptionLabel={(opt) => {
+                                const tsk = opt as Task;
+                                return tsk.taskCode ? `${tsk.taskCode} ${tsk.text}` : tsk.text;
+                            }}
+                            isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                            filterOptions={(options, { inputValue }) => {
+                                const q = inputValue.toLowerCase();
+                                if (!q) return options.slice(0, 15);
+                                return options.filter(o =>
+                                    (o.taskCode?.toLowerCase().includes(q)) ||
+                                    o.text.toLowerCase().includes(q)
+                                );
+                            }}
+                            renderOption={(props, opt) => (
+                                <Box component="li" {...props} key={opt.id}
+                                    sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
+                                    {opt.taskCode && (
+                                        <Chip label={opt.taskCode} size="small"
+                                            sx={{ height: 18, fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 700 }} />
+                                    )}
+                                    <Typography variant="body2" noWrap sx={{ flex: 1, minWidth: 0 }}>{opt.text}</Typography>
+                                    <Chip label={opt.status || 'todo'} size="small" variant="outlined"
+                                        sx={{ height: 16, fontSize: '0.5rem' }} />
+                                </Box>
+                            )}
+                            renderInput={(params) => (
+                                <TextField {...params} placeholder="Search task..." size="small"
+                                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                            )}
+                            value={null}
+                            blurOnSelect
+                        />
+                    </Box>
+                </Box>
+
+                <Divider />
+
                 {/* Subtasks */}
                 <Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
@@ -394,6 +625,82 @@ const TaskDetailDialog = ({ open, task, onClose, onUpdate }: TaskDetailDialogPro
                         <InputBase placeholder={t('addSubtask') as string} value={newSubtaskText}
                             onChange={e => setNewSubtaskText(e.target.value)} onKeyDown={handleSubtaskKeyDown}
                             sx={{ flex: 1, fontSize: '0.875rem' }} />
+                    </Box>
+                </Box>
+
+                <Divider />
+
+                {/* Sub-issues (Full Task children) */}
+                <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                        <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <SubdirectoryArrowRightIcon sx={{ fontSize: 14 }} /> {t('subIssues') as string}
+                            {childTasks.length > 0 && (
+                                <Typography component="span" variant="caption" color="text.disabled" sx={{ ml: 0.5 }}>
+                                    ({completedChildTasks}/{childTasks.length})
+                                </Typography>
+                            )}
+                        </Typography>
+                    </Box>
+                    {childTasks.length > 0 && (
+                        <LinearProgress variant="determinate"
+                            value={childTasks.length > 0 ? (completedChildTasks / childTasks.length) * 100 : 0}
+                            sx={{
+                                borderRadius: 4, height: 6, mb: 1.5, bgcolor: 'action.hover',
+                                '& .MuiLinearProgress-bar': { bgcolor: '#8b5cf6' }
+                            }} />
+                    )}
+                    {childTasks.map(child => {
+                        const childStatusCfg = STATUS_CONFIG[child.status || 'todo'] || STATUS_CONFIG['todo'];
+                        return (
+                            <Box key={child.id}
+                                onClick={() => onTaskClick?.(child)}
+                                sx={{
+                                    display: 'flex', alignItems: 'center', gap: 1, py: 0.8, px: 1,
+                                    borderRadius: 1.5, cursor: 'pointer',
+                                    '&:hover': { bgcolor: 'action.hover' },
+                                    transition: 'background 0.15s',
+                                }}
+                            >
+                                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: childStatusCfg.color, flexShrink: 0 }} />
+                                <Typography variant="body2" sx={{
+                                    flex: 1, fontWeight: 500,
+                                    textDecoration: child.completed ? 'line-through' : 'none',
+                                    color: child.completed ? 'text.secondary' : 'text.primary',
+                                }}>
+                                    {child.text}
+                                </Typography>
+                                {child.priority && (
+                                    <Chip label={child.priority} size="small" sx={{
+                                        height: 18, fontSize: '0.6rem', fontWeight: 700,
+                                        bgcolor: (PRIORITY_CONFIG[child.priority as PriorityLevel]?.bgColor || '#f5f5f5'),
+                                        color: (PRIORITY_CONFIG[child.priority as PriorityLevel]?.color || '#666'),
+                                    }} />
+                                )}
+                                {child.assigneeName && (
+                                    <Avatar src={child.assigneePhoto} sx={{ width: 20, height: 20, fontSize: 9 }}>
+                                        {child.assigneeName.charAt(0)}
+                                    </Avatar>
+                                )}
+                            </Box>
+                        );
+                    })}
+                    {/* Add sub-issue inline */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                        <SubdirectoryArrowRightIcon sx={{ fontSize: 16, color: 'text.disabled', ml: 0.5 }} />
+                        <InputBase
+                            placeholder={t('addSubIssue') as string}
+                            value={newSubIssueText}
+                            onChange={e => setNewSubIssueText(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter' && !e.nativeEvent.isComposing && newSubIssueText.trim()) {
+                                    e.preventDefault();
+                                    onCreateSubIssue?.(task, newSubIssueText.trim());
+                                    setNewSubIssueText('');
+                                }
+                            }}
+                            sx={{ flex: 1, fontSize: '0.875rem' }}
+                        />
                     </Box>
                 </Box>
 

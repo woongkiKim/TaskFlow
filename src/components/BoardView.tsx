@@ -5,6 +5,7 @@ import {
     Dialog, DialogTitle, DialogContent, DialogActions, TextField, Menu, MenuItem,
     Avatar, Tooltip, useTheme, alpha
 } from '@mui/material';
+import ConfirmDialog from './ConfirmDialog';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import ChecklistIcon from '@mui/icons-material/Checklist';
 import AddIcon from '@mui/icons-material/Add';
@@ -15,6 +16,7 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
+import SubdirectoryArrowRightIcon from '@mui/icons-material/SubdirectoryArrowRight';
 import {
     DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
     type DragStartEvent, type DragEndEvent,
@@ -26,7 +28,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useLanguage } from '../contexts/LanguageContext';
 import type { TranslationKeys } from '../locales/en';
-import type { Task, KanbanColumn } from '../types';
+import type { Task, KanbanColumn, EstimatePoint } from '../types';
+import { ESTIMATE_CONFIG } from '../types';
 
 type TFunc = (key: TranslationKeys) => string | string[];
 
@@ -41,6 +44,7 @@ const KanbanCard = ({
     onMoveDown,
     canMoveUp,
     canMoveDown,
+    subIssueCount = 0,
 }: {
     task: Task;
     onClick: (t: Task) => void;
@@ -48,6 +52,7 @@ const KanbanCard = ({
     onMoveDown?: () => void;
     canMoveUp?: boolean;
     canMoveDown?: boolean;
+    subIssueCount?: number;
 }) => {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
         id: task.id,
@@ -166,6 +171,23 @@ const KanbanCard = ({
                                 <Typography variant="caption" fontWeight={600}>{completedSubs}/{totalSubs}</Typography>
                             </Box>
                         )}
+                        {/* Estimate */}
+                        {task.estimate && task.estimate > 0 && ESTIMATE_CONFIG[task.estimate as EstimatePoint] && (
+                            <Chip label={`${task.estimate}pt`} size="small"
+                                sx={{
+                                    height: 18, fontSize: '0.6rem', fontWeight: 700,
+                                    bgcolor: ESTIMATE_CONFIG[task.estimate as EstimatePoint].bgColor,
+                                    color: ESTIMATE_CONFIG[task.estimate as EstimatePoint].color,
+                                    minWidth: 30,
+                                }} />
+                        )}
+                        {/* Sub-issues */}
+                        {subIssueCount > 0 && (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3, color: '#8b5cf6' }}>
+                                <SubdirectoryArrowRightIcon sx={{ fontSize: 13 }} />
+                                <Typography variant="caption" fontWeight={700} sx={{ fontSize: '0.65rem' }}>{subIssueCount}</Typography>
+                            </Box>
+                        )}
                     </Box>
 
                     {/* Assignee Avatar */}
@@ -277,8 +299,8 @@ const ColumnInlineAdd = ({ columnId, onAdd, t }: { columnId: string; onAdd: (tex
 };
 
 // --- Sortable Column Component ---
-const SortableProjectColumn = ({ column, children, count, isEmpty, onEdit, onDelete, onInlineAdd, t }: {
-    column: KanbanColumn; children: React.ReactNode; count: number; isEmpty: boolean;
+const SortableProjectColumn = ({ column, children, count, totalPoints, isEmpty, onEdit, onDelete, onInlineAdd, t }: {
+    column: KanbanColumn; children: React.ReactNode; count: number; totalPoints: number; isEmpty: boolean;
     onEdit: (col: KanbanColumn) => void; onDelete: (colId: string) => void;
     onInlineAdd?: (text: string, status: string) => void; t: TFunc;
 }) => {
@@ -325,6 +347,10 @@ const SortableProjectColumn = ({ column, children, count, isEmpty, onEdit, onDel
                         {column.title}
                     </Typography>
                     <Chip label={count} size="small" sx={{ height: 20, borderRadius: 1, fontSize: '0.7rem', fontWeight: 700, bgcolor: alpha(column.color, 0.1), color: column.color }} />
+                    {totalPoints > 0 && (
+                        <Chip label={`🎯${totalPoints}`} size="small" variant="outlined"
+                            sx={{ height: 20, borderRadius: 1, fontSize: '0.65rem', fontWeight: 600, color: 'text.secondary', borderColor: 'divider' }} />
+                    )}
                 </Box>
 
                 <Box>
@@ -407,6 +433,17 @@ const BoardView = ({
         if (!selectedTag) return tasks;
         return tasks.filter(tk => tk.tags?.includes(selectedTag) || tk.category === selectedTag);
     }, [tasks, selectedTag]);
+
+    // Sub-issue count map
+    const subIssueCountMap = useMemo(() => {
+        const map: Record<string, number> = {};
+        tasks.forEach(t => {
+            if (t.parentTaskId) {
+                map[t.parentTaskId] = (map[t.parentTaskId] || 0) + 1;
+            }
+        });
+        return map;
+    }, [tasks]);
 
     const sortByOrder = (arr: Task[]) => [...arr].sort((a, b) => {
         const ao = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER;
@@ -529,8 +566,9 @@ const BoardView = ({
                         const colTasks = sortByOrder(
                             filteredTasks.filter(tk => tk.status === col.id || (!tk.status && col.id === 'todo'))
                         );
+                        const colPoints = colTasks.reduce((sum, tk) => sum + (tk.estimate || 0), 0);
                         return (
-                            <SortableProjectColumn key={col.id} column={col} count={colTasks.length} isEmpty={colTasks.length === 0} onEdit={handleEditClick} onDelete={handleDeleteColumn} onInlineAdd={onAddTask} t={t}>
+                            <SortableProjectColumn key={col.id} column={col} count={colTasks.length} totalPoints={colPoints} isEmpty={colTasks.length === 0} onEdit={handleEditClick} onDelete={handleDeleteColumn} onInlineAdd={onAddTask} t={t}>
                                 <SortableContext items={colTasks.map(task => task.id)} strategy={verticalListSortingStrategy}>
                                     {colTasks.map((task, i) => (
                                         <Grow in key={task.id} timeout={Math.min(300 + i * 50, 600)}>
@@ -542,6 +580,7 @@ const BoardView = ({
                                                     onMoveDown={onMoveTaskInColumn ? () => onMoveTaskInColumn(task.id, col.id, 'down') : undefined}
                                                     canMoveUp={i > 0}
                                                     canMoveDown={i < colTasks.length - 1}
+                                                    subIssueCount={subIssueCountMap[task.id] || 0}
                                                 />
                                             </Box>
                                         </Grow>
@@ -606,13 +645,15 @@ const BoardView = ({
                 </DialogActions>
             </Dialog>
 
-            <Dialog open={!!deleteConfirmColId} onClose={() => setDeleteConfirmColId(null)}>
-                <DialogTitle>{t('confirmDeleteColumn') as string}</DialogTitle>
-                <DialogActions>
-                    <Button onClick={() => setDeleteConfirmColId(null)}>{t('cancel') as string}</Button>
-                    <Button variant="contained" color="error" onClick={confirmDeleteColumn}>{t('delete') as string}</Button>
-                </DialogActions>
-            </Dialog>
+            <ConfirmDialog
+                open={!!deleteConfirmColId}
+                onClose={() => setDeleteConfirmColId(null)}
+                onConfirm={confirmDeleteColumn}
+                title={t('confirmDeleteColumn') as string}
+                message={t('confirmDeleteColumn') as string}
+                confirmLabel={t('delete') as string}
+                cancelLabel={t('cancel') as string}
+            />
         </DndContext>
     );
 };

@@ -121,3 +121,19 @@ export const assignMemberToTeam = async (teamGroupId: string, memberUid: string)
 export const removeMemberFromTeam = async (teamGroupId: string, memberUid: string): Promise<void> => {
     await updateDoc(doc(db, TG_COLLECTION, teamGroupId), { memberIds: arrayRemove(memberUid) });
 };
+
+export const updateMemberRole = async (workspaceId: string, memberUid: string, newRole: 'admin' | 'member'): Promise<void> => {
+    try {
+        const wsRef = doc(db, WS_COLLECTION, workspaceId);
+        const snap = await getDoc(wsRef);
+        if (!snap.exists()) throw new Error("Workspace not found");
+
+        const data = snap.data() as Workspace;
+        const updatedMembers = data.members.map(m => m.uid === memberUid ? { ...m, role: newRole } : m);
+
+        await updateDoc(wsRef, { members: updatedMembers });
+    } catch (e) {
+        console.error("Error updating member role:", e);
+        throw e;
+    }
+};

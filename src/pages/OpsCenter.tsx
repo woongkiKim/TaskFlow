@@ -42,6 +42,7 @@ import {
 import { format } from 'date-fns';
 import MemberAutocomplete from '../components/MemberAutocomplete';
 import TaskAutocomplete from '../components/TaskAutocomplete';
+import TabPanel from '../components/TabPanel';
 
 const textByLang = (lang: 'ko' | 'en', en: string, ko: string) => (lang === 'ko' ? ko : en);
 
@@ -108,12 +109,7 @@ const getIssueScopeLabel = (scope: IssueScope, lang: 'ko' | 'en') => ISSUE_SCOPE
 const getIssueStatusLabel = (status: Issue['status'], lang: 'ko' | 'en') => ISSUE_STATUS_LABELS[status][lang];
 const getChecklistItemLabel = (item: string, lang: 'ko' | 'en') => HANDOFF_CHECKLIST_ITEM_LABELS[item]?.[lang] || item;
 
-// ─── Tab Panel ───────────────────────────────────────────
-const TabPanel = ({ children, value, index }: { children: React.ReactNode; value: number; index: number }) => (
-    <div role="tabpanel" hidden={value !== index} style={{ height: '100%' }}>
-        {value === index && <Box sx={{ pt: 2, height: '100%' }}>{children}</Box>}
-    </div>
-);
+
 
 // ─── Main Component ──────────────────────────────────────
 const OpsCenter = () => {

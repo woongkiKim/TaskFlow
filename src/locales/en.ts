@@ -3,7 +3,9 @@ const en = {
   appName: 'TaskFlow',
   cancel: 'Cancel',
   save: 'Save',
+  create: 'Create',
   close: 'Close',
+  name: 'Name',
 
   // Sidebar
   menu: 'MENU',
@@ -19,18 +21,48 @@ const en = {
   settings: 'Settings',
 
   // View Tabs
+  views: 'Views',
   listView: 'List',
   boardView: 'Board',
   calendarView: 'Calendar',
   tableView: 'Table',
 
+  // Inbox
+  inbox: 'Inbox',
+  inboxEmpty: 'All caught up!',
+  inboxEmptyDesc: 'No new notifications',
+  markAllRead: 'Mark all read',
+  archiveRead: 'Archive read',
+  taskAssigned: 'assigned you a task',
+  taskCompleted: 'completed a task',
+  taskStatusChanged: 'changed status',
+  taskMentioned: 'mentioned you',
+  sprintStarted: 'started a sprint',
+  sprintCompleted: 'completed a sprint',
+  taskDueSoon: 'Task due soon',
+  taskOverdue: 'Task overdue',
+  yesterday: 'Yesterday',
+  earlier: 'Earlier',
+
+  // Issue Relations
+  issueRelations: 'Issue Relations',
+  blocks: 'Blocks',
+  blockedBy: 'Blocked by',
+  relatesTo: 'Relates to',
+  duplicates: 'Duplicates',
+  duplicateOf: 'Duplicate of',
+  searchTask: 'Search task...',
+
   // Header
   language: 'Language',
   logout: 'Logout',
+  keyboardShortcuts: 'Keyboard Shortcuts',
   searchPlaceholder: 'Search tasks...',
 
   // Dashboard
-  goodMorning: 'Cheer for',
+  goodMorning: 'Good morning',
+  goodAfternoon: 'Good afternoon',
+  goodEvening: 'Good evening',
   today: 'Today',
   todayComma: 'Today,',
   completed: 'Completed',
@@ -227,6 +259,11 @@ const en = {
   taskAdded: 'Task added successfully',
   taskUpdated: 'Task updated successfully',
   taskDeleted: 'Task deleted',
+  createWorkspaceFailed: 'Failed to create workspace',
+  createProjectFailed: 'Failed to create project',
+  createSprintFailed: 'Failed to create iteration',
+  joinWorkspaceFailed: 'Failed to join workspace',
+  quickAddFailed: 'Failed to add task',
   moreDetails: 'More details',
 
   // Additional UI labels
@@ -256,6 +293,66 @@ const en = {
   personal: 'Personal',
   work: 'Work',
   myAssignedTasks: 'Tasks assigned to me',
+
+  // Custom Views
+  myViews: 'My Views',
+  createView: 'Create View',
+  editView: 'Edit View',
+  viewName: 'View Name',
+  icon: 'Icon',
+  defaultViewMode: 'Default View Mode',
+  filters: 'Filters',
+  saveCurrentFilter: 'Save as View',
+
+  // Issue Templates
+  templates: 'Templates',
+  createTemplate: 'Create Template',
+  editTemplate: 'Edit Template',
+  templateName: 'Template Name',
+  manageTemplates: 'Manage Templates',
+
+  // Issue Estimates
+  estimate: 'Estimate',
+  totalPoints: 'Total Points',
+  storyPoints: 'Story Points',
+
+  // Sub-issues
+  subIssues: 'Sub-issues',
+  addSubIssue: 'Add sub-issue...',
+  createSubIssue: 'Create Sub-issue',
+  parentTask: 'Parent Task',
+  convertToSubIssue: 'Convert to Sub-issue',
+  promoteToTask: 'Promote to Task',
+
+  // Initiatives
+  initiatives: 'Initiatives',
+  createInitiative: 'Create Initiative',
+
+  // Notifications
+  notifications: 'Notifications',
+  noNotifications: 'All caught up!',
+  taskCommented: 'commented on',
+  justNow: 'Just now',
+  minutesAgo: '{n}m ago',
+  hoursAgo: '{n}h ago',
+  daysAgo: '{n}d ago',
+
+  // Analytics
+  analytics: 'Analytics',
+  burndownChart: 'Burn-down Chart',
+  velocityChart: 'Velocity',
+  workloadChart: 'Workload',
+  idealLine: 'Ideal',
+  actualLine: 'Actual',
+  remainingPoints: 'Remaining Points',
+  completedPoints: 'Completed Points',
+  sprintVelocity: 'Sprint Velocity',
+  avgVelocity: 'Avg Velocity',
+  teamWorkload: 'Team Workload',
+  pointsAssigned: 'Points Assigned',
+  pointsCompleted: 'Points Completed',
+  noDataAvailable: 'No data available',
+  selectSprint: 'Select Sprint',
 };
 
 export default en;

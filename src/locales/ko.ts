@@ -3,7 +3,9 @@ const ko = {
   appName: 'TaskFlow',
   cancel: '취소',
   save: '저장',
+  create: '생성',
   close: '닫기',
+  name: '이름',
 
   // Sidebar
   menu: '메뉴',
@@ -19,18 +21,48 @@ const ko = {
   settings: '설정',
 
   // View Tabs
+  views: '뷰',
   listView: '리스트',
   boardView: '보드',
   calendarView: '캘린더',
   tableView: '테이블',
 
+  // Inbox
+  inbox: '인박스',
+  inboxEmpty: '모두 확인하셨습니다!',
+  inboxEmptyDesc: '새로운 알림이 없습니다',
+  markAllRead: '모두 읽음',
+  archiveRead: '읽은 항목 보관',
+  taskAssigned: '님이 태스크를 할당했습니다',
+  taskCompleted: '님이 태스크를 완료했습니다',
+  taskStatusChanged: '님이 상태를 변경했습니다',
+  taskMentioned: '님이 회원님을 멘션했습니다',
+  sprintStarted: '님이 스프린트를 시작했습니다',
+  sprintCompleted: '님이 스프린트를 완료했습니다',
+  taskDueSoon: '마감일 임박',
+  taskOverdue: '마감일 초과',
+  yesterday: '어제',
+  earlier: '이전',
+
+  // Issue Relations
+  issueRelations: '이슈 관계',
+  blocks: '차단 중',
+  blockedBy: '차단됨',
+  relatesTo: '관련',
+  duplicates: '중복',
+  duplicateOf: '중복 원본',
+  searchTask: '태스크 검색...',
+
   // Header
   language: '언어',
   logout: '로그아웃',
+  keyboardShortcuts: '키보드 단축키',
   searchPlaceholder: '할 일 검색...',
 
   // Dashboard
-  goodMorning: '오늘 하루도',
+  goodMorning: '좋은 아침이에요',
+  goodAfternoon: '좋은 오후에요',
+  goodEvening: '수고했어요',
   today: '오늘',
   todayComma: '오늘,',
   completed: '완료',
@@ -227,6 +259,11 @@ const ko = {
   taskAdded: '작업이 추가되었습니다',
   taskUpdated: '작업이 수정되었습니다',
   taskDeleted: '작업이 삭제되었습니다',
+  createWorkspaceFailed: '워크스페이스 생성에 실패했습니다',
+  createProjectFailed: '프로젝트 생성에 실패했습니다',
+  createSprintFailed: '이터레이션 생성에 실패했습니다',
+  joinWorkspaceFailed: '워크스페이스 참여에 실패했습니다',
+  quickAddFailed: '작업 추가에 실패했습니다',
   moreDetails: '상세 설정',
 
   // Additional UI labels
@@ -256,6 +293,66 @@ const ko = {
   personal: '개인',
   work: '회사',
   myAssignedTasks: '나에게 배정된 할 일',
+
+  // Custom Views
+  myViews: '내 뷰',
+  createView: '뷰 만들기',
+  editView: '뷰 수정',
+  viewName: '뷰 이름',
+  icon: '아이콘',
+  defaultViewMode: '기본 보기 모드',
+  filters: '필터',
+  saveCurrentFilter: '뷰로 저장',
+
+  // Issue Templates
+  templates: '템플릿',
+  createTemplate: '템플릿 만들기',
+  editTemplate: '템플릿 수정',
+  templateName: '템플릿 이름',
+  manageTemplates: '템플릿 관리',
+
+  // Issue Estimates
+  estimate: '추정',
+  totalPoints: '총 포인트',
+  storyPoints: '스토리 포인트',
+
+  // Sub-issues
+  subIssues: '하위 이슈',
+  addSubIssue: '하위 이슈 추가...',
+  createSubIssue: '하위 이슈 생성',
+  parentTask: '상위 태스크',
+  convertToSubIssue: '하위 이슈로 변환',
+  promoteToTask: '태스크로 승격',
+
+  // Initiatives
+  initiatives: '이니셔티브',
+  createInitiative: '이니셔티브 생성',
+
+  // Notifications
+  notifications: '알림',
+  noNotifications: '새로운 알림이 없습니다!',
+  taskCommented: '님이 댓글을 남겼습니다',
+  justNow: '방금 전',
+  minutesAgo: '{n}분 전',
+  hoursAgo: '{n}시간 전',
+  daysAgo: '{n}일 전',
+
+  // Analytics
+  analytics: '분석',
+  burndownChart: '번다운 차트',
+  velocityChart: '속도',
+  workloadChart: '업무량',
+  idealLine: '이상',
+  actualLine: '실제',
+  remainingPoints: '남은 포인트',
+  completedPoints: '완료 포인트',
+  sprintVelocity: '스프린트 속도',
+  avgVelocity: '평균 속도',
+  teamWorkload: '팀 업무량',
+  pointsAssigned: '배정 포인트',
+  pointsCompleted: '완료 포인트',
+  noDataAvailable: '데이터가 없습니다',
+  selectSprint: '스프린트 선택',
 };
 
 export default ko;

@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
     Dialog, DialogTitle, DialogContent, DialogActions,
     TextField, Button, Box, ToggleButtonGroup, ToggleButton, Chip, Typography,
-    InputBase, IconButton, Avatar, Tooltip, FormControl, Select, MenuItem,
+    InputBase, IconButton, Avatar, Tooltip, FormControl, Select, MenuItem, Menu,
     Switch, FormControlLabel, Collapse, Divider, AvatarGroup,
 } from '@mui/material';
 import FlagIcon from '@mui/icons-material/Flag';
@@ -18,13 +18,18 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
-import type { TaskType, TaskOwner, PriorityLevel } from '../types';
-import { TASK_TYPES, TASK_TYPE_CONFIG, PRIORITY_CONFIG } from '../types';
+import type { TaskType, TaskOwner, PriorityLevel, IssueTemplate, EstimatePoint } from '../types';
+import { TASK_TYPES, TASK_TYPE_CONFIG, PRIORITY_CONFIG, ESTIMATE_POINTS, ESTIMATE_CONFIG } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+import { fetchIssueTemplates, createIssueTemplate, updateIssueTemplate, deleteIssueTemplate } from '../services/issueTemplateService';
+import IssueTemplateDialog from './IssueTemplateDialog';
+import SettingsIcon from '@mui/icons-material/Settings';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import { toast } from 'sonner';
+import { CATEGORY_COLORS } from '../constants/colors';
 
-const CATEGORY_COLORS = [
-    '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
-    '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
-];
+
 
 interface AddTaskDialogProps {
     open: boolean;
@@ -36,13 +41,15 @@ interface AddTaskDialogProps {
         sprintId?: string; type?: TaskType; owners?: TaskOwner[];
         blockerStatus?: 'none' | 'blocked'; blockerDetail?: string;
         nextAction?: string; links?: string[];
+        estimate?: number;
     }) => void;
     defaultDate?: Date;
 }
 
 const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogProps) => {
     const { t } = useLanguage();
-    const { currentMembers, sprints, currentSprint } = useWorkspace();
+    const { currentMembers, sprints, currentSprint, currentProject, currentWorkspace } = useWorkspace();
+    const { user } = useAuth();
     const defaultDueDate = defaultDate ? defaultDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
 
     // Quick vs Detail mode
@@ -70,6 +77,96 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
     const [nextAction, setNextAction] = useState('');
     const [linkText, setLinkText] = useState('');
     const [links, setLinks] = useState<string[]>([]);
+
+    // Estimate
+    const [estimate, setEstimate] = useState<EstimatePoint | null>(null);
+
+    // Issue Templates
+    const [templates, setTemplates] = useState<IssueTemplate[]>([]);
+    const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
+    const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+    const [editingTemplate, setEditingTemplate] = useState<IssueTemplate | null>(null);
+
+    // Load templates for workspace
+    useEffect(() => {
+        if (!currentWorkspace || !open) return;
+        let cancelled = false;
+        fetchIssueTemplates(currentWorkspace.id).then(tpls => {
+            if (!cancelled) setTemplates(tpls);
+        }).catch(e => console.error('Failed to load templates:', e));
+        return () => { cancelled = true; };
+    }, [currentWorkspace, open]);
+
+    const handleApplyTemplate = (template: IssueTemplate) => {
+        if (activeTemplateId === template.id) {
+            // Deselect
+            setActiveTemplateId(null);
+            return;
+        }
+        setActiveTemplateId(template.id);
+        if (template.titlePattern) setText(template.titlePattern);
+        if (template.defaultDescription) setDescription(template.defaultDescription);
+        if (template.defaultType) setTaskType(template.defaultType);
+        if (template.defaultPriority) setPriority(template.defaultPriority);
+        if (template.defaultTags) setTags(template.defaultTags);
+        if (template.defaultCategory) setCategory(template.defaultCategory);
+        if (template.defaultCategoryColor) setCategoryColor(template.defaultCategoryColor);
+        if (template.defaultDescription || template.defaultCategory || template.defaultTags?.length) {
+            setDetailMode(true);
+        }
+    };
+
+    const handleCreateOrUpdateTemplate = async (data: {
+        name: string; icon: string; description?: string;
+        titlePattern?: string; defaultDescription?: string;
+        defaultType?: TaskType; defaultPriority?: PriorityLevel;
+        defaultTags?: string[]; defaultCategory?: string; defaultCategoryColor?: string;
+        defaultBlockerStatus?: 'none' | 'blocked';
+    }) => {
+        if (editingTemplate) {
+            try {
+                await updateIssueTemplate(editingTemplate.id, data);
+                setTemplates(prev => prev.map(t => t.id === editingTemplate.id ? { ...t, ...data } : t));
+                toast.success('Template updated');
+            } catch (e) { console.error(e); toast.error('Failed to update template'); }
+            setEditingTemplate(null);
+        } else {
+            if (!currentProject || !currentWorkspace || !user) {
+                toast.error('Please select a project first');
+                return;
+            }
+            try {
+                const tpl = await createIssueTemplate({
+                    ...data,
+                    projectId: currentProject.id,
+                    workspaceId: currentWorkspace.id,
+                    createdBy: user.uid,
+                });
+                setTemplates(prev => [...prev, tpl]);
+                toast.success(`Template "${data.name}" created`);
+            } catch (e) { console.error(e); toast.error('Failed to create template'); }
+        }
+    };
+
+    const handleDeleteTemplate = async (tplId: string) => {
+        try {
+            await deleteIssueTemplate(tplId);
+            setTemplates(prev => prev.filter(t => t.id !== tplId));
+            if (activeTemplateId === tplId) setActiveTemplateId(null);
+            toast.success('Template deleted');
+        } catch (e) { console.error(e); toast.error('Failed to delete template'); }
+    };
+
+    // Template context menu
+    const [tplMenuAnchor, setTplMenuAnchor] = useState<null | HTMLElement>(null);
+    const [tplMenuTarget, setTplMenuTarget] = useState<IssueTemplate | null>(null);
+
+    const handleTplContextMenu = (e: React.MouseEvent<HTMLElement>, tpl: IssueTemplate) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setTplMenuAnchor(e.currentTarget);
+        setTplMenuTarget(tpl);
+    };
 
     const handleAddTag = () => {
         const trimmed = tagText.trim().replace(/^#/, '');
@@ -119,6 +216,7 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
             blockerDetail: isBlocked ? (blockerDetail.trim() || undefined) : undefined,
             nextAction: nextAction.trim() || undefined,
             links: links.length > 0 ? links : undefined,
+            estimate: estimate ?? undefined,
         });
         // Reset
         setText(''); setDescription(''); setPriority(''); setTaskType('task');
@@ -127,17 +225,68 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
         setTagText(''); setTags([]); setSelectedOwners([]);
         setSprintId(currentSprint?.id || ''); setIsBlocked(false); setBlockerDetail('');
         setNextAction(''); setLinkText(''); setLinks([]); setShowAdvanced(false);
+        setEstimate(null);
         setDetailMode(false);
         onClose();
     };
 
-    return (
+    const dialogContent = (
         <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
             <DialogTitle sx={{ fontWeight: 700, fontSize: '1.25rem', pb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Box component="span" sx={{ fontSize: '1.25rem' }}>{TASK_TYPE_CONFIG[taskType].icon}</Box>
                 {t('addTask') as string}
             </DialogTitle>
             <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: '8px !important' }}>
+                {/* Template Selector */}
+                {templates.length > 0 && (
+                    <Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                            <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                📄 {t('templates') as string || 'Templates'}
+                            </Typography>
+                            <IconButton size="small" onClick={() => { setEditingTemplate(null); setTemplateDialogOpen(true); }}
+                                sx={{ p: 0.3 }}>
+                                <SettingsIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+                            </IconButton>
+                        </Box>
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                            {templates.map(tpl => {
+                                const isActive = activeTemplateId === tpl.id;
+                                return (
+                                    <Chip key={tpl.id}
+                                        label={`${tpl.icon} ${tpl.name}`}
+                                        size="small"
+                                        onClick={() => handleApplyTemplate(tpl)}
+                                        onContextMenu={(e: React.MouseEvent<HTMLElement>) => handleTplContextMenu(e, tpl)}
+                                        onDelete={isActive ? () => {
+                                            setActiveTemplateId(null);
+                                        } : undefined}
+                                        sx={{
+                                            fontWeight: isActive ? 700 : 500,
+                                            bgcolor: isActive ? 'primary.main' + '15' : 'transparent',
+                                            color: isActive ? 'primary.main' : 'text.secondary',
+                                            border: '1px solid',
+                                            borderColor: isActive ? 'primary.main' : 'divider',
+                                            '&:hover': { bgcolor: 'primary.main' + '08' },
+                                        }}
+                                    />
+                                );
+                            })}
+                        </Box>
+                    </Box>
+                )}
+
+                {/* Create template hint if none */}
+                {templates.length === 0 && (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <Button size="small" color="inherit"
+                            startIcon={<AddIcon sx={{ fontSize: 14 }} />}
+                            onClick={() => { setEditingTemplate(null); setTemplateDialogOpen(true); }}
+                            sx={{ fontSize: '0.7rem', color: 'text.disabled', textTransform: 'none' }}>
+                            {t('createTemplate') as string || 'Create Template'}
+                        </Button>
+                    </Box>
+                )}
                 {/* Title — always visible */}
                 <TextField autoFocus fullWidth placeholder={t('taskTitle') as string} value={text}
                     onChange={e => setText(e.target.value)} variant="outlined"
@@ -238,6 +387,35 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
                             </Box>
                         )}
 
+                        {/* Estimate (Story Points) */}
+                        <Box>
+                            <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                🎯 {t('estimate') as string || 'Estimate'}
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
+                                {ESTIMATE_POINTS.filter(p => p > 0).map(pt => {
+                                    const cfg = ESTIMATE_CONFIG[pt];
+                                    const isSelected = estimate === pt;
+                                    return (
+                                        <Chip key={pt} label={pt} size="small"
+                                            onClick={() => setEstimate(isSelected ? null : pt)}
+                                            sx={{
+                                                minWidth: 36, fontWeight: 700, fontSize: '0.8rem',
+                                                bgcolor: isSelected ? cfg.bgColor : 'transparent',
+                                                color: isSelected ? cfg.color : 'text.secondary',
+                                                border: '1px solid',
+                                                borderColor: isSelected ? cfg.color : 'divider',
+                                                '&:hover': { bgcolor: cfg.bgColor },
+                                            }} />
+                                    );
+                                })}
+                            </Box>
+                            {estimate !== null && (
+                                <Typography variant="caption" color="text.disabled" sx={{ mt: 0.3, display: 'block', fontSize: '0.65rem' }}>
+                                    {ESTIMATE_CONFIG[estimate].label} — {estimate} {estimate === 1 ? 'point' : 'points'}
+                                </Typography>
+                            )}
+                        </Box>
                         {/* Multi-Owner */}
                         {currentMembers.length > 1 && (
                             <Box>
@@ -391,6 +569,38 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
                 <Button onClick={handleSubmit} variant="contained" disabled={!text.trim()} sx={{ borderRadius: 2, fontWeight: 700, px: 3 }}>{t('addTask') as string}</Button>
             </DialogActions>
         </Dialog>
+    );
+
+    return (
+        <>
+            {dialogContent}
+
+            {/* Template Context Menu */}
+            <Menu anchorEl={tplMenuAnchor} open={Boolean(tplMenuAnchor)}
+                onClose={() => { setTplMenuAnchor(null); setTplMenuTarget(null); }}
+                PaperProps={{ sx: { borderRadius: 2, minWidth: 140, py: 0.5 } }}>
+                <MenuItem onClick={() => {
+                    if (tplMenuTarget) { setEditingTemplate(tplMenuTarget); setTemplateDialogOpen(true); }
+                    setTplMenuAnchor(null); setTplMenuTarget(null);
+                }} sx={{ fontSize: '0.8rem', py: 0.7 }}>
+                    <EditIcon sx={{ fontSize: 16, mr: 1, color: 'text.secondary' }} />
+                    {t('editTemplate') as string || 'Edit Template'}
+                </MenuItem>
+                <MenuItem onClick={() => {
+                    if (tplMenuTarget) handleDeleteTemplate(tplMenuTarget.id);
+                    setTplMenuAnchor(null); setTplMenuTarget(null);
+                }} sx={{ fontSize: '0.8rem', py: 0.7, color: 'error.main' }}>
+                    <DeleteOutlineIcon sx={{ fontSize: 16, mr: 1 }} />
+                    {t('delete') as string || 'Delete'}
+                </MenuItem>
+            </Menu>
+            <IssueTemplateDialog
+                open={templateDialogOpen}
+                onClose={() => { setTemplateDialogOpen(false); setEditingTemplate(null); }}
+                onSave={handleCreateOrUpdateTemplate}
+                editTemplate={editingTemplate}
+            />
+        </>
     );
 };
 

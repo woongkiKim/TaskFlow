@@ -1,102 +1,88 @@
-import { useState, useEffect, useMemo } from 'react';
-import { toast } from 'sonner';
-import { Box, Typography, Paper, Avatar, Switch, Divider, IconButton, InputBase, Chip, ToggleButtonGroup, ToggleButton } from '@mui/material';
+import {
+  Box, Typography, Paper, Avatar, Switch, Divider, Chip,
+} from '@mui/material';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import PersonIcon from '@mui/icons-material/Person';
 import EmailIcon from '@mui/icons-material/Email';
 import BadgeIcon from '@mui/icons-material/Badge';
-import FolderIcon from '@mui/icons-material/Folder';
-import AddIcon from '@mui/icons-material/Add';
-import CloseIcon from '@mui/icons-material/Close';
+import KeyboardIcon from '@mui/icons-material/Keyboard';
 import { useAuth } from '../contexts/AuthContext';
 import { useThemeMode } from '../contexts/ThemeContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useWorkspace } from '../contexts/WorkspaceContext';
-import { fetchWorkspaceProjects, createProject, deleteProject } from '../services/projectService';
-import type { Project } from '../types';
-import {
-  getWeeklyPlannerPreferences,
-  setWeeklyPlannerPreferences,
-  DEFAULT_WEEKLY_PLANNER_PREFERENCES,
-  type WeeklyPlannerPreferences,
-} from '../utils/plannerPreferences';
 
-const PROJECT_COLORS = [
-  '#3b82f6', // blue
-  '#10b981', // emerald
-  '#f59e0b', // amber
-  '#ef4444', // red
-  '#8b5cf6', // violet
-  '#ec4899', // pink
-  '#06b6d4', // cyan
-  '#f97316', // orange
-  '#14b8a6', // teal
-  '#6366f1', // indigo
-];
+const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+const MOD = isMac ? 'Cmd' : 'Ctrl';
+
+type Shortcut = {
+  keys: string[];
+  label: string;
+  sep?: string;
+};
+
+type ShortcutGroup = {
+  title: string;
+  shortcuts: Shortcut[];
+};
+
+const SHORTCUT_GROUPS_BY_LANG: Record<'en' | 'ko', ShortcutGroup[]> = {
+  en: [
+    {
+      title: 'General',
+      shortcuts: [
+        { keys: [MOD, 'K'], label: 'Open command menu', sep: '+' },
+        { keys: ['C'], label: 'Create new task' },
+        { keys: ['?'], label: 'Show keyboard shortcuts' },
+      ],
+    },
+    {
+      title: 'Navigation',
+      shortcuts: [
+        { keys: ['G', 'B'], label: 'Go to Board' },
+        { keys: ['G', 'I'], label: 'Go to Inbox' },
+        { keys: ['G', 'C'], label: 'Go to Calendar' },
+        { keys: ['G', 'P'], label: 'Go to Planner' },
+        { keys: ['G', 'R'], label: 'Go to Reports' },
+        { keys: ['G', 'M'], label: 'Go to Roadmap' },
+        { keys: ['G', 'T'], label: 'Go to Team Settings' },
+      ],
+    },
+  ],
+  ko: [
+    {
+      title: '\uC77C\uBC18',
+      shortcuts: [
+        { keys: [MOD, 'K'], label: '\uBA85\uB839 \uBA54\uB274 \uC5F4\uAE30', sep: '+' },
+        { keys: ['C'], label: '\uC0C8 \uC791\uC5C5 \uB9CC\uB4E4\uAE30' },
+        { keys: ['?'], label: '\uD0A4\uBCF4\uB4DC \uB2E8\uCD95\uD0A4 \uBCF4\uAE30' },
+      ],
+    },
+    {
+      title: '\uC774\uB3D9',
+      shortcuts: [
+        { keys: ['G', 'B'], label: '\uBCF4\uB4DC\uB85C \uC774\uB3D9' },
+        { keys: ['G', 'I'], label: '\uC778\uBC15\uC2A4\uB85C \uC774\uB3D9' },
+        { keys: ['G', 'C'], label: '\uCE98\uB9B0\uB354\uB85C \uC774\uB3D9' },
+        { keys: ['G', 'P'], label: '\uD50C\uB798\uB108\uB85C \uC774\uB3D9' },
+        { keys: ['G', 'R'], label: '\uB9AC\uD3EC\uD2B8\uB85C \uC774\uB3D9' },
+        { keys: ['G', 'M'], label: '\uB85C\uB4DC\uB9F5\uC73C\uB85C \uC774\uB3D9' },
+        { keys: ['G', 'T'], label: '\uD300 \uC124\uC815\uC73C\uB85C \uC774\uB3D9' },
+      ],
+    },
+  ],
+};
+
+const STEP_SEPARATOR_BY_LANG: Record<'en' | 'ko', string> = {
+  en: 'then',
+  ko: '\uB2E4\uC74C',
+};
 
 const Settings = () => {
   const { user } = useAuth();
   const { mode, toggleMode } = useThemeMode();
-  const { t } = useLanguage();
-  const { currentWorkspace } = useWorkspace();
-
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [isAdding, setIsAdding] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [selectedColor, setSelectedColor] = useState(PROJECT_COLORS[0]);
-  const [plannerPrefs, setPlannerPrefs] = useState<WeeklyPlannerPreferences>(() =>
-    getWeeklyPlannerPreferences(user?.uid)
-  );
-
-  useEffect(() => {
-    if (!currentWorkspace?.id) return;
-    fetchWorkspaceProjects(currentWorkspace.id).then(setProjects).catch(console.error);
-  }, [currentWorkspace?.id]);
-
-  useEffect(() => {
-    setPlannerPrefs(getWeeklyPlannerPreferences(user?.uid));
-  }, [user?.uid]);
-
-  const savePlannerPrefs = (next: WeeklyPlannerPreferences) => {
-    setPlannerPrefs(next);
-    setWeeklyPlannerPreferences(next, user?.uid);
-  };
-
-  const weekDayOrder = plannerPrefs.weekStartsOn === 1 ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
-  const mondayFirstDayNames = useMemo(() => {
-    const translated = t('dayNames');
-    if (Array.isArray(translated) && translated.length === 7) {
-      return translated.map(String);
-    }
-    return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  }, [t]);
-  const dayLabelsByWeekday = useMemo(
-    () => [mondayFirstDayNames[6], ...mondayFirstDayNames.slice(0, 6)],
-    [mondayFirstDayNames]
-  );
-
-  const handleAddProject = async () => {
-    if (!newName.trim() || !user || !currentWorkspace?.id) return;
-    try {
-      const project = await createProject(newName.trim(), currentWorkspace.id, selectedColor, user.uid);
-      setProjects(prev => [...prev, project].sort((a, b) => a.name.localeCompare(b.name)));
-      setNewName('');
-      setIsAdding(false);
-      setSelectedColor(PROJECT_COLORS[0]);
-    } catch {
-      toast.error(t('addFailed') as string);
-    }
-  };
-
-  const handleDeleteProject = async (id: string) => {
-    try {
-      await deleteProject(id);
-      setProjects(prev => prev.filter(p => p.id !== id));
-    } catch {
-      toast.error(t('deleteFailed') as string);
-    }
-  };
+  const { t, lang } = useLanguage();
+  const shortcutGroups = SHORTCUT_GROUPS_BY_LANG[lang];
+  const stepSeparator = STEP_SEPARATOR_BY_LANG[lang];
 
   const getInitials = () => {
     if (!user?.displayName) return '?';
@@ -117,6 +103,7 @@ const Settings = () => {
         {t('settingsDesc') as string}
       </Typography>
 
+      {/* My Profile */}
       <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
           <PersonIcon color="primary" />
@@ -160,156 +147,8 @@ const Settings = () => {
         </Box>
       </Paper>
 
+      {/* Appearance (Dark Mode) */}
       <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider', mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <FolderIcon color="primary" />
-            <Box>
-              <Typography variant="h6" fontWeight="bold">{t('projects') as string}</Typography>
-              <Typography variant="body2" color="text.secondary">{t('projectsDesc') as string}</Typography>
-            </Box>
-          </Box>
-          {!isAdding && (
-            <IconButton
-              size="small"
-              onClick={() => setIsAdding(true)}
-              sx={{ bgcolor: 'primary.main', color: 'white', '&:hover': { bgcolor: 'primary.dark' } }}
-            >
-              <AddIcon fontSize="small" />
-            </IconButton>
-          )}
-        </Box>
-
-        {isAdding && (
-          <Paper sx={{ p: 2, mb: 2, borderRadius: 2, border: '2px solid', borderColor: 'primary.main' }}>
-            <InputBase
-              fullWidth
-              placeholder={t('projectName') as string}
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  void handleAddProject();
-                } else if (e.key === 'Escape') {
-                  setIsAdding(false);
-                  setNewName('');
-                }
-              }}
-              autoFocus
-              sx={{ fontSize: '0.9rem', mb: 1.5 }}
-            />
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Box sx={{ display: 'flex', gap: 0.5 }}>
-                {PROJECT_COLORS.map((color) => (
-                  <Box
-                    key={color}
-                    onClick={() => setSelectedColor(color)}
-                    sx={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: '50%',
-                      bgcolor: color,
-                      cursor: 'pointer',
-                      border: selectedColor === color ? '3px solid' : '2px solid transparent',
-                      borderColor: selectedColor === color ? 'text.primary' : 'transparent',
-                      transition: 'all 0.15s',
-                      '&:hover': { transform: 'scale(1.2)' },
-                    }}
-                  />
-                ))}
-              </Box>
-              <Box sx={{ display: 'flex', gap: 0.5 }}>
-                <IconButton size="small" onClick={() => { void handleAddProject(); }} sx={{ color: 'primary.main' }}>
-                  <AddIcon fontSize="small" />
-                </IconButton>
-                <IconButton size="small" onClick={() => { setIsAdding(false); setNewName(''); }}>
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            </Box>
-          </Paper>
-        )}
-
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-          {projects.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-              {t('noProjects') as string}
-            </Typography>
-          ) : (
-            projects.map((project) => (
-              <Chip
-                key={project.id}
-                label={project.name}
-                onDelete={() => { void handleDeleteProject(project.id); }}
-                sx={{
-                  bgcolor: project.color + '20',
-                  color: project.color,
-                  fontWeight: 600,
-                  borderRadius: 2,
-                  '& .MuiChip-deleteIcon': { color: project.color, opacity: 0.6, '&:hover': { opacity: 1 } },
-                }}
-              />
-            ))
-          )}
-        </Box>
-      </Paper>
-
-      <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider', mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-          <Typography variant="h6" fontWeight="bold">
-            {`${t('planner') as string} ${t('settings') as string}`}
-          </Typography>
-          <Chip
-            label="Reset"
-            size="small"
-            onClick={() => savePlannerPrefs(DEFAULT_WEEKLY_PLANNER_PREFERENCES)}
-            variant="outlined"
-          />
-        </Box>
-
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-          Week Starts On
-        </Typography>
-        <ToggleButtonGroup
-          value={plannerPrefs.weekStartsOn}
-          exclusive
-          onChange={(_, v) => typeof v === 'number' && savePlannerPrefs({ ...plannerPrefs, weekStartsOn: v as 0 | 1 })}
-          size="small"
-          sx={{ mb: 2 }}
-        >
-          <ToggleButton value={1}>{mondayFirstDayNames[0]}</ToggleButton>
-          <ToggleButton value={0}>{dayLabelsByWeekday[0]}</ToggleButton>
-        </ToggleButtonGroup>
-
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-          Visible Weekdays (click to hide/show)
-        </Typography>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8 }}>
-          {weekDayOrder.map((weekday) => {
-            const visible = !plannerPrefs.hiddenWeekdays.includes(weekday);
-            const visibleCount = 7 - plannerPrefs.hiddenWeekdays.length;
-            return (
-              <Chip
-                key={weekday}
-                label={dayLabelsByWeekday[weekday]}
-                color={visible ? 'primary' : 'default'}
-                variant={visible ? 'filled' : 'outlined'}
-                onClick={() => {
-                  if (visible && visibleCount <= 1) return;
-                  const nextHidden = visible
-                    ? plannerPrefs.hiddenWeekdays.filter(d => d !== weekday)
-                    : [...plannerPrefs.hiddenWeekdays, weekday].sort((a, b) => a - b);
-                  savePlannerPrefs({ ...plannerPrefs, hiddenWeekdays: nextHidden });
-                }}
-                sx={{ fontWeight: 600, cursor: 'pointer' }}
-              />
-            );
-          })}
-        </Box>
-      </Paper>
-
-      <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             {mode === 'dark' ? (
@@ -330,6 +169,55 @@ const Settings = () => {
             color="primary"
           />
         </Box>
+      </Paper>
+
+      {/* Keyboard Shortcuts Reference */}
+      <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+          <KeyboardIcon color="primary" />
+          <Typography variant="h6" fontWeight="bold">{t('keyboardShortcuts') as string}</Typography>
+        </Box>
+
+        {shortcutGroups.map((group, gi) => (
+          <Box key={group.title} sx={{ mb: gi < shortcutGroups.length - 1 ? 3 : 0 }}>
+            <Typography variant="caption" color="text.disabled" fontWeight={700}
+              sx={{ textTransform: 'uppercase', letterSpacing: 0.5, mb: 1, display: 'block' }}>
+              {group.title}
+            </Typography>
+            {group.shortcuts.map((sc, si) => (
+              <Box key={`${group.title}-${sc.label}`} sx={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                py: 0.8,
+                borderBottom: si < group.shortcuts.length - 1 ? '1px solid' : 'none',
+                borderColor: 'divider',
+              }}>
+                <Typography variant="body2" color="text.secondary" fontSize="0.85rem">
+                  {sc.label}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 0.3, alignItems: 'center' }}>
+                  {sc.keys.map((k, ki) => (
+                    <span key={`${sc.label}-${k}`}>
+                      <Chip label={k} size="small" variant="outlined"
+                        sx={{
+                          height: 24, minWidth: 30,
+                          fontSize: '0.7rem', fontWeight: 700,
+                          fontFamily: 'monospace',
+                          borderRadius: 1,
+                        }}
+                      />
+                      {ki < sc.keys.length - 1 && (
+                        <Typography component="span" variant="caption" color="text.disabled" sx={{ mx: 0.3 }}>
+                          {sc.sep ?? stepSeparator}
+                        </Typography>
+                      )}
+                    </span>
+                  ))}
+                </Box>
+              </Box>
+            ))}
+            {gi < shortcutGroups.length - 1 && <Divider sx={{ mt: 1.5 }} />}
+          </Box>
+        ))}
       </Paper>
     </Box>
   );

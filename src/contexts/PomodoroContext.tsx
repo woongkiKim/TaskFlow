@@ -60,7 +60,7 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
         };
-    }, [isRunning, timeLeft, mode]);
+    }, [isRunning, timeLeft, mode, t]);
 
     // 알림 권한 요청
     useEffect(() => {

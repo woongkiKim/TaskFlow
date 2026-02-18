@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import {
     Box, Typography, Paper, List, ListItem, ListItemAvatar, ListItemText,
@@ -18,21 +18,37 @@ import FlagIcon from '@mui/icons-material/Flag';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
-import { regenerateInviteCode, createTeamGroup, assignMemberToTeam, removeMemberFromTeam } from '../services/workspaceService';
+import { regenerateInviteCode, createTeamGroup, assignMemberToTeam, removeMemberFromTeam, updateMemberRole } from '../services/workspaceService';
 import { deleteProject } from '../services/projectService';
 import { deleteSprint, updateSprint } from '../services/sprintService';
 import type { Sprint } from '../types';
+import { PROJECT_COLORS, TG_COLORS } from '../constants/colors';
+import ConfirmDialog from '../components/ConfirmDialog';
 import InviteDialog from '../components/InviteDialog';
+import IssueTemplateDialog from '../components/IssueTemplateDialog';
+import { fetchAutomationRules, createAutomationRule, deleteAutomationRule, toggleAutomationRule } from '../services/automationService';
+import { fetchIssueTemplates, createIssueTemplate, updateIssueTemplate, deleteIssueTemplate } from '../services/issueTemplateService';
+import type { AutomationRule, AutomationAction, IssueTemplate } from '../types';
+import { STATUS_CONFIG } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+import AutomationIcon from '@mui/icons-material/SmartToy';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import {
+  getWeeklyPlannerPreferences,
+  setWeeklyPlannerPreferences,
+  DEFAULT_WEEKLY_PLANNER_PREFERENCES,
+  type WeeklyPlannerPreferences,
+} from '../utils/plannerPreferences';
 
-const PROJECT_COLORS = ['#6366f1', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
-const TG_COLORS = ['#6366f1', '#ef4444', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6'];
 
 const TeamSettings = () => {
-    const { t } = useLanguage();
+    const { t, lang } = useLanguage();
+    const textByLang = (enText: string, koText: string) => (lang === 'ko' ? koText : enText);
+    const { user } = useAuth();
     const {
         currentWorkspace, currentMembers, projects, sprints,
         addProject, addSprint, refreshProjects, refreshSprints,
-        teamGroups, refreshTeamGroups,
+        teamGroups, refreshTeamGroups, refreshMembers,
     } = useWorkspace();
 
     const [createProjectOpen, setCreateProjectOpen] = useState(false);
@@ -49,6 +65,109 @@ const TeamSettings = () => {
     const [newTGColor, setNewTGColor] = useState(TG_COLORS[0]);
     const [inviteCode, setInviteCode] = useState(currentWorkspace?.inviteCode || '');
     const [deleteTarget, setDeleteTarget] = useState<{ type: 'project' | 'sprint'; id: string } | null>(null);
+
+    // Automation state
+    const [automationRules, setAutomationRules] = useState<AutomationRule[]>([]);
+    const [createRuleOpen, setCreateRuleOpen] = useState(false);
+    const [newRuleName, setNewRuleName] = useState('');
+    const [newRuleTriggerTo, setNewRuleTriggerTo] = useState('done');
+    const [newRuleActionType, setNewRuleActionType] = useState<'assign_user' | 'add_label' | 'set_priority'>('assign_user');
+    const [newRuleActionValue, setNewRuleActionValue] = useState('');
+    const [newRuleActionLabel, setNewRuleActionLabel] = useState('');
+
+    // Load automation rules
+    useEffect(() => {
+        if (!currentWorkspace) return;
+        fetchAutomationRules(currentWorkspace.id).then(setAutomationRules);
+    }, [currentWorkspace]);
+
+    // Issue Templates State
+    const [templates, setTemplates] = useState<IssueTemplate[]>([]);
+    const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+    const [editingTemplate, setEditingTemplate] = useState<IssueTemplate | null>(null);
+    const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!currentWorkspace) return;
+        fetchIssueTemplates(currentWorkspace.id).then(setTemplates);
+    }, [currentWorkspace]);
+
+    // Weekly Planner Preferences
+    const [plannerPrefs, setPlannerPrefs] = useState<WeeklyPlannerPreferences>(
+        getWeeklyPlannerPreferences(user?.uid)
+    );
+    useEffect(() => {
+        setPlannerPrefs(getWeeklyPlannerPreferences(user?.uid));
+    }, [user?.uid]);
+    const savePlannerPrefs = (next: WeeklyPlannerPreferences) => {
+        setWeeklyPlannerPreferences(user?.uid, next);
+        setPlannerPrefs(next);
+    };
+    const weekDayOrder = plannerPrefs.weekStartsOn === 1 ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
+    const dayNames = [
+        textByLang('Sun', '일'), textByLang('Mon', '월'), textByLang('Tue', '화'),
+        textByLang('Wed', '수'), textByLang('Thu', '목'), textByLang('Fri', '금'), textByLang('Sat', '토'),
+    ];
+
+    const handleSaveTemplate = async (data: Partial<IssueTemplate>) => {
+        if (!currentWorkspace || !user) return;
+        try {
+            if (editingTemplate) {
+                await updateIssueTemplate(editingTemplate.id, data);
+                setTemplates(prev => prev.map(t => t.id === editingTemplate.id ? { ...t, ...data } as IssueTemplate : t));
+            } else {
+                const created = await createIssueTemplate({ ...data, workspaceId: currentWorkspace.id } as Omit<IssueTemplate, 'id' | 'createdAt'>);
+                setTemplates(prev => [...prev, created]);
+            }
+            setTemplateDialogOpen(false);
+            setEditingTemplate(null);
+            toast.success(textByLang('Template saved', '템플릿이 저장되었습니다'));
+        } catch (e) {
+            console.error(e);
+            toast.error(textByLang('Failed to save template', '템플릿 저장에 실패했습니다'));
+        }
+    };
+
+    const handleDeleteTemplate = (id: string) => {
+        setDeleteTemplateId(id);
+    };
+
+    const confirmDeleteTemplate = async () => {
+        if (!deleteTemplateId) return;
+        try {
+            await deleteIssueTemplate(deleteTemplateId);
+            setTemplates(prev => prev.filter(t => t.id !== deleteTemplateId));
+            toast.success(textByLang('Template deleted', '템플릿이 삭제되었습니다'));
+        } catch (e) {
+            console.error(e);
+            toast.error(textByLang('Failed to delete template', '템플릿 삭제에 실패했습니다'));
+        }
+        setDeleteTemplateId(null);
+    };
+
+    const handleCreateAutomation = async () => {
+        if (!currentWorkspace || !newRuleName.trim()) return;
+        const actions: AutomationAction[] = [{
+            type: newRuleActionType,
+            ...(newRuleActionType === 'assign_user' ? { userId: newRuleActionValue, userName: newRuleActionLabel } : {}),
+            ...(newRuleActionType === 'add_label' ? { label: newRuleActionValue } : {}),
+            ...(newRuleActionType === 'set_priority' ? { priority: newRuleActionValue as 'low' | 'medium' | 'high' | 'urgent' } : {}),
+        }];
+        const rule = await createAutomationRule({
+            workspaceId: currentWorkspace.id,
+            name: newRuleName,
+            trigger: { type: 'status_change', to: newRuleTriggerTo },
+            actions,
+            isEnabled: true,
+        });
+        setAutomationRules(prev => [...prev, rule]);
+        setCreateRuleOpen(false);
+        setNewRuleName('');
+        toast.success(textByLang('Automation created', '자동화 규칙이 생성되었습니다'));
+    };
+
+    const myRole = currentMembers.find(m => m.uid === user?.uid)?.role || 'member';
+    const canManageRoles = myRole === 'owner' || myRole === 'admin';
 
     // Edit sprint state
     const [editSprint, setEditSprint] = useState<Sprint | null>(null);
@@ -227,8 +346,22 @@ const TeamSettings = () => {
                                         ))}
                                     </Select>
                                 </FormControl>
-                                <Chip label={m.role === 'owner' ? t('owner') as string : m.role === 'admin' ? t('admin') as string : t('member') as string}
-                                    size="small" color={m.role === 'owner' ? 'primary' : 'default'} sx={{ fontWeight: 600 }} />
+                                {canManageRoles && m.role !== 'owner' ? (
+                                    <FormControl size="small" sx={{ minWidth: 90 }}>
+                                        <Select value={m.role}
+                                            onChange={async (e) => {
+                                                await updateMemberRole(currentWorkspace!.id, m.uid, e.target.value as 'admin' | 'member');
+                                                await refreshMembers();
+                                            }}
+                                            sx={{ fontSize: '0.75rem', height: 28, '& .MuiSelect-select': { py: 0.3 } }}>
+                                            <MenuItem value="admin" sx={{ fontSize: '0.75rem' }}>{t('admin') as string}</MenuItem>
+                                            <MenuItem value="member" sx={{ fontSize: '0.75rem' }}>{t('member') as string}</MenuItem>
+                                        </Select>
+                                    </FormControl>
+                                ) : (
+                                    <Chip label={m.role === 'owner' ? t('owner') as string : m.role === 'admin' ? t('admin') as string : t('member') as string}
+                                        size="small" color={m.role === 'owner' ? 'primary' : 'default'} sx={{ fontWeight: 600 }} />
+                                )}
                             </ListItem>
                             {i < currentMembers.length - 1 && <Divider />}
                         </Box>
@@ -395,6 +528,108 @@ const TeamSettings = () => {
                 </List>
             </Paper>
 
+            {/* Automation Rules */}
+            <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <AutomationIcon sx={{ color: 'primary.main' }} />
+                        <Typography variant="subtitle1" fontWeight={700}>{textByLang('Automation Rules', '자동화 규칙')}</Typography>
+                    </Box>
+                    <Button size="small" startIcon={<AddIcon />} onClick={() => setCreateRuleOpen(true)} sx={{ fontWeight: 600 }}>
+                        {textByLang('Add Rule', '규칙 추가')}
+                    </Button>
+                </Box>
+                {automationRules.map(rule => (
+                    <Box key={rule.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.5, borderRadius: 2, mb: 1, bgcolor: 'action.hover' }}>
+                        <Box sx={{ flex: 1 }}>
+                            <Typography fontWeight={600} fontSize="0.85rem">{rule.name}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                                {textByLang('When status → ', '상태 → ')}{rule.trigger.to}
+                            </Typography>
+                        </Box>
+                        <Chip label={rule.isEnabled ? textByLang('Active', '활성') : textByLang('Disabled', '비활성')}
+                            size="small" color={rule.isEnabled ? 'success' : 'default'}
+                            onClick={() => toggleAutomationRule(rule.id, !rule.isEnabled).then(() =>
+                                setAutomationRules(prev => prev.map(r => r.id === rule.id ? { ...r, isEnabled: !r.isEnabled } : r))
+                            )} sx={{ cursor: 'pointer', fontWeight: 600 }} />
+                        <IconButton size="small" onClick={() => deleteAutomationRule(rule.id).then(() =>
+                            setAutomationRules(prev => prev.filter(r => r.id !== rule.id))
+                        )}><DeleteIcon sx={{ fontSize: 18 }} /></IconButton>
+                    </Box>
+                ))}
+                {automationRules.length === 0 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                        {textByLang('No automation rules yet', '아직 자동화 규칙이 없습니다')}
+                    </Typography>
+                )}
+            </Paper>
+
+            {/* Issue Templates */}
+            <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <ListAltIcon sx={{ color: 'primary.main' }} />
+                        <Typography variant="subtitle1" fontWeight={700}>{textByLang('Issue Templates', '이슈 템플릿')}</Typography>
+                    </Box>
+                    <Button size="small" startIcon={<AddIcon />} onClick={() => { setEditingTemplate(null); setTemplateDialogOpen(true); }} sx={{ fontWeight: 600 }}>
+                        {textByLang('Add Template', '템플릿 추가')}
+                    </Button>
+                </Box>
+                {templates.map(tmpl => (
+                    <Box key={tmpl.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.5, borderRadius: 2, mb: 1, bgcolor: 'action.hover' }}>
+                        <Typography fontSize="1.2rem">{tmpl.icon || '📋'}</Typography>
+                        <Box sx={{ flex: 1 }}>
+                            <Typography fontWeight={600} fontSize="0.85rem">{tmpl.name}</Typography>
+                            {tmpl.description && <Typography variant="caption" color="text.secondary">{tmpl.description}</Typography>}
+                        </Box>
+                        <IconButton size="small" onClick={() => { setEditingTemplate(tmpl); setTemplateDialogOpen(true); }}>
+                            <EditIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => handleDeleteTemplate(tmpl.id)}>
+                            <DeleteIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                    </Box>
+                ))}
+                {templates.length === 0 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                        {textByLang('No templates yet', '아직 템플릿이 없습니다')}
+                    </Typography>
+                )}
+            </Paper>
+
+            {/* Weekly Planner Preferences */}
+            <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                    <CalendarMonthIcon sx={{ color: 'primary.main' }} />
+                    <Typography variant="subtitle1" fontWeight={700}>{textByLang('Weekly Planner', '주간 플래너')}</Typography>
+                </Box>
+                <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>{textByLang('Week Starts On', '주 시작요일')}</Typography>
+                    <ToggleButtonGroup value={plannerPrefs.weekStartsOn} exclusive
+                        onChange={(_, v) => { if (v !== null) savePlannerPrefs({ ...plannerPrefs, weekStartsOn: v }); }}
+                        size="small" sx={{ '& .MuiToggleButton-root': { textTransform: 'none', fontWeight: 600, fontSize: '0.8rem' } }}>
+                        <ToggleButton value={0}>{textByLang('Sunday', '일요일')}</ToggleButton>
+                        <ToggleButton value={1}>{textByLang('Monday', '월요일')}</ToggleButton>
+                    </ToggleButtonGroup>
+                </Box>
+                <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>{textByLang('Visible Days', '표시 요일')}</Typography>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                        {weekDayOrder.map(d => (
+                            <Chip key={d} label={dayNames[d]} size="small"
+                                color={plannerPrefs.visibleDays.includes(d) ? 'primary' : 'default'}
+                                onClick={() => {
+                                    const next = plannerPrefs.visibleDays.includes(d)
+                                        ? plannerPrefs.visibleDays.filter(x => x !== d)
+                                        : [...plannerPrefs.visibleDays, d].sort((a, b) => a - b);
+                                    if (next.length > 0) savePlannerPrefs({ ...plannerPrefs, visibleDays: next });
+                                }}
+                                sx={{ cursor: 'pointer', fontWeight: 600, minWidth: 44 }} />
+                        ))}
+                    </Box>
+                </Box>
+            </Paper>
+
             {/* === DIALOGS === */}
             {/* Create Project */}
             <Dialog open={createProjectOpen} onClose={() => setCreateProjectOpen(false)} maxWidth="xs" fullWidth>
@@ -472,13 +707,67 @@ const TeamSettings = () => {
             <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
 
             {/* Delete Confirmation Dialog */}
-            <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
-                <DialogTitle>
-                    {deleteTarget?.type === 'project' ? t('confirmDeleteProject') as string : t('confirmDeleteSprint') as string}
-                </DialogTitle>
+            <ConfirmDialog
+                open={!!deleteTarget}
+                onClose={() => setDeleteTarget(null)}
+                onConfirm={confirmDelete}
+                title={deleteTarget?.type === 'project' ? t('confirmDeleteProject') as string : t('confirmDeleteSprint') as string}
+                message={deleteTarget?.type === 'project'
+                    ? (t('confirmDeleteProject') as string)
+                    : (t('confirmDeleteSprint') as string)}
+                confirmLabel={t('delete') as string}
+                cancelLabel={t('cancel') as string}
+            />
+
+            {/* Delete Template Confirmation Dialog */}
+            <ConfirmDialog
+                open={!!deleteTemplateId}
+                onClose={() => setDeleteTemplateId(null)}
+                onConfirm={confirmDeleteTemplate}
+                title={textByLang('Delete Template', '템플릿 삭제')}
+                message={textByLang('Delete this template? This action cannot be undone.', '이 템플릿을 삭제할까요? 이 작업은 되돌릴 수 없습니다.')}
+                confirmLabel={t('delete') as string}
+                cancelLabel={t('cancel') as string}
+            />
+
+            {/* Issue Template Dialog */}
+            <IssueTemplateDialog
+                open={templateDialogOpen}
+                onClose={() => { setTemplateDialogOpen(false); setEditingTemplate(null); }}
+                onSave={handleSaveTemplate}
+                editTemplate={editingTemplate}
+            />
+
+            {/* Create Automation Rule Dialog */}
+            <Dialog open={createRuleOpen} onClose={() => setCreateRuleOpen(false)} maxWidth="xs" fullWidth>
+                <DialogTitle sx={{ fontWeight: 700 }}>{textByLang('Create Automation Rule', '자동화 규칙 생성')}</DialogTitle>
+                <DialogContent>
+                    <TextField autoFocus fullWidth label={textByLang('Rule Name', '규칙 이름')} value={newRuleName}
+                        onChange={e => setNewRuleName(e.target.value)} sx={{ mt: 1, mb: 2 }} />
+                    <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                        <InputLabel>{textByLang('When status changes to', '상태 변경 시')}</InputLabel>
+                        <Select value={newRuleTriggerTo} label={textByLang('When status changes to', '상태 변경 시')}
+                            onChange={e => setNewRuleTriggerTo(e.target.value)}>
+                            {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
+                                <MenuItem key={key} value={key}>{cfg.label}</MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                    <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                        <InputLabel>{textByLang('Action Type', '액션 유형')}</InputLabel>
+                        <Select value={newRuleActionType} label={textByLang('Action Type', '액션 유형')}
+                            onChange={e => setNewRuleActionType(e.target.value as typeof newRuleActionType)}>
+                            <MenuItem value="assign_user">{textByLang('Assign User', '담당자 지정')}</MenuItem>
+                            <MenuItem value="add_label">{textByLang('Add Label', '레이블 추가')}</MenuItem>
+                            <MenuItem value="set_priority">{textByLang('Set Priority', '우선순위 설정')}</MenuItem>
+                        </Select>
+                    </FormControl>
+                    <TextField fullWidth size="small" label={textByLang('Value', '값')} value={newRuleActionValue}
+                        onChange={e => setNewRuleActionValue(e.target.value)} sx={{ mb: 1 }} />
+                </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setDeleteTarget(null)}>{t('cancel') as string}</Button>
-                    <Button variant="contained" color="error" onClick={confirmDelete}>{t('delete') as string}</Button>
+                    <Button onClick={() => setCreateRuleOpen(false)}>{t('cancel') as string}</Button>
+                    <Button variant="contained" onClick={handleCreateAutomation} disabled={!newRuleName.trim()}>{t('save') as string}</Button>
                 </DialogActions>
             </Dialog>
 

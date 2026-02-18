@@ -15,11 +15,12 @@ export const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
 ];
 
 export const createProject = async (
-  name: string, workspaceId: string, color: string, createdBy: string, teamGroupId?: string
+  name: string, workspaceId: string, color: string, createdBy: string, teamGroupId?: string, initiativeId?: string
 ): Promise<Project> => {
   const data = {
     name, workspaceId, color, createdBy,
     ...(teamGroupId ? { teamGroupId } : {}),
+    ...(initiativeId ? { initiativeId } : {}),
 
     createdAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
     kanbanColumns: DEFAULT_KANBAN_COLUMNS,
@@ -33,7 +34,7 @@ export const fetchWorkspaceProjects = async (workspaceId: string): Promise<Proje
   return snap.docs.map(d => ({ id: d.id, ...d.data() } as Project)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 };
 
-export const updateProject = async (id: string, updates: Partial<Pick<Project, 'name' | 'color' | 'icon' | 'teamGroupId'>>): Promise<void> => {
+export const updateProject = async (id: string, updates: Partial<Project>): Promise<void> => {
   await updateDoc(doc(db, PROJECTS_COLLECTION, id), updates);
 };
 

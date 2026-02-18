@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Box, Typography, Paper, Grid, Button, IconButton, Chip, CircularProgress } from '@mui/material';
+import { useState, useMemo } from 'react';
+import { Box, Typography, Paper, Grid, Button, IconButton, Chip, CircularProgress, Tabs, Tab } from '@mui/material';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import PieChartIcon from '@mui/icons-material/PieChart';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -14,31 +14,19 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, isWithinInterval } from 'date-fns';
 
-import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import { fetchTasks } from '../services/taskService';
-import type { Task } from '../types';
+import { useTasks } from '../hooks/useTasks';
+import CycleAnalytics from '../components/CycleAnalytics';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const WeeklyReports = () => {
-  const { user } = useAuth();
   const { t } = useLanguage();
-  const [allTasks, setAllTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { tasks: allTasks, loading } = useTasks();
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [activeTab, setActiveTab] = useState(0);
 
   const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
-
-  // 데이터 로드
-  useEffect(() => {
-    if (!user) return;
-    setLoading(true);
-    fetchTasks(user.uid)
-      .then(setAllTasks)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [user]);
 
   // 이번 주 & 지난 주 Task 필터링
   const thisWeekTasks = useMemo(() =>
@@ -135,6 +123,28 @@ const WeeklyReports = () => {
             </Button>
         </Box> */}
       </Box>
+
+      {/* Report Tabs */}
+      <Tabs
+        value={activeTab}
+        onChange={(_, v) => setActiveTab(v)}
+        sx={{
+          mb: 3,
+          '& .MuiTab-root': {
+            textTransform: 'none',
+            fontWeight: 600,
+            fontSize: '0.9rem',
+          },
+        }}
+      >
+        <Tab label={t('weeklyReport') as string} />
+        <Tab label={t('analytics') as string} />
+      </Tabs>
+
+      {activeTab === 1 ? (
+        <CycleAnalytics />
+      ) : (
+      <>
 
       {/* 2. Stats Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -360,6 +370,8 @@ const WeeklyReports = () => {
           </Paper>
         </Grid>
       </Grid>
+      </>
+      )}
     </Box>
   );
 };

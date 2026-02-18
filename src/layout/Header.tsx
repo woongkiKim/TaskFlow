@@ -1,13 +1,17 @@
 import { useState, useEffect, useMemo } from 'react';
-import { AppBar, Toolbar, IconButton, Typography, Box, Avatar, Button, Menu, MenuItem, ListItemIcon } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { AppBar, Toolbar, IconButton, Typography, Box, Avatar, Button, Menu, MenuItem, ListItemIcon, Divider } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import TranslateIcon from '@mui/icons-material/Translate';
 import LogoutIcon from '@mui/icons-material/Logout';
+import SettingsIcon from '@mui/icons-material/Settings';
+import KeyboardIcon from '@mui/icons-material/Keyboard';
 import { DRAWER_WIDTH } from './Sidebar';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { MiniPomodoroTimer } from '../components/PomodoroTimer';
 import SearchBar from '../components/SearchBar';
+import NotificationCenter from '../components/NotificationCenter';
 import TaskDetailDialog from '../components/TaskDetailDialog';
 import { fetchTasks } from '../services/taskService';
 import { useLocation } from 'react-router-dom';
@@ -17,18 +21,20 @@ import type { TranslationKeys } from '../locales/en';
 
 interface HeaderProps {
   handleDrawerToggle: () => void;
+  onOpenShortcuts?: () => void;
 }
 
-const Header = ({ handleDrawerToggle }: HeaderProps) => {
+const Header = ({ handleDrawerToggle, onOpenShortcuts }: HeaderProps) => {
   const { user, logout } = useAuth();
   const { lang, setLang, t } = useLanguage();
   const location = useLocation();
+  const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
 
   const ROUTE_TITLE_MAP: Record<string, TranslationKeys> = useMemo(() => ({
-    '/': 'dashboard',
+    '/': 'myTasks',
     '/calendar': 'calendar',
     '/planner': 'planner',
     '/reports': 'reports',
@@ -42,10 +48,10 @@ const Header = ({ handleDrawerToggle }: HeaderProps) => {
   useEffect(() => {
     if (!user) return;
     fetchTasks(user.uid).then(setTasks).catch(() => toast.error(t('loadFailed') as string));
-  }, [user]);
+  }, [user, t]);
 
   const handleTaskUpdate = (updatedTask: Task) => {
-    setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+    setTasks(prev => prev.map(task => task.id === updatedTask.id ? updatedTask : task));
   };
 
   const getInitials = () => {
@@ -69,6 +75,16 @@ const Header = ({ handleDrawerToggle }: HeaderProps) => {
   const handleLogout = () => {
     handleClose();
     logout();
+  };
+
+  const handleGoToSettings = () => {
+    handleClose();
+    navigate('/settings');
+  };
+
+  const handleOpenShortcuts = () => {
+    handleClose();
+    onOpenShortcuts?.();
   };
 
   return (
@@ -129,15 +145,8 @@ const Header = ({ handleDrawerToggle }: HeaderProps) => {
           {/* 포모도로 미니 타이머 */}
           <MiniPomodoroTimer />
 
-          {/* Notification icon — hidden until feature is implemented
-          <Tooltip title={t('comingSoon') as string}>
-            <span>
-              <IconButton size="large" color="inherit" disabled sx={{ ml: 1, opacity: 0.4 }}>
-                <NotificationsIcon sx={{ color: 'text.disabled' }} />
-              </IconButton>
-            </span>
-          </Tooltip>
-          */}
+          {/* 알림 센터 */}
+          <NotificationCenter />
 
           {/* 프로필 아바타 */}
           <Box
@@ -171,12 +180,38 @@ const Header = ({ handleDrawerToggle }: HeaderProps) => {
                   borderRadius: 2,
                   border: '1px solid',
                   borderColor: 'divider',
-                  minWidth: 160,
+                  minWidth: 200,
                 }
               }
             }}
           >
-            <MenuItem onClick={handleLogout} sx={{ gap: 1.5, color: 'error.main' }}>
+            {/* User Info */}
+            <Box sx={{ px: 2, py: 1.5 }}>
+              <Typography variant="subtitle2" fontWeight={700}>{user?.displayName || 'User'}</Typography>
+              <Typography variant="caption" color="text.secondary">{user?.email}</Typography>
+            </Box>
+            <Divider />
+
+            {/* Settings */}
+            <MenuItem onClick={handleGoToSettings} sx={{ gap: 1.5, py: 1 }}>
+              <ListItemIcon sx={{ minWidth: 'auto' }}>
+                <SettingsIcon fontSize="small" />
+              </ListItemIcon>
+              {t('settings') as string}
+            </MenuItem>
+
+            {/* Keyboard Shortcuts */}
+            <MenuItem onClick={handleOpenShortcuts} sx={{ gap: 1.5, py: 1 }}>
+              <ListItemIcon sx={{ minWidth: 'auto' }}>
+                <KeyboardIcon fontSize="small" />
+              </ListItemIcon>
+              {t('keyboardShortcuts') as string || 'Keyboard Shortcuts'}
+            </MenuItem>
+
+            <Divider />
+
+            {/* Logout */}
+            <MenuItem onClick={handleLogout} sx={{ gap: 1.5, py: 1, color: 'error.main' }}>
               <ListItemIcon sx={{ minWidth: 'auto' }}>
                 <LogoutIcon fontSize="small" color="error" />
               </ListItemIcon>

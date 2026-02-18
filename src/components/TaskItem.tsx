@@ -9,13 +9,15 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import FlagIcon from '@mui/icons-material/Flag';
 import ChecklistIcon from '@mui/icons-material/Checklist';
 import BlockIcon from '@mui/icons-material/Block';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import FolderIcon from '@mui/icons-material/Folder';
 import SettingsIcon from '@mui/icons-material/Settings';
+import SubdirectoryArrowRightIcon from '@mui/icons-material/SubdirectoryArrowRight';
 import confetti from 'canvas-confetti';
 import { useNavigate } from 'react-router-dom';
 
-import type { Task, Project } from '../types';
-import { normalizePriority, PRIORITY_CONFIG, TASK_TYPE_CONFIG } from '../types';
+import type { Task, Project, EstimatePoint } from '../types';
+import { normalizePriority, PRIORITY_CONFIG, TASK_TYPE_CONFIG, ESTIMATE_CONFIG } from '../types';
 import { PomodoroStartButton } from './PomodoroTimer';
 import { getTagColor } from './TagInput';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -32,6 +34,7 @@ interface TaskItemProps {
   onMoveDown?: (id: string) => void;
   disableMoveUp?: boolean;
   disableMoveDown?: boolean;
+  subIssueCount?: number;
 }
 
 const TaskItem = ({
@@ -46,6 +49,7 @@ const TaskItem = ({
   onMoveDown,
   disableMoveUp,
   disableMoveDown,
+  subIssueCount = 0,
 }: TaskItemProps) => {
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -180,6 +184,14 @@ const TaskItem = ({
   // Blocker
   const isBlocked = task.blockerStatus === 'blocked';
 
+  // Relations summary
+  const blocksCount = task.relations?.filter(r => r.type === 'blocks').length || 0;
+  const blockedByCount = task.relations?.filter(r => r.type === 'blocked_by').length || 0;
+  const otherRelCount = task.relations?.filter(r => r.type !== 'blocks' && r.type !== 'blocked_by').length || 0;
+
+  // Estimate
+  const estimateCfg = task.estimate && task.estimate > 0 ? ESTIMATE_CONFIG[task.estimate as EstimatePoint] : null;
+
   return (
     <Paper
       elevation={0}
@@ -194,6 +206,7 @@ const TaskItem = ({
         '&:hover': {
           boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
           borderColor: isEditing ? 'primary.main' : 'divider',
+          transform: !isEditing ? 'translateY(-1px)' : 'none',
           '& .action-buttons': { opacity: 1 },
         },
         backgroundColor: task.completed ? 'action.hover' : isBlocked ? '#fef2f2' : 'background.paper',
@@ -204,10 +217,11 @@ const TaskItem = ({
       <Checkbox
         ref={checkboxRef}
         checked={task.completed}
-        onClick={handleToggleWithAnimation} // Use onClick to capture event before onChange default behavior?
-        // Actually, Checkbox onChange is better, but onClick gives us the event to stopPropagation easily and coordinate anim.
-        // We override standard behavior.
+        onClick={handleToggleWithAnimation}
         checkedIcon={<CheckIcon />}
+        inputProps={{
+          'aria-label': task.completed ? `Mark "${task.text}" incomplete` : `Mark "${task.text}" complete`,
+        }}
         sx={{
           color: 'text.secondary',
           '&.Mui-checked': { color: 'primary.main' },
@@ -271,8 +285,24 @@ const TaskItem = ({
                 )}
                 {/* Blocker */}
                 {isBlocked && (
-                  <Chip icon={<BlockIcon sx={{ fontSize: '12px !important' }} />} label="Blocked" size="small"
+                  <Chip icon={<BlockIcon sx={{ fontSize: '12px !important' }} />} label={t('blocker') as string} size="small"
                     color="error" sx={{ height: 20, fontSize: '0.6rem', fontWeight: 700, '& .MuiChip-icon': { ml: 0.5 } }} />
+                )}
+                {/* Relation indicators */}
+                {blocksCount > 0 && (
+                  <Chip icon={<AccountTreeIcon sx={{ fontSize: '12px !important', color: '#ef4444 !important' }} />}
+                    label={`Blocks ${blocksCount}`} size="small"
+                    sx={{ height: 20, fontSize: '0.6rem', fontWeight: 600, bgcolor: '#ef444418', color: '#ef4444', '& .MuiChip-icon': { ml: 0.5 } }} />
+                )}
+                {blockedByCount > 0 && (
+                  <Chip icon={<AccountTreeIcon sx={{ fontSize: '12px !important', color: '#f97316 !important' }} />}
+                    label={`Blocked ${blockedByCount}`} size="small"
+                    sx={{ height: 20, fontSize: '0.6rem', fontWeight: 600, bgcolor: '#f9731618', color: '#f97316', '& .MuiChip-icon': { ml: 0.5 } }} />
+                )}
+                {otherRelCount > 0 && (
+                  <Chip icon={<AccountTreeIcon sx={{ fontSize: '12px !important', color: '#6366f1 !important' }} />}
+                    label={`${otherRelCount}`} size="small"
+                    sx={{ height: 20, fontSize: '0.6rem', fontWeight: 600, bgcolor: '#6366f118', color: '#6366f1', '& .MuiChip-icon': { ml: 0.5 } }} />
                 )}
 
                 {/* Category (Interactive) from kim, integrated into HEAD style */}
@@ -305,6 +335,41 @@ const TaskItem = ({
                   <Chip icon={<ChecklistIcon sx={{ fontSize: '12px !important' }} />} label={`${completedSubs}/${totalSubs}`}
                     size="small" sx={{ height: 20, fontSize: '0.6rem', fontWeight: 600, '& .MuiChip-icon': { ml: 0.5 } }} />
                 )}
+                {/* Estimate */}
+                {estimateCfg && (
+                  <Chip label={`${task.estimate}pt`} size="small"
+                    sx={{
+                      height: 20, fontSize: '0.6rem', fontWeight: 700,
+                      bgcolor: estimateCfg.bgColor, color: estimateCfg.color,
+                      minWidth: 32,
+                    }} />
+                )}
+                {/* Sub-issues */}
+                {subIssueCount > 0 && (
+                  <Chip
+                    icon={<SubdirectoryArrowRightIcon sx={{ fontSize: '12px !important', color: '#8b5cf6 !important' }} />}
+                    label={subIssueCount}
+                    size="small"
+                    sx={{
+                      height: 20, fontSize: '0.6rem', fontWeight: 700,
+                      bgcolor: '#8b5cf615', color: '#8b5cf6',
+                      '& .MuiChip-icon': { ml: 0.5 },
+                    }}
+                  />
+                )}
+                {/* Parent indicator */}
+                {task.parentTaskId && (
+                  <Chip
+                    icon={<SubdirectoryArrowRightIcon sx={{ fontSize: '12px !important', transform: 'rotate(180deg)' }} />}
+                    label={task.parentTaskText ? task.parentTaskText.substring(0, 15) + (task.parentTaskText.length > 15 ? '…' : '') : 'Sub'}
+                    size="small" variant="outlined"
+                    sx={{
+                      height: 20, fontSize: '0.55rem', fontWeight: 600,
+                      color: 'text.secondary', borderColor: 'divider',
+                      '& .MuiChip-icon': { ml: 0.5 },
+                    }}
+                  />
+                )}
                 {/* Owners avatars */}
                 {owners.length > 0 && (
                   <AvatarGroup max={3} sx={{ '& .MuiAvatar-root': { width: 18, height: 18, fontSize: 9, border: '1px solid white' } }}>
@@ -333,7 +398,7 @@ const TaskItem = ({
                 selected={!task.category}
                 sx={{ fontSize: '0.875rem' }}
               >
-                None
+                {t('noProject') as string}
               </MenuItem>
               {projects.map((project) => (
                 <MenuItem

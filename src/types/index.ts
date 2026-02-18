@@ -37,6 +37,21 @@ export const normalizePriority = (p?: string): PriorityLevel | undefined => {
   return undefined;
 };
 
+// --- Issue Estimates ---
+export const ESTIMATE_POINTS = [0, 1, 2, 3, 5, 8, 13, 21] as const;
+export type EstimatePoint = typeof ESTIMATE_POINTS[number];
+
+export const ESTIMATE_CONFIG: Record<EstimatePoint, { label: string; color: string; bgColor: string }> = {
+  0: { label: 'None', color: '#94a3b8', bgColor: '#f1f5f9' },
+  1: { label: 'Trivial', color: '#22c55e', bgColor: '#f0fdf4' },
+  2: { label: 'Small', color: '#3b82f6', bgColor: '#eff6ff' },
+  3: { label: 'Medium', color: '#8b5cf6', bgColor: '#f5f3ff' },
+  5: { label: 'Large', color: '#f59e0b', bgColor: '#fffbeb' },
+  8: { label: 'XL', color: '#f97316', bgColor: '#fff7ed' },
+  13: { label: 'XXL', color: '#ef4444', bgColor: '#fef2f2' },
+  21: { label: 'Epic', color: '#dc2626', bgColor: '#fef2f2' },
+};
+
 export const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
   'todo': { label: 'To Do', color: '#6b7280', bgColor: '#f3f4f6' },
   'inprogress': { label: 'In Progress', color: '#2563eb', bgColor: '#eff6ff' },
@@ -93,6 +108,11 @@ export interface Project {
   createdAt: string;
   kanbanColumns?: KanbanColumn[];
   taskCounter?: number; // for T-XXX auto-increment
+  initiativeId?: string; // Links project to a strategic initiative
+  startDate?: string;
+  targetDate?: string;
+  status?: 'active' | 'completed' | 'paused' | 'planned';
+  description?: string;
 }
 
 export interface KanbanColumn {
@@ -145,6 +165,25 @@ export interface Subtask {
   completed: boolean;
 }
 
+// --- Issue Relations ---
+export const RELATION_TYPES = ['blocks', 'blocked_by', 'relates_to', 'duplicates', 'duplicate_of'] as const;
+export type RelationType = typeof RELATION_TYPES[number];
+
+export const RELATION_TYPE_CONFIG: Record<RelationType, { label: string; icon: string; color: string; inverse: RelationType }> = {
+  blocks: { label: 'Blocks', icon: '🚫', color: '#ef4444', inverse: 'blocked_by' },
+  blocked_by: { label: 'Blocked by', icon: '⛔', color: '#f97316', inverse: 'blocks' },
+  relates_to: { label: 'Relates to', icon: '🔗', color: '#6366f1', inverse: 'relates_to' },
+  duplicates: { label: 'Duplicates', icon: '📋', color: '#8b5cf6', inverse: 'duplicate_of' },
+  duplicate_of: { label: 'Duplicate of', icon: '📋', color: '#8b5cf6', inverse: 'duplicates' },
+};
+
+export interface TaskRelation {
+  type: RelationType;
+  targetTaskId: string;
+  targetTaskCode?: string;  // cached for display
+  targetTaskText?: string;  // cached for display
+}
+
 export interface Task {
   id: string;
   taskCode?: string;         // "T-017" human-readable ID
@@ -192,6 +231,82 @@ export interface Task {
   delayPeriod?: string;      // e.g. "3 Days"
   delayReason?: string;      // notes
   aiUsage?: string;          // AI tool usage notes
+
+  // Issue Relations
+  relations?: TaskRelation[];
+
+  // Estimate (story points)
+  estimate?: number;
+
+  // Sub-issue hierarchy
+  parentTaskId?: string;     // parent task ID (makes this a sub-issue)
+  parentTaskText?: string;   // parent task title for display
+
+  // Triage
+  triageStatus?: 'pending' | 'accepted' | 'declined' | 'snoozed';
+
+  // Archive
+  archived?: boolean;
+}
+
+// --- Custom Views / Saved Filters ---
+export const VIEW_ICONS = ['📋', '🔥', '🎯', '🚀', '⭐', '🐛', '🔧', '📊', '🎨', '💡', '⚡', '🏷️'] as const;
+export const VIEW_COLORS = ['#6366f1', '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4'] as const;
+
+export interface ViewFilter {
+  statuses?: string[];         // e.g. ['todo', 'inprogress']
+  priorities?: PriorityLevel[];// e.g. ['P0', 'P1']
+  types?: TaskType[];          // e.g. ['bug', 'feature']
+  tags?: string[];             // e.g. ['frontend', 'urgent']
+  assigneeIds?: string[];      // filter by specific owners
+  hideCompleted?: boolean;     // hide done tasks
+  scope?: 'personal' | 'work';
+  hasBlocker?: boolean;        // only blocked tasks
+  hasDueDate?: 'overdue' | 'today' | 'thisWeek' | 'any';
+  initiativeId?: string;       // filter by strategic initiative
+}
+
+export interface CustomView {
+  id: string;
+  name: string;
+  icon: string;                // emoji
+  color: string;               // hex
+  filters: ViewFilter;
+  viewMode?: 'list' | 'board' | 'calendar' | 'table';
+
+  // Scope
+  projectId: string;           // which project this view belongs to
+  workspaceId: string;
+  createdBy: string;           // uid of creator
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// --- Issue Templates ---
+export const TEMPLATE_ICONS = ['📋', '🐛', '✨', '🎨', '📝', '🤝', '⚙️', '🚀', '🔧', '💡', '📊', '🧪'] as const;
+
+export interface IssueTemplate {
+  id: string;
+  name: string;                // e.g. "Bug Report", "Feature Request"
+  icon: string;                // emoji
+  description?: string;        // Template description for users
+
+  // Pre-filled fields
+  titlePattern?: string;       // e.g. "[Bug] ", "[Feature] "
+  defaultDescription?: string; // Markdown body template
+  defaultType?: TaskType;
+  defaultPriority?: PriorityLevel;
+  defaultTags?: string[];
+  defaultCategory?: string;
+  defaultCategoryColor?: string;
+  defaultBlockerStatus?: 'none' | 'blocked';
+
+  // Scope
+  projectId?: string;
+  workspaceId: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 // --- Decision Log ---
@@ -299,3 +414,125 @@ export interface Issue {
   workspaceId: string;
   createdAt: string;
 }
+
+// --- Notification (Inbox) ---
+export const NOTIFICATION_TYPES = [
+  'task_assigned',       // 태스크가 나에게 할당됨
+  'task_completed',      // 내가 할당된 태스크가 완료됨
+  'task_status_changed', // 내 태스크 상태 변경
+  'task_mentioned',      // 태스크에서 멘션됨
+  'sprint_started',      // 스프린트가 시작됨
+  'sprint_completed',    // 스프린트가 완료됨
+  'task_due_soon',       // 마감일 임박
+  'task_overdue',        // 마감일 초과
+] as const;
+export type NotificationType = typeof NOTIFICATION_TYPES[number];
+
+export const NOTIFICATION_TYPE_CONFIG: Record<NotificationType, { label: string; icon: string; color: string }> = {
+  task_assigned: { label: 'Task Assigned', icon: '👤', color: '#6366f1' },
+  task_completed: { label: 'Task Completed', icon: '✅', color: '#10b981' },
+  task_status_changed: { label: 'Status Changed', icon: '🔄', color: '#3b82f6' },
+  task_mentioned: { label: 'Mentioned', icon: '💬', color: '#f59e0b' },
+  sprint_started: { label: 'Sprint Started', icon: '🚀', color: '#8b5cf6' },
+  sprint_completed: { label: 'Sprint Completed', icon: '🏁', color: '#10b981' },
+  task_due_soon: { label: 'Due Soon', icon: '⏰', color: '#f97316' },
+  task_overdue: { label: 'Overdue', icon: '🔴', color: '#ef4444' },
+};
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  read: boolean;
+  archived: boolean;
+
+  // Who triggered
+  actorUid: string;
+  actorName: string;
+  actorPhoto?: string;
+
+  // Target user
+  recipientUid: string;
+
+  // Context
+  workspaceId: string;
+  projectId?: string;
+  projectName?: string;
+  taskId?: string;
+  taskText?: string;
+  sprintId?: string;
+  sprintName?: string;
+
+  createdAt: string;
+}
+
+// --- Initiatives ---
+export interface Initiative {
+  id: string;
+  name: string;
+  description?: string;
+  status: 'planned' | 'active' | 'completed' | 'canceled';
+  targetDate?: string;
+  color: string;
+
+  // Relations
+  workspaceId: string;
+  projectIds: string[]; // Projects belonging to this initiative
+
+  createdBy: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export const INITIATIVE_STATUS_CONFIG: Record<Initiative['status'], { label: string; color: string }> = {
+  planned: { label: 'Planned', color: '#94a3b8' },
+  active: { label: 'Active', color: '#3b82f6' },
+  completed: { label: 'Completed', color: '#10b981' },
+  canceled: { label: 'Canceled', color: '#ef4444' },
+};
+
+// --- Automation Rules ---
+export interface AutomationTrigger {
+  type: 'status_change';
+  from?: string;  // Optional: specific source status (null = any)
+  to: string;     // Required: target status
+}
+
+export type AutomationAction =
+  | { type: 'assign_user'; userId: string; userName?: string; userPhoto?: string }
+  | { type: 'add_label'; label: string; labelColor?: string }
+  | { type: 'set_priority'; priority: PriorityLevel };
+
+export interface AutomationRule {
+  id: string;
+  workspaceId: string;
+  name: string;
+  trigger: AutomationTrigger;
+  actions: AutomationAction[];
+  isEnabled: boolean;
+  createdBy: string;
+  createdAt: string;
+}
+
+// --- Project Updates ---
+export type ProjectHealth = 'on_track' | 'at_risk' | 'off_track';
+
+export interface ProjectUpdate {
+  id: string;
+  projectId: string;     // or initiativeId
+  workspaceId: string;
+  health: ProjectHealth;
+  content: string;       // markdown/text body
+  createdBy: string;
+  createdByName?: string;
+  createdByPhoto?: string;
+  createdAt: string;
+}
+
+export const PROJECT_HEALTH_CONFIG: Record<ProjectHealth, { label: string; color: string; emoji: string }> = {
+  on_track: { label: 'On Track', color: '#10b981', emoji: '🟢' },
+  at_risk:  { label: 'At Risk',  color: '#f59e0b', emoji: '🟡' },
+  off_track:{ label: 'Off Track',color: '#ef4444', emoji: '🔴' },
+};
+

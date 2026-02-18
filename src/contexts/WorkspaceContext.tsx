@@ -1,9 +1,11 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useAuth } from './AuthContext';
-import type { Workspace, TeamMember, TeamGroup, Project, Sprint } from '../types';
+import type { Workspace, TeamMember, TeamGroup, Project, Sprint, ViewFilter } from '../types';
 import { createWorkspace, fetchUserWorkspaces, fetchWorkspaceMembers, fetchTeamGroups, joinWorkspaceByInvite } from '../services/workspaceService';
 import { createProject, fetchWorkspaceProjects } from '../services/projectService';
 import { fetchProjectSprints, createSprint, updateSprint as updateSprintInDB } from '../services/sprintService';
+import { createInitiative, fetchInitiatives } from '../services/initiativeService';
+import type { Initiative } from '../types';
 import { checkPendingInvites, acceptInvite } from '../services/invitationService';
 
 
@@ -21,11 +23,16 @@ interface WorkspaceContextType {
     setCurrentTeamGroup: (tg: TeamGroup | null) => void;
     refreshTeamGroups: () => Promise<void>;
 
+    // Initiatives
+    initiatives: Initiative[];
+    addInitiative: (name: string, description?: string, targetDate?: string, projectIds?: string[]) => Promise<Initiative>;
+    refreshInitiatives: () => Promise<void>;
+
     // Projects
     projects: Project[];
     currentProject: Project | null;
     setCurrentProject: (p: Project | null) => void;
-    addProject: (name: string, color: string, teamGroupId?: string) => Promise<Project>;
+    addProject: (name: string, color: string, teamGroupId?: string, initiativeId?: string) => Promise<Project>;
     refreshProjects: () => Promise<void>;
 
     // Sprints
@@ -38,6 +45,7 @@ interface WorkspaceContextType {
 
     // Members
     currentMembers: TeamMember[];
+    refreshMembers: () => Promise<void>;
 
     // Scope
     scope: 'mine' | 'all';
@@ -46,6 +54,14 @@ interface WorkspaceContextType {
     // Hierarchy helpers
     getChildSprints: (parentId: string) => Sprint[];
     getLinkedSprints: (milestoneId: string) => Sprint[];
+
+    // View mode (Linear/Jira style — shared between sidebar and content)
+    currentViewMode: 'list' | 'board' | 'calendar' | 'table';
+    setCurrentViewMode: (v: 'list' | 'board' | 'calendar' | 'table') => void;
+
+    // Custom View filter
+    activeViewFilter: ViewFilter | null;
+    setActiveViewFilter: (f: ViewFilter | null) => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -63,6 +79,9 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     const [currentSprint, setCurrentSprint] = useState<Sprint | null>(null);
     const [currentMembers, setCurrentMembers] = useState<TeamMember[]>([]);
     const [scope, setScope] = useState<'mine' | 'all'>('mine');
+    const [currentViewMode, setCurrentViewMode] = useState<'list' | 'board' | 'calendar' | 'table'>('list');
+    const [activeViewFilter, setActiveViewFilter] = useState<ViewFilter | null>(null);
+    const [initiatives, setInitiatives] = useState<Initiative[]>([]);
 
     // 1. 워크스페이스 로드 + 자동 생성
     useEffect(() => {
@@ -108,6 +127,11 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
             setTeamGroups(tgs);
             setCurrentTeamGroup(tgs[0] || null);
 
+            // Initiatives
+            const inits = await fetchInitiatives(currentWorkspace.id);
+            setInitiatives(inits);
+
+
             // Projects
             let projs = await fetchWorkspaceProjects(currentWorkspace.id);
             if (projs.length === 0) {
@@ -148,9 +172,9 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
         setWorkspaces(wsList);
     }, [user]);
 
-    const addProject = useCallback(async (name: string, color: string, teamGroupId?: string) => {
+    const addProject = useCallback(async (name: string, color: string, teamGroupId?: string, initiativeId?: string) => {
         if (!user || !currentWorkspace) throw new Error('No workspace');
-        const p = await createProject(name, currentWorkspace.id, color, user.uid, teamGroupId);
+        const p = await createProject(name, currentWorkspace.id, color, user.uid, teamGroupId, initiativeId);
         setProjects(prev => [...prev, p]);
         return p;
     }, [user, currentWorkspace]);
@@ -180,6 +204,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
 
     const updateCurrentSprint = useCallback(async (updates: Partial<Sprint>) => {
         if (!currentSprint) return;
+        const prevSprint = currentSprint;
         // Optimistic update
         const updated = { ...currentSprint, ...updates };
         setCurrentSprint(updated);
@@ -189,7 +214,9 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
             await updateSprintInDB(currentSprint.id, updates);
         } catch (e) {
             console.error(e);
-            // Revert on fail? For now, just log.
+            // Revert on failure
+            setCurrentSprint(prevSprint);
+            setSprints(prev => prev.map(s => s.id === prevSprint.id ? prevSprint : s));
         }
     }, [currentSprint]);
 
@@ -205,15 +232,44 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
         setTeamGroups(tgs);
     }, [currentWorkspace]);
 
+    const refreshMembers = useCallback(async () => {
+        if (!currentWorkspace) return;
+        const m = await fetchWorkspaceMembers(currentWorkspace.id);
+        setCurrentMembers(m);
+    }, [currentWorkspace]);
+
+    const addInitiative = useCallback(async (name: string, description?: string, targetDate?: string, projectIds?: string[]) => {
+        if (!user || !currentWorkspace) throw new Error("No user/workspace");
+        const newInit = await createInitiative({
+            name, description, targetDate, projectIds: projectIds || [],
+            status: 'planned', color: '#3b82f6',
+            workspaceId: currentWorkspace.id,
+            createdBy: user.uid
+        });
+        setInitiatives(prev => [newInit, ...prev]);
+        return newInit;
+    }, [user, currentWorkspace]);
+
+    const refreshInitiatives = useCallback(async () => {
+        if (!currentWorkspace) return;
+        const list = await fetchInitiatives(currentWorkspace.id);
+        setInitiatives(list);
+    }, [currentWorkspace]);
+
+    const value: WorkspaceContextType = {
+        workspaces, currentWorkspace, setCurrentWorkspace, addWorkspace, refreshWorkspaces,
+        teamGroups, currentTeamGroup, setCurrentTeamGroup, refreshTeamGroups,
+        projects, currentProject, setCurrentProject, addProject, refreshProjects,
+        sprints, currentSprint, setCurrentSprint, addSprint, updateCurrentSprint, refreshSprints,
+        currentMembers, refreshMembers,
+        scope, setScope,
+        activeViewFilter, setActiveViewFilter, currentViewMode, setCurrentViewMode,
+        getChildSprints, getLinkedSprints,
+        initiatives, addInitiative, refreshInitiatives,
+    };
+
     return (
-        <WorkspaceContext.Provider value={{
-            workspaces, currentWorkspace, setCurrentWorkspace, addWorkspace, refreshWorkspaces,
-            teamGroups, currentTeamGroup, setCurrentTeamGroup, refreshTeamGroups,
-            projects, currentProject, setCurrentProject, addProject, refreshProjects,
-            sprints, currentSprint, setCurrentSprint, addSprint, updateCurrentSprint, refreshSprints,
-            currentMembers, scope, setScope,
-            getChildSprints, getLinkedSprints,
-        }}>
+        <WorkspaceContext.Provider value={value}>
             {children}
         </WorkspaceContext.Provider>
     );
