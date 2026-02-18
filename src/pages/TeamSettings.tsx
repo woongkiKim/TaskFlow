@@ -40,6 +40,7 @@ import {
   type WeeklyPlannerPreferences,
 } from '../utils/plannerPreferences';
 import HelpTooltip from '../components/HelpTooltip';
+import TabPanel from '../components/TabPanel';
 
 
 const TeamSettings = () => {
@@ -52,6 +53,7 @@ const TeamSettings = () => {
         teamGroups, refreshTeamGroups, refreshMembers,
     } = useWorkspace();
 
+    const [settingsTab, setSettingsTab] = useState(0);
     const [createProjectOpen, setCreateProjectOpen] = useState(false);
     const [createSprintOpen, setCreateSprintOpen] = useState(false);
     const [createTGOpen, setCreateTGOpen] = useState(false);
@@ -289,7 +291,7 @@ const TeamSettings = () => {
     return (
         <Box sx={{ maxWidth: 800, mx: 'auto' }}>
             {/* Header */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <Avatar sx={{ width: 56, height: 56, bgcolor: currentWorkspace.color, fontSize: 24, fontWeight: 700 }}>
                     {currentWorkspace.name.charAt(0)}
                 </Avatar>
@@ -305,6 +307,14 @@ const TeamSettings = () => {
                 </Button>
             </Box>
 
+            {/* Tab Navigation */}
+            <Tabs value={settingsTab} onChange={(_, v) => setSettingsTab(v)} sx={{ mb: 3, '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: '0.9rem' } }}>
+                <Tab label={textByLang('General', '일반')} />
+                <Tab label={textByLang('Projects & Sprints', '프로젝트 & 스프린트')} />
+                <Tab label={textByLang('Automation & Preferences', '자동화 & 환경설정')} />
+            </Tabs>
+
+            <TabPanel value={settingsTab} index={0}>
             {/* Invite Code */}
             <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
                 <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>{t('inviteCode') as string}<HelpTooltip title={textByLang('Invite Code', '초대 코드')} description={textByLang('Share this code with teammates so they can join your workspace. You can regenerate it anytime for security.', '이 코드를 팀원에게 공유하면 워크스페이스에 참여할 수 있습니다. 보안을 위해 언제든 코드를 재발급할 수 있습니다.')} /></Typography>
@@ -408,6 +418,9 @@ const TeamSettings = () => {
                     )}
                 </List>
             </Paper>
+            </TabPanel>
+
+            <TabPanel value={settingsTab} index={1}>
 
             {/* Projects */}
             <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
@@ -528,6 +541,9 @@ const TeamSettings = () => {
                     )}
                 </List>
             </Paper>
+            </TabPanel>
+
+            <TabPanel value={settingsTab} index={2}>
 
             {/* Automation Rules */}
             <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
@@ -630,6 +646,8 @@ const TeamSettings = () => {
                     </Box>
                 </Box>
             </Paper>
+            </TabPanel>
+
 
             {/* === DIALOGS === */}
             {/* Create Project */}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppBar, Toolbar, IconButton, Typography, Box, Avatar, Button, Menu, MenuItem, ListItemIcon, Divider } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -14,9 +14,8 @@ import { MiniPomodoroTimer } from '../components/PomodoroTimer';
 import SearchBar from '../components/SearchBar';
 import NotificationCenter from '../components/NotificationCenter';
 import TaskDetailDialog from '../components/TaskDetailDialog';
-import { fetchTasks } from '../services/taskService';
+import { useTasks } from '../hooks/useTasks';
 import { useLocation } from 'react-router-dom';
-import { toast } from 'sonner';
 import type { Task } from '../types';
 import type { TranslationKeys } from '../locales/en';
 
@@ -32,7 +31,7 @@ const Header = ({ handleDrawerToggle, onOpenShortcuts, onStartTour }: HeaderProp
   const location = useLocation();
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const { tasks, reload: reloadTasks } = useTasks();
   const [detailTask, setDetailTask] = useState<Task | null>(null);
 
   const ROUTE_TITLE_MAP: Record<string, TranslationKeys> = useMemo(() => ({
@@ -47,13 +46,8 @@ const Header = ({ handleDrawerToggle, onOpenShortcuts, onStartTour }: HeaderProp
 
   const pageTitle = t((ROUTE_TITLE_MAP[location.pathname] || 'dashboard') as TranslationKeys) as string;
 
-  useEffect(() => {
-    if (!user) return;
-    fetchTasks(user.uid).then(setTasks).catch(() => toast.error(t('loadFailed') as string));
-  }, [user, t]);
-
-  const handleTaskUpdate = (updatedTask: Task) => {
-    setTasks(prev => prev.map(task => task.id === updatedTask.id ? updatedTask : task));
+  const handleTaskUpdate = (_updatedTask: Task) => {
+    reloadTasks();
   };
 
   const getInitials = () => {
