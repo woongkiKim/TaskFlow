@@ -355,7 +355,7 @@ const Sidebar = ({ mobileOpen, handleDrawerToggle }: SidebarProps) => {
       )}
 
       {/* Projects */}
-      <Box sx={{ px: 2, pt: 1.5, flex: 1, overflowY: 'auto' }}>
+      <Box data-tour="sidebar-projects" sx={{ px: 2, pt: 1.5, flex: 1, overflowY: 'auto' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1, mb: 0.5 }}>
           <Box role="button" tabIndex={0} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 } }} onClick={() => setProjectsExpanded(!projectsExpanded)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setProjectsExpanded(!projectsExpanded); } }}>
             {projectsExpanded ? <ExpandLessIcon sx={{ fontSize: 14, color: 'text.secondary' }} /> : <ExpandMoreIcon sx={{ fontSize: 14, color: 'text.secondary' }} />}
@@ -438,7 +438,7 @@ const Sidebar = ({ mobileOpen, handleDrawerToggle }: SidebarProps) => {
         {currentProject && (
           <>
             {/* View Navigation */}
-            <Box sx={{ px: 2, mt: 1 }}>
+            <Box data-tour="sidebar-views" sx={{ px: 2, mt: 1 }}>
               <Box role="button" tabIndex={0} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, mb: 0.3, cursor: 'pointer' }} onClick={() => setViewsExpanded(!viewsExpanded)}>
                 {viewsExpanded ? <ExpandLessIcon sx={{ fontSize: 12, color: 'text.secondary' }} /> : <ExpandMoreIcon sx={{ fontSize: 12, color: 'text.secondary' }} />}
                 <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'uppercase', fontSize: '0.6rem', letterSpacing: 0.8 }}>
@@ -473,7 +473,7 @@ const Sidebar = ({ mobileOpen, handleDrawerToggle }: SidebarProps) => {
 
                 {/* My Views ??saved filters */}
                 {customViews.length > 0 && (
-                  <Box sx={{ mt: 1 }}>
+                  <Box data-tour="sidebar-custom-views" sx={{ mt: 1 }}>
                     <Box role="button" tabIndex={0} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, mb: 0.3, cursor: 'pointer' }} onClick={() => setMyViewsExpanded(!myViewsExpanded)}>
                       {myViewsExpanded ? <ExpandLessIcon sx={{ fontSize: 12, color: 'text.secondary' }} /> : <ExpandMoreIcon sx={{ fontSize: 12, color: 'text.secondary' }} />}
                       <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'uppercase', fontSize: '0.6rem', letterSpacing: 0.8 }}>
@@ -533,7 +533,7 @@ const Sidebar = ({ mobileOpen, handleDrawerToggle }: SidebarProps) => {
             <Divider sx={{ mx: 2, my: 1 }} />
 
             {/* Sprint Selector ??collapsible */}
-            <Box sx={{ px: 2 }}>
+            <Box data-tour="sidebar-sprints" sx={{ px: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1, mb: 0.5 }}>
                 <Box role="button" tabIndex={0} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer' }} onClick={() => setSprintsExpanded(!sprintsExpanded)}>
                   {sprintsExpanded ? <ExpandLessIcon sx={{ fontSize: 12, color: 'text.secondary' }} /> : <ExpandMoreIcon sx={{ fontSize: 12, color: 'text.secondary' }} />}

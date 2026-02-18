@@ -39,6 +39,7 @@ import {
   DEFAULT_WEEKLY_PLANNER_PREFERENCES,
   type WeeklyPlannerPreferences,
 } from '../utils/plannerPreferences';
+import HelpTooltip from '../components/HelpTooltip';
 
 
 const TeamSettings = () => {
@@ -306,7 +307,7 @@ const TeamSettings = () => {
 
             {/* Invite Code */}
             <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
-                <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>{t('inviteCode') as string}</Typography>
+                <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>{t('inviteCode') as string}<HelpTooltip title={textByLang('Invite Code', '초대 코드')} description={textByLang('Share this code with teammates so they can join your workspace. You can regenerate it anytime for security.', '이 코드를 팀원에게 공유하면 워크스페이스에 참여할 수 있습니다. 보안을 위해 언제든 코드를 재발급할 수 있습니다.')} /></Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{t('inviteCodeDesc') as string}</Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, bgcolor: 'grey.100', p: 2, borderRadius: 2 }}>
                     <Typography variant="h4" fontWeight={800} sx={{ letterSpacing: 6, fontFamily: 'monospace', flex: 1 }}>{inviteCode}</Typography>
@@ -317,7 +318,7 @@ const TeamSettings = () => {
 
             {/* Members */}
             <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
-                <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>{t('members') as string}</Typography>
+                <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>{t('members') as string}<HelpTooltip title={textByLang('Members', '멤버')} description={textByLang('Manage workspace members. Assign them to teams and change their roles (Admin/Member). Admins can manage settings and members.', '워크스페이스 멤버를 관리합니다. 팀에 배정하고 역할(관리자/멤버)을 변경할 수 있습니다. 관리자는 설정과 멤버를 관리할 수 있습니다.')} /></Typography>
                 <List disablePadding>
                     {currentMembers.map((m, i) => (
                         <Box key={m.uid}>
@@ -372,7 +373,7 @@ const TeamSettings = () => {
             {/* Team Groups */}
             <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-                    <Typography variant="subtitle1" fontWeight={700}>{t('teamGroups') as string}</Typography>
+                    <Typography variant="subtitle1" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>{t('teamGroups') as string}<HelpTooltip title={textByLang('Team Groups', '팀 그룹')} description={textByLang('Organize members into sub-teams like Frontend, Backend, Design, etc. Useful for filtering tasks and targeted notifications.', '프론트엔드, 백엔드, 디자인 등 하위 팀으로 멤버를 조직합니다. 작업 필터링과 알림 대상 지정에 유용합니다.')} /></Typography>
                     <Button size="small" startIcon={<AddIcon />} onClick={() => setCreateTGOpen(true)} sx={{ fontWeight: 600 }}>
                         {t('createTeamGroup') as string}
                     </Button>
@@ -411,7 +412,7 @@ const TeamSettings = () => {
             {/* Projects */}
             <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-                    <Typography variant="subtitle1" fontWeight={700}>{t('projects') as string}</Typography>
+                    <Typography variant="subtitle1" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>{t('projects') as string}<HelpTooltip title={textByLang('Projects', '프로젝트')} description={textByLang('Projects are containers for your tasks. Each project has its own board, sprints, and settings. Create one for each major initiative.', '프로젝트는 작업의 컨테이너입니다. 각 프로젝트에는 고유한 보드, 스프린트, 설정이 있습니다. 주요 이니셔티브마다 하나씩 만드세요.')} /></Typography>
                     <Button size="small" startIcon={<AddIcon />} onClick={() => setCreateProjectOpen(true)} sx={{ fontWeight: 600 }}>
                         {t('createProject') as string}
                     </Button>
@@ -435,7 +436,7 @@ const TeamSettings = () => {
             {/* Sprints */}
             <Paper sx={{ p: 3, borderRadius: 3 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-                    <Typography variant="subtitle1" fontWeight={700}>{t('sprints') as string}</Typography>
+                    <Typography variant="subtitle1" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>{t('sprints') as string}<HelpTooltip title={textByLang('Sprints & Iterations', '스프린트 & 이터레이션')} description={textByLang('Use Sprints for time-boxed work (1-2 weeks), Phases for larger groupings, and Milestones for deadline targets. Click status chips to cycle through planning → active → completed.', '스프린트는 시간 제한 작업(1-2주), 페이즈는 더 큰 그룹화, 마일스톤은 데드라인 목표에 사용합니다. 상태 칩을 클릭하면 계획 → 활성 → 완료를 순환합니다.')} /></Typography>
                     <Button size="small" startIcon={<AddIcon />} onClick={() => setCreateSprintOpen(true)} sx={{ fontWeight: 600 }}>
                         {t('createSprint') as string}
                     </Button>

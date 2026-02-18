@@ -7,7 +7,10 @@ import {
 import Sidebar, { DRAWER_WIDTH } from './Sidebar';
 import Header from './Header';
 import CommandMenu from '../components/CommandMenu';
+import OnboardingTour from '../components/OnboardingTour';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useOnboarding } from '../hooks/useOnboarding';
+import { getTourSteps } from '../constants/tourSteps';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const MOD = isMac ? 'Cmd' : 'Ctrl';
@@ -89,6 +92,27 @@ const MainLayout = () => {
   const shortcutGroups = SHORTCUT_GROUPS_BY_LANG[lang];
   const stepSeparator = STEP_SEPARATOR_BY_LANG[lang];
 
+  // Onboarding tour
+  const tourSteps = getTourSteps(lang);
+  const {
+    isActive: isTourActive,
+    currentStep: tourStep,
+    hasCompleted: hasTourCompleted,
+    wasDismissed: wasTourDismissed,
+    startTour,
+    endTour,
+    nextStep: tourNextStep,
+    prevStep: tourPrevStep,
+  } = useOnboarding();
+
+  // Auto-start tour on first visit (with a short delay so elements render)
+  useEffect(() => {
+    if (!hasTourCompleted() && !wasTourDismissed()) {
+      const timer = setTimeout(() => startTour(), 1200);
+      return () => clearTimeout(timer);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
@@ -157,11 +181,12 @@ const MainLayout = () => {
 
   return (
     <Box sx={{ display: 'flex' }}>
-      <Header handleDrawerToggle={handleDrawerToggle} onOpenShortcuts={() => setShortcutsOpen(true)} />
+      <Header handleDrawerToggle={handleDrawerToggle} onOpenShortcuts={() => setShortcutsOpen(true)} onStartTour={startTour} />
       <Sidebar mobileOpen={mobileOpen} handleDrawerToggle={handleDrawerToggle} />
 
       <Box
         component="main"
+        data-tour="main-content"
         sx={{
           flexGrow: 1,
           p: 3,
@@ -173,6 +198,16 @@ const MainLayout = () => {
         <Toolbar />
         <Outlet context={{ addTaskOpen, setAddTaskOpen }} />
       </Box>
+
+      <OnboardingTour
+        steps={tourSteps}
+        isActive={isTourActive}
+        currentStep={tourStep}
+        onNext={() => tourNextStep(tourSteps.length)}
+        onPrev={tourPrevStep}
+        onSkip={() => endTour(false)}
+        onComplete={() => endTour(true)}
+      />
 
       <CommandMenu
         open={commandMenuOpen}

@@ -6,6 +6,7 @@ import TranslateIcon from '@mui/icons-material/Translate';
 import LogoutIcon from '@mui/icons-material/Logout';
 import SettingsIcon from '@mui/icons-material/Settings';
 import KeyboardIcon from '@mui/icons-material/Keyboard';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import { DRAWER_WIDTH } from './Sidebar';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -22,9 +23,10 @@ import type { TranslationKeys } from '../locales/en';
 interface HeaderProps {
   handleDrawerToggle: () => void;
   onOpenShortcuts?: () => void;
+  onStartTour?: () => void;
 }
 
-const Header = ({ handleDrawerToggle, onOpenShortcuts }: HeaderProps) => {
+const Header = ({ handleDrawerToggle, onOpenShortcuts, onStartTour }: HeaderProps) => {
   const { user, logout } = useAuth();
   const { lang, setLang, t } = useLanguage();
   const location = useLocation();
@@ -87,6 +89,11 @@ const Header = ({ handleDrawerToggle, onOpenShortcuts }: HeaderProps) => {
     onOpenShortcuts?.();
   };
 
+  const handleStartTour = () => {
+    handleClose();
+    onStartTour?.();
+  };
+
   return (
     <>
       <AppBar
@@ -119,7 +126,9 @@ const Header = ({ handleDrawerToggle, onOpenShortcuts }: HeaderProps) => {
           <Box sx={{ flexGrow: 1 }} />
 
           {/* 검색바 */}
-          <SearchBar tasks={tasks} onSelectTask={setDetailTask} />
+          <Box data-tour="header-search">
+            <SearchBar tasks={tasks} onSelectTask={setDetailTask} />
+          </Box>
 
           {/* 언어 전환 버튼 */}
           <Button
@@ -146,7 +155,9 @@ const Header = ({ handleDrawerToggle, onOpenShortcuts }: HeaderProps) => {
           <MiniPomodoroTimer />
 
           {/* 알림 센터 */}
-          <NotificationCenter />
+          <Box data-tour="header-notifications">
+            <NotificationCenter />
+          </Box>
 
           {/* 프로필 아바타 */}
           <Box
@@ -206,6 +217,14 @@ const Header = ({ handleDrawerToggle, onOpenShortcuts }: HeaderProps) => {
                 <KeyboardIcon fontSize="small" />
               </ListItemIcon>
               {t('keyboardShortcuts') as string || 'Keyboard Shortcuts'}
+            </MenuItem>
+
+            {/* Start Tour */}
+            <MenuItem onClick={handleStartTour} sx={{ gap: 1.5, py: 1 }}>
+              <ListItemIcon sx={{ minWidth: 'auto' }}>
+                <HelpOutlineIcon fontSize="small" />
+              </ListItemIcon>
+              {lang === 'ko' ? '가이드 투어' : 'Start Tour'}
             </MenuItem>
 
             <Divider />
