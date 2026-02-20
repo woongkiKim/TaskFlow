@@ -28,6 +28,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { toast } from 'sonner';
 import { CATEGORY_COLORS } from '../constants/colors';
+import RichTextEditor from './RichTextEditor';
 
 
 
@@ -337,10 +338,14 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
                 {/* Detail Mode — all remaining fields */}
                 <Collapse in={detailMode}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-                        {/* Description */}
-                        <TextField fullWidth placeholder={t('taskDescription') as string} value={description}
-                            onChange={e => setDescription(e.target.value)} multiline rows={2} variant="outlined"
-                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                        {/* Description (Rich Text) */}
+                        <RichTextEditor
+                            content={description}
+                            onChange={setDescription}
+                            placeholder={t('taskDescription') as string}
+                            minHeight={70}
+                            members={currentMembers.map(m => ({ uid: m.uid, displayName: m.displayName, photoURL: m.photoURL }))}
+                        />
 
                         {/* Task Type */}
                         <Box>

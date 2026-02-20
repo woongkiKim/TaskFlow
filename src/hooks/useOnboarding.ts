@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 
-const STORAGE_KEY = 'taskflow_onboarding_completed';
-const DISMISSED_KEY = 'taskflow_onboarding_dismissed';
+const PREFIX = 'taskflow_onboarding_';
 
 export interface TourStep {
   /** CSS selector for the target element to spotlight */
@@ -16,17 +15,29 @@ export interface TourStep {
   placement?: 'top' | 'bottom' | 'left' | 'right';
 }
 
-export const useOnboarding = () => {
+/**
+ * Hook for per-page onboarding tours.
+ * @param pageKey — unique key per page, e.g. 'weeklyReports', 'analytics'
+ */
+export const useOnboarding = (pageKey: string = 'default') => {
+  const storageKey = `${PREFIX}${pageKey}_completed`;
+  const dismissedKey = `${PREFIX}${pageKey}_dismissed`;
+
   const [isActive, setIsActive] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
 
   const hasCompleted = useCallback(() => {
-    return localStorage.getItem(STORAGE_KEY) === 'true';
-  }, []);
+    return localStorage.getItem(storageKey) === 'true';
+  }, [storageKey]);
 
   const wasDismissed = useCallback(() => {
-    return localStorage.getItem(DISMISSED_KEY) === 'true';
-  }, []);
+    return localStorage.getItem(dismissedKey) === 'true';
+  }, [dismissedKey]);
+
+  /** True if user has never seen this page's tour */
+  const shouldShowOnboarding = useCallback(() => {
+    return !hasCompleted() && !wasDismissed();
+  }, [hasCompleted, wasDismissed]);
 
   const startTour = useCallback(() => {
     setCurrentStep(0);
@@ -37,11 +48,11 @@ export const useOnboarding = () => {
     setIsActive(false);
     setCurrentStep(0);
     if (completed) {
-      localStorage.setItem(STORAGE_KEY, 'true');
+      localStorage.setItem(storageKey, 'true');
     } else {
-      localStorage.setItem(DISMISSED_KEY, 'true');
+      localStorage.setItem(dismissedKey, 'true');
     }
-  }, []);
+  }, [storageKey, dismissedKey]);
 
   const nextStep = useCallback((totalSteps: number) => {
     if (currentStep < totalSteps - 1) {
@@ -58,15 +69,16 @@ export const useOnboarding = () => {
   }, [currentStep]);
 
   const resetTour = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(DISMISSED_KEY);
-  }, []);
+    localStorage.removeItem(storageKey);
+    localStorage.removeItem(dismissedKey);
+  }, [storageKey, dismissedKey]);
 
   return {
     isActive,
     currentStep,
     hasCompleted,
     wasDismissed,
+    shouldShowOnboarding,
     startTour,
     endTour,
     nextStep,

@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import {
   Box, Toolbar, Dialog, DialogTitle, DialogContent,
-  Typography, Chip, Divider,
+  Typography, Chip, Divider, CircularProgress,
 } from '@mui/material';
 import Sidebar, { DRAWER_WIDTH } from './Sidebar';
 import Header from './Header';
@@ -196,7 +196,13 @@ const MainLayout = () => {
         }}
       >
         <Toolbar />
-        <Outlet context={{ addTaskOpen, setAddTaskOpen }} />
+        <Suspense fallback={
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 12 }}>
+            <CircularProgress size={28} sx={{ color: 'primary.main' }} />
+          </Box>
+        }>
+          <Outlet context={{ addTaskOpen, setAddTaskOpen }} />
+        </Suspense>
       </Box>
 
       <OnboardingTour

@@ -4,7 +4,7 @@ import {
     Box, Typography, Paper, Tabs, Tab, Chip, IconButton, Button,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
     Select, MenuItem, FormControl, InputLabel, FormControlLabel,
-    Tooltip, Checkbox, Snackbar, Alert, LinearProgress,
+    Tooltip, Checkbox, Snackbar, Alert, LinearProgress, Collapse,
     Skeleton, useTheme, alpha, ToggleButtonGroup, ToggleButton, AvatarGroup, Avatar,
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -41,6 +41,8 @@ import {
 import { format } from 'date-fns';
 import TabPanel from '../components/TabPanel';
 import { AddDecisionDialog, AddHandoffDialog, AddIssueDialog, MetricCard } from './OpsCenterDialogs';
+import TaskDetailDialog from '../components/TaskDetailDialog';
+import type { Task } from '../types';
 
 const textByLang = (lang: 'ko' | 'en', en: string, ko: string) => (lang === 'ko' ? ko : en);
 
@@ -118,26 +120,33 @@ const OpsCenter = () => {
     const wsId = currentWorkspace?.id || '';
 
     const [tab, setTab] = useState(0);
-    const [opsLoading, setOpsLoading] = useState(true);
     const [sprintFilter, setSprintFilter] = useState<string>('all');
     const [myTasksOnly, setMyTasksOnly] = useState(false);
+    const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
 
     // Data
     const { tasks, loading: tasksLoading, reload: reloadTasks } = useTasks();
     const [decisions, setDecisions] = useState<Decision[]>([]);
     const [handoffs, setHandoffs] = useState<Handoff[]>([]);
     const [issues, setIssues] = useState<Issue[]>([]);
+    const [opsDataReady, setOpsDataReady] = useState(false);
 
     // Dialogs
     const [addDecisionOpen, setAddDecisionOpen] = useState(false);
     const [addHandoffOpen, setAddHandoffOpen] = useState(false);
     const [addIssueOpen, setAddIssueOpen] = useState(false);
     const [snackMsg, setSnackMsg] = useState('');
+    const [drillDown, setDrillDown] = useState<'p0' | 'blocked' | 'due48h' | 'overdue' | null>(null);
+    const [detailTask, setDetailTask] = useState<Task | null>(null);
 
-    // Load ops-specific data
+    const handleUpdateTask = useCallback(() => {
+        setDetailTask(null);
+        reloadTasks();
+    }, [reloadTasks]);
+
+    // Load ops-specific data — never toggle loading on/off for skeleton
     const loadOpsData = useCallback(async () => {
         if (!wsId) return;
-        setOpsLoading(true);
         try {
             const [d, h, i] = await Promise.all([
                 fetchDecisions(wsId),
@@ -146,12 +155,13 @@ const OpsCenter = () => {
             ]);
             setDecisions(d); setHandoffs(h); setIssues(i);
         } catch (e) { console.error('OpsCenter load error:', e); }
-        finally { setOpsLoading(false); }
+        finally { setOpsDataReady(true); }
     }, [wsId]);
 
     useEffect(() => { loadOpsData(); }, [loadOpsData]);
 
-    const loading = tasksLoading || opsLoading;
+    // Wait for BOTH workspace to be ready AND first data fetch to complete
+    const isInitialLoading = !wsId || !opsDataReady || tasksLoading;
 
     const filteredTasks = useMemo(() => {
         let result = tasks;
@@ -173,7 +183,7 @@ const OpsCenter = () => {
     }, [tasks, currentSprint]);
 
     // ═══ METRICS ═══════════════════════════════════════════
-    const today = format(new Date(), 'yyyy-MM-dd');
+    const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
     const openP0 = useMemo(() => filteredTasks.filter(t => !t.completed && normalizePriority(t.priority) === 'P0'), [filteredTasks]);
     const blockedItems = useMemo(() => filteredTasks.filter(t => !t.completed && t.blockerStatus === 'blocked'), [filteredTasks]);
     const dueIn48h = useMemo(() => {
@@ -275,8 +285,8 @@ const OpsCenter = () => {
         setSnackMsg(textByLang(lang, 'Issue logged', '이슈가 기록되었습니다'));
     };
 
-    // ═══ LOADING STATE ═════════════════════════════════════
-    if (loading) {
+    // ═══ INITIAL LOADING — stable skeleton, never flickers ═══
+    if (isInitialLoading) {
         return (
             <Box sx={{ p: 3 }}>
                 <Skeleton variant="text" width={200} height={40} />
@@ -347,13 +357,17 @@ const OpsCenter = () => {
                 {/* Metric Cards */}
                 <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 2, mb: 3 }}>
                     <MetricCard icon={<FlagIcon />} label={textByLang(lang, 'Open P0', '미해결 P0')} value={openP0.length}
-                        color="#dc2626" bgColor="#fef2f2" detail={openP0.slice(0, 2).map(t => t.text).join(', ')} />
+                        color="#dc2626" bgColor="#fef2f2" detail={openP0.slice(0, 2).map(t => t.text).join(', ')}
+                        onClick={() => setDrillDown(prev => prev === 'p0' ? null : 'p0')} />
                     <MetricCard icon={<BlockIcon />} label={textByLang(lang, 'Blocked', '차단됨')} value={blockedItems.length}
-                        color="#ea580c" bgColor="#fff7ed" detail={blockedItems.slice(0, 2).map(t => t.text).join(', ')} />
+                        color="#ea580c" bgColor="#fff7ed" detail={blockedItems.slice(0, 2).map(t => t.text).join(', ')}
+                        onClick={() => setDrillDown(prev => prev === 'blocked' ? null : 'blocked')} />
                     <MetricCard icon={<WarningAmberIcon />} label={textByLang(lang, 'Due in 48h', '48시간 내 마감')} value={dueIn48h.length}
-                        color="#ca8a04" bgColor="#fefce8" detail={dueIn48h.slice(0, 2).map(t => `${t.text} (${t.dueDate})`).join(', ')} />
+                        color="#ca8a04" bgColor="#fefce8" detail={dueIn48h.slice(0, 2).map(t => `${t.text} (${t.dueDate})`).join(', ')}
+                        onClick={() => setDrillDown(prev => prev === 'due48h' ? null : 'due48h')} />
                     <MetricCard icon={<ScheduleIcon />} label={textByLang(lang, 'Overdue', '기한 초과')} value={overdueTasks.length}
-                        color="#9333ea" bgColor="#faf5ff" detail={overdueTasks.slice(0, 2).map(t => t.text).join(', ')} />
+                        color="#9333ea" bgColor="#faf5ff" detail={overdueTasks.slice(0, 2).map(t => t.text).join(', ')}
+                        onClick={() => setDrillDown(prev => prev === 'overdue' ? null : 'overdue')} />
                     {sprintProgress && (
                         <Paper sx={{
                             p: 2, borderRadius: 3, border: '1px solid', borderColor: '#6366f1' + '30',
@@ -384,6 +398,89 @@ const OpsCenter = () => {
                     )}
                 </Box>
 
+                {/* ═══ DRILL-DOWN PANEL ═══ */}
+                <Collapse in={drillDown !== null} timeout={300}>
+                    {(() => {
+                        const drillDownConfig: Record<string, { title: string; items: typeof openP0; color: string }> = {
+                            p0: { title: textByLang(lang, 'Open P0 Tasks', '미해결 P0 작업'), items: openP0, color: '#dc2626' },
+                            blocked: { title: textByLang(lang, 'Blocked Tasks', '차단된 작업'), items: blockedItems, color: '#ea580c' },
+                            due48h: { title: textByLang(lang, 'Due Within 48 Hours', '48시간 내 마감 작업'), items: dueIn48h, color: '#ca8a04' },
+                            overdue: { title: textByLang(lang, 'Overdue Tasks', '기한 초과 작업'), items: overdueTasks, color: '#9333ea' },
+                        };
+                        const cfg = drillDown ? drillDownConfig[drillDown] : null;
+                        if (!cfg || cfg.items.length === 0) return (
+                            <Paper sx={{ p: 3, mb: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider', textAlign: 'center' }}>
+                                <Typography variant="body2" color="text.secondary">
+                                    {textByLang(lang, 'No items to display', '표시할 항목이 없습니다')}
+                                </Typography>
+                            </Paper>
+                        );
+                        return (
+                            <Paper sx={{ mb: 3, borderRadius: 3, border: '2px solid', borderColor: cfg.color + '30', overflow: 'hidden' }}>
+                                <Box sx={{ px: 2.5, py: 1.5, bgcolor: cfg.color + '08', borderBottom: '1px solid', borderColor: cfg.color + '20', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <Typography variant="subtitle2" fontWeight={700} color={cfg.color}>
+                                        {cfg.title} ({cfg.items.length})
+                                    </Typography>
+                                    <Button size="small" onClick={() => setDrillDown(null)} sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}>
+                                        {textByLang(lang, 'Close', '닫기')}
+                                    </Button>
+                                </Box>
+                                <TableContainer>
+                                    <Table size="small">
+                                        <TableHead>
+                                            <TableRow sx={{ bgcolor: alpha(cfg.color, 0.04) }}>
+                                                <TableCell sx={thSx}>ID</TableCell>
+                                                <TableCell sx={thSx}>{textByLang(lang, 'Task', '작업')}</TableCell>
+                                                <TableCell sx={thSx}>{textByLang(lang, 'Priority', '우선순위')}</TableCell>
+                                                <TableCell sx={thSx}>{textByLang(lang, 'Due Date', '마감일')}</TableCell>
+                                                <TableCell sx={thSx}>{textByLang(lang, 'Status', '상태')}</TableCell>
+                                            </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                            {cfg.items.map(task => (
+                                                <TableRow key={task.id} hover
+                                                onClick={() => setDetailTask(task)}
+                                                    sx={{ cursor: 'pointer', '&:hover': { bgcolor: alpha(cfg.color, 0.06) } }}
+                                                >
+                                                    <TableCell>
+                                                        <Chip label={task.taskCode || task.id.slice(0, 6)} size="small"
+                                                            sx={{ fontWeight: 700, fontFamily: 'monospace', height: 22 }} />
+                                                    </TableCell>
+                                                    <TableCell sx={{ ...tdSx, fontWeight: 600, maxWidth: 300 }}>
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                            {task.text}
+                                                            <LinkIcon sx={{ fontSize: 14, color: 'text.disabled', ml: 0.5 }} />
+                                                        </Box>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Chip label={task.priority || '-'} size="small"
+                                                            sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700,
+                                                                bgcolor: normalizePriority(task.priority) === 'P0' ? '#fef2f2' :
+                                                                         normalizePriority(task.priority) === 'P1' ? '#fff7ed' : '#f8fafc',
+                                                                color: normalizePriority(task.priority) === 'P0' ? '#dc2626' :
+                                                                       normalizePriority(task.priority) === 'P1' ? '#ea580c' : '#64748b',
+                                                            }} />
+                                                    </TableCell>
+                                                    <TableCell sx={{ ...tdSx, color: task.dueDate && task.dueDate < today ? '#dc2626' : 'text.secondary', fontWeight: task.dueDate && task.dueDate < today ? 600 : 400 }}>
+                                                        {task.dueDate || '-'}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Chip label={task.status || 'todo'} size="small"
+                                                            sx={{ height: 20, fontSize: '0.6rem', fontWeight: 600,
+                                                                bgcolor: task.status === 'inprogress' ? '#dbeafe' : task.status === 'in-review' ? '#fae8ff' : '#f1f5f9',
+                                                                color: task.status === 'inprogress' ? '#2563eb' : task.status === 'in-review' ? '#a855f7' : '#64748b',
+                                                            }} />
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            </Paper>
+                        );
+                    })()}
+                </Collapse>
+
                 {/* ═══ TEAM STATUS DASHBOARD ═══ */}
                 {teamGroups.length > 0 && (
                     <Box sx={{ mb: 3 }}>
@@ -407,8 +504,10 @@ const OpsCenter = () => {
                                 const tgPct = tgTotal > 0 ? Math.round((tgDone / tgTotal) * 100) : 0;
 
                                 return (
-                                    <Paper key={tg.id} sx={{
-                                        p: 2, borderRadius: 3, border: '2px solid', borderColor: tg.color + '30',
+                                    <Paper key={tg.id} onClick={() => setExpandedTeamId(prev => prev === tg.id ? null : tg.id)} sx={{
+                                        p: 2, borderRadius: 3, border: '2px solid',
+                                        borderColor: expandedTeamId === tg.id ? tg.color : tg.color + '30',
+                                        cursor: 'pointer',
                                         transition: 'all 0.2s', '&:hover': { transform: 'translateY(-2px)', boxShadow: 3 },
                                     }}>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
@@ -453,6 +552,92 @@ const OpsCenter = () => {
                                 );
                             })}
                         </Box>
+                        {/* Full-Width Team Drill-Down (below grid) */}
+                        {expandedTeamId && (() => {
+                            const tg = teamGroups.find(g => g.id === expandedTeamId);
+                            if (!tg) return null;
+                            const tgMemberIds = tg.memberIds || [];
+                            const tgTasks = filteredTasks.filter(t =>
+                                tgMemberIds.includes(t.assigneeId || '') || t.owners?.some(o => tgMemberIds.includes(o.uid))
+                            ).filter(t => !t.completed);
+                            return (
+                                <Collapse in timeout={300}>
+                                    <Paper variant="outlined" sx={{ mt: 2, borderRadius: 3, overflow: 'hidden', borderColor: tg.color + '40', border: '2px solid' }}>
+                                        <Box sx={{ px: 2.5, py: 1.5, bgcolor: alpha(tg.color, 0.06), borderBottom: '1px solid', borderColor: tg.color + '20', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: tg.color }} />
+                                                <Typography variant="subtitle2" fontWeight={700} color={tg.color}>
+                                                    {tg.name} — {textByLang(lang, 'Active Tasks', '진행 중 작업')} ({tgTasks.length})
+                                                </Typography>
+                                            </Box>
+                                            <Button size="small" onClick={(e) => { e.stopPropagation(); setExpandedTeamId(null); }}
+                                                sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}>
+                                                {textByLang(lang, 'Close', '닫기')}
+                                            </Button>
+                                        </Box>
+                                        {tgTasks.length === 0 ? (
+                                            <Box sx={{ p: 3, textAlign: 'center' }}>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    {textByLang(lang, 'No active tasks', '진행 중인 작업이 없습니다')}
+                                                </Typography>
+                                            </Box>
+                                        ) : (
+                                            <TableContainer>
+                                                <Table size="small">
+                                                    <TableHead>
+                                                        <TableRow sx={{ bgcolor: alpha(tg.color, 0.04) }}>
+                                                            <TableCell sx={{ ...thSx, width: 70 }}>ID</TableCell>
+                                                            <TableCell sx={thSx}>{textByLang(lang, 'Task', '작업')}</TableCell>
+                                                            <TableCell sx={{ ...thSx, width: 80 }}>{textByLang(lang, 'Priority', '우선순위')}</TableCell>
+                                                            <TableCell sx={{ ...thSx, width: 90 }}>{textByLang(lang, 'Due Date', '마감일')}</TableCell>
+                                                            <TableCell sx={{ ...thSx, width: 90 }}>{textByLang(lang, 'Status', '상태')}</TableCell>
+                                                        </TableRow>
+                                                    </TableHead>
+                                                    <TableBody>
+                                                        {tgTasks.slice(0, 15).map(task => (
+                                                            <TableRow key={task.id} hover
+                                                            onClick={() => setDetailTask(task)}
+                                                                sx={{ cursor: 'pointer', '&:hover': { bgcolor: alpha(tg.color, 0.04) } }}
+                                                            >
+                                                                <TableCell>
+                                                                    <Chip label={task.taskCode || task.id.slice(0, 6)} size="small"
+                                                                        sx={{ fontWeight: 700, fontFamily: 'monospace', height: 22, fontSize: '0.7rem' }} />
+                                                                </TableCell>
+                                                                <TableCell sx={{ ...tdSx, fontWeight: 600 }}>
+                                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                                        {task.text}
+                                                                        <LinkIcon sx={{ fontSize: 14, color: 'text.disabled', flexShrink: 0 }} />
+                                                                    </Box>
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    <Chip label={task.priority || '-'} size="small"
+                                                                        sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700,
+                                                                            bgcolor: normalizePriority(task.priority) === 'P0' ? '#fef2f2' :
+                                                                                     normalizePriority(task.priority) === 'P1' ? '#fff7ed' : '#f8fafc',
+                                                                            color: normalizePriority(task.priority) === 'P0' ? '#dc2626' :
+                                                                                   normalizePriority(task.priority) === 'P1' ? '#ea580c' : '#64748b',
+                                                                        }} />
+                                                                </TableCell>
+                                                                <TableCell sx={{ ...tdSx, color: task.dueDate && task.dueDate < today ? '#dc2626' : 'text.secondary', fontWeight: task.dueDate && task.dueDate < today ? 600 : 400 }}>
+                                                                    {task.dueDate || '-'}
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    <Chip label={task.status || 'todo'} size="small"
+                                                                        sx={{ height: 20, fontSize: '0.6rem', fontWeight: 600,
+                                                                            bgcolor: task.status === 'inprogress' ? '#dbeafe' : task.status === 'in-review' ? '#fae8ff' : '#f1f5f9',
+                                                                            color: task.status === 'inprogress' ? '#2563eb' : task.status === 'in-review' ? '#a855f7' : '#64748b',
+                                                                        }} />
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        ))}
+                                                    </TableBody>
+                                                </Table>
+                                            </TableContainer>
+                                        )}
+                                    </Paper>
+                                </Collapse>
+                            );
+                        })()}
                     </Box>
                 )}
 
@@ -490,13 +675,21 @@ const OpsCenter = () => {
                             <Paper sx={{ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
                                 <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                                     {flowList.map((f, i) => (
-                                        <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1, bgcolor: 'grey.50', borderRadius: 2 }}>
+                                        <Box key={i} onClick={() => setTab(2)}
+                                            sx={{
+                                                display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1,
+                                                bgcolor: 'grey.50', borderRadius: 2, cursor: 'pointer',
+                                                transition: 'all 0.15s',
+                                                '&:hover': { bgcolor: alpha(f.fromColor, 0.08), transform: 'translateY(-1px)' },
+                                            }}
+                                        >
                                             <Chip label={f.from} size="small" sx={{ fontWeight: 600, fontSize: '0.7rem', bgcolor: f.fromColor + '20', color: f.fromColor }} />
                                             <Typography variant="body2" fontWeight={700} sx={{ color: 'text.secondary' }}>→</Typography>
                                             <Chip label={f.to} size="small" sx={{ fontWeight: 600, fontSize: '0.7rem', bgcolor: f.toColor + '20', color: f.toColor }} />
                                             <Typography variant="caption" fontWeight={600} color="text.secondary">
                                                 {f.count} {f.pending > 0 ? `(${f.pending} ${textByLang(lang, 'pending', '대기')})` : ''}
                                             </Typography>
+                                            <LinkIcon sx={{ fontSize: 14, color: 'text.disabled', ml: 'auto' }} />
                                         </Box>
                                     ))}
                                 </Box>
@@ -772,6 +965,15 @@ const OpsCenter = () => {
                 anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
                 <Alert severity="success" variant="filled" sx={{ fontWeight: 600 }}>{snackMsg}</Alert>
             </Snackbar>
+
+            {/* Task Detail Dialog (inline modal) */}
+            <TaskDetailDialog
+                open={!!detailTask}
+                task={detailTask}
+                allTasks={tasks}
+                onClose={() => setDetailTask(null)}
+                onUpdate={handleUpdateTask}
+            />
         </Box>
     );
 };

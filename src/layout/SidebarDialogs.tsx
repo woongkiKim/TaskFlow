@@ -90,6 +90,7 @@ const SidebarDialogs = (props: SidebarDialogsProps) => {
 
   // Initiative creation local state
   const [newInitiativeName, setNewInitiativeName] = useState('');
+  const [creatingProject, setCreatingProject] = useState(false);
 
   const handleCreateWs = () => {
     if (!newWsName.trim()) return;
@@ -98,9 +99,11 @@ const SidebarDialogs = (props: SidebarDialogsProps) => {
   };
 
   const handleCreateProject = () => {
-    if (!newProjectName.trim()) return;
+    if (!newProjectName.trim() || creatingProject) return;
+    setCreatingProject(true);
     props.onCreateProject(newProjectName.trim(), newProjectColor, newProjectInitiativeId || undefined);
     setNewProjectName(''); setNewProjectInitiativeId('');
+    setTimeout(() => setCreatingProject(false), 800);
   };
 
   const handleCreateSprint = () => {
@@ -213,7 +216,7 @@ const SidebarDialogs = (props: SidebarDialogsProps) => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => props.setCreateProjectOpen(false)}>{t('cancel') as string}</Button>
-          <Button variant="contained" onClick={handleCreateProject} disabled={!newProjectName.trim()}>{t('save') as string}</Button>
+          <Button variant="contained" onClick={handleCreateProject} disabled={!newProjectName.trim() || creatingProject}>{creatingProject ? '...' : (t('save') as string)}</Button>
         </DialogActions>
       </Dialog>
 

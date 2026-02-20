@@ -77,14 +77,16 @@ const getIssueScopeLabel = (scope: IssueScope, lang: 'ko' | 'en') => ISSUE_SCOPE
 const getChecklistItemLabel = (item: string, lang: 'ko' | 'en') => HANDOFF_CHECKLIST_ITEM_LABELS[item]?.[lang] || item;
 
 // ─── Metric Card Component ──────────────────────────────
-export const MetricCard = ({ icon, label, value, color, bgColor, detail }: {
+export const MetricCard = ({ icon, label, value, color, bgColor, detail, onClick }: {
     icon: React.ReactNode; label: string; value: number;
     color: string; bgColor: string; detail?: string;
+    onClick?: () => void;
 }) => (
-    <Paper sx={{
+    <Paper onClick={onClick} sx={{
         p: 2, borderRadius: 3, border: '1px solid', borderColor: color + '30',
         bgcolor: bgColor, display: 'flex', alignItems: 'center', gap: 1.5,
-        transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-2px)' },
+        transition: 'all 0.2s', '&:hover': { transform: 'translateY(-2px)', boxShadow: 2 },
+        ...(onClick ? { cursor: 'pointer', '&:active': { transform: 'scale(0.97)' } } : {}),
     }}>
         <Box sx={{ color, fontSize: 28, display: 'flex' }}>{icon}</Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>

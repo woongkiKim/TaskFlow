@@ -24,6 +24,8 @@ import TableChartIcon from '@mui/icons-material/TableChart';
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import AnalyticsIcon from '@mui/icons-material/Analytics';
+import TrackChangesIcon from '@mui/icons-material/TrackChanges';
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
@@ -164,7 +166,9 @@ const Sidebar = ({ mobileOpen, handleDrawerToggle }: SidebarProps) => {
   const navItems = [
     { textKey: 'myTasks' as TranslationKeys, icon: <HomeIcon sx={{ fontSize: 20 }} />, path: '/' },
     { textKey: 'reports' as TranslationKeys, icon: <BarChartIcon sx={{ fontSize: 20 }} />, path: '/reports' },
+    { textKey: 'analytics' as TranslationKeys, icon: <AnalyticsIcon sx={{ fontSize: 20 }} />, path: '/analytics' },
     { textKey: 'opsCenter' as TranslationKeys, icon: <HubIcon sx={{ fontSize: 20 }} />, path: '/ops' },
+    { textKey: 'okr' as TranslationKeys, icon: <TrackChangesIcon sx={{ fontSize: 20 }} />, path: '/okr' },
     { textKey: 'teamSettings' as TranslationKeys, icon: <GroupsIcon sx={{ fontSize: 20 }} />, path: '/team-settings' },
   ];
 

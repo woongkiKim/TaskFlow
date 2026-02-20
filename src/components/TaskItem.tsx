@@ -13,6 +13,7 @@ import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import FolderIcon from '@mui/icons-material/Folder';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SubdirectoryArrowRightIcon from '@mui/icons-material/SubdirectoryArrowRight';
+import TimerIcon from '@mui/icons-material/Timer';
 import confetti from 'canvas-confetti';
 import { useNavigate } from 'react-router-dom';
 
@@ -343,6 +344,22 @@ const TaskItem = ({
                       bgcolor: estimateCfg.bgColor, color: estimateCfg.color,
                       minWidth: 32,
                     }} />
+                )}
+                {/* Time Spent */}
+                {task.totalTimeSpent != null && task.totalTimeSpent > 0 && (
+                  <Chip
+                    icon={<TimerIcon sx={{ fontSize: '12px !important', color: '#06b6d4 !important' }} />}
+                    label={task.totalTimeSpent >= 60
+                      ? `${Math.floor(task.totalTimeSpent / 60)}h ${task.totalTimeSpent % 60}m`
+                      : `${task.totalTimeSpent}m`
+                    }
+                    size="small"
+                    sx={{
+                      height: 20, fontSize: '0.6rem', fontWeight: 700,
+                      bgcolor: '#06b6d418', color: '#06b6d4',
+                      '& .MuiChip-icon': { ml: 0.5 },
+                    }}
+                  />
                 )}
                 {/* Sub-issues */}
                 {subIssueCount > 0 && (

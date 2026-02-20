@@ -3,7 +3,7 @@ import {
     doc, query, where, arrayUnion, arrayRemove, getDoc,
 } from 'firebase/firestore';
 import { db } from '../FBase';
-import type { Workspace, TeamMember, TeamGroup } from '../types';
+import type { Workspace, TeamMember, TeamGroup, MemberRole } from '../types';
 import { format } from 'date-fns';
 
 const WS_COLLECTION = 'workspaces';
@@ -122,7 +122,7 @@ export const removeMemberFromTeam = async (teamGroupId: string, memberUid: strin
     await updateDoc(doc(db, TG_COLLECTION, teamGroupId), { memberIds: arrayRemove(memberUid) });
 };
 
-export const updateMemberRole = async (workspaceId: string, memberUid: string, newRole: 'admin' | 'member'): Promise<void> => {
+export const updateMemberRole = async (workspaceId: string, memberUid: string, newRole: MemberRole): Promise<void> => {
     try {
         const wsRef = doc(db, WS_COLLECTION, workspaceId);
         const snap = await getDoc(wsRef);

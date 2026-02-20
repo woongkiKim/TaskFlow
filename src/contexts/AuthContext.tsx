@@ -4,6 +4,8 @@ import { type User, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, sig
 import { auth } from '../FBase';
 import { Box, CircularProgress } from '@mui/material';
 
+const IS_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
+
 interface AuthContextType {
   user: User | null;
   loading: boolean;
@@ -20,12 +22,35 @@ export const useAuth = () => {
   return context;
 };
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+// ─── Mock User (Firebase Auth 없이 사용) ─────────────────
+const MOCK_USER = {
+  uid: 'mock_user_001',
+  displayName: '김영수 (Mock)',
+  email: 'youngsoo@test.com',
+  photoURL: null,
+  emailVerified: true,
+  // Stubs for Firebase User interface fields that might be accessed
+  isAnonymous: false,
+  metadata: {},
+  providerData: [],
+  refreshToken: '',
+  tenantId: null,
+  delete: async () => {},
+  getIdToken: async () => 'mock-token',
+  getIdTokenResult: async () => ({ token: 'mock-token', claims: {}, authTime: '', issuedAtTime: '', expirationTime: '', signInProvider: null, signInSecondFactor: null }),
+  reload: async () => {},
+  toJSON: () => ({}),
+  phoneNumber: null,
+  providerId: 'mock',
+} as unknown as User;
 
-  // 1. 로그인 상태 감지 (Firebase Listener)
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [user, setUser] = useState<User | null>(IS_MOCK ? MOCK_USER : null);
+  const [loading, setLoading] = useState(!IS_MOCK);
+
+  // 1. 로그인 상태 감지 (Firebase Listener) — mock 모드에서는 skip
   useEffect(() => {
+    if (IS_MOCK) return;
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
@@ -35,6 +60,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // 2. 구글 로그인 함수
   const signInWithGoogle = async () => {
+    if (IS_MOCK) {
+      setUser(MOCK_USER);
+      return;
+    }
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
@@ -45,7 +74,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // 3. 로그아웃 함수
-  const logout = () => signOut(auth);
+  const logout = async () => {
+    if (IS_MOCK) {
+      setUser(null);
+      return;
+    }
+    return signOut(auth);
+  };
 
   const value = { user, loading, signInWithGoogle, logout };
 

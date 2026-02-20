@@ -19,6 +19,8 @@ const OpsCenter = lazy(() => import('./pages/OpsCenter'));
 const InboxPage = lazy(() => import('./pages/InboxPage'));
 const InitiativePage = lazy(() => import('./pages/InitiativePage'));
 const RoadmapPage = lazy(() => import('./pages/RoadmapPage'));
+const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
+const OKRPage = lazy(() => import('./pages/OKRPage'));
 
 // Loading Fallback Component — Linear-style branded loader
 const FullPageLoader = () => (
@@ -66,6 +68,8 @@ function App() {
               <Route path="ops" element={<OpsCenter />} />
               <Route path="initiative/:id" element={<InitiativePage />} />
               <Route path="roadmap" element={<RoadmapPage />} />
+              <Route path="analytics" element={<AnalyticsPage />} />
+              <Route path="okr" element={<OKRPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

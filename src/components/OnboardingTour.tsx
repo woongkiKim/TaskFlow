@@ -22,7 +22,7 @@ interface Rect {
   height: number;
 }
 
-const CARD_WIDTH = 340;
+const CARD_WIDTH = 400;
 const CARD_GAP = 16;
 
 const OnboardingTour = ({
@@ -182,17 +182,15 @@ const OnboardingTour = ({
           zIndex: 10000,
           borderRadius: 4,
           overflow: 'hidden',
-          background: 'linear-gradient(145deg, rgba(255,255,255,0.97) 0%, rgba(249,250,255,0.97) 100%)',
+          background: 'linear-gradient(145deg, #ffffff 0%, #f8f9ff 100%)',
           backdropFilter: 'blur(20px)',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.2), 0 0 0 1px rgba(99,102,241,0.1)',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(99,102,241,0.15)',
+          color: '#1a1a2e',
           opacity: isAnimating ? 0 : 1,
           transition: 'opacity 0.25s ease, transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           transform: isAnimating
             ? (cardPos.transform || '') + ' scale(0.95)'
             : (cardPos.transform || '') + ' scale(1)',
-          '@media (prefers-color-scheme: dark)': {
-            background: 'linear-gradient(145deg, rgba(30,30,40,0.97) 0%, rgba(25,25,35,0.97) 100%)',
-          },
         }}
       >
         {/* Progress bar */}
@@ -227,22 +225,22 @@ const OnboardingTour = ({
           >
             {currentStep + 1} / {steps.length}
           </Typography>
-          <IconButton size="small" onClick={onSkip} sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}>
+          <IconButton size="small" onClick={onSkip} sx={{ color: '#9ca3af', '&:hover': { color: '#6b7280' } }}>
             <CloseIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </Box>
 
         {/* Content */}
-        <Box sx={{ px: 2.5, py: 1.5 }}>
+        <Box sx={{ px: 2.5, py: 1.5, maxHeight: 320, overflowY: 'auto', '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: '#d1d5db', borderRadius: 2 } }}>
           <Typography
             variant="subtitle1"
             fontWeight={800}
-            sx={{ mb: 0.5, display: 'flex', alignItems: 'center', gap: 1, fontSize: '1rem', lineHeight: 1.3 }}
+            sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1, fontSize: '1.05rem', lineHeight: 1.3, color: '#1a1a2e' }}
           >
             {step.icon && <span style={{ fontSize: '1.2rem' }}>{step.icon}</span>}
             {step.title}
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65, fontSize: '0.82rem' }}>
+          <Typography variant="body2" sx={{ lineHeight: 1.75, fontSize: '0.82rem', color: '#4b5563', whiteSpace: 'pre-line' }}>
             {step.description}
           </Typography>
         </Box>
@@ -261,7 +259,7 @@ const OnboardingTour = ({
           <Button
             size="small"
             onClick={onSkip}
-            sx={{ fontSize: '0.75rem', fontWeight: 600, color: 'text.disabled', textTransform: 'none' }}
+            sx={{ fontSize: '0.75rem', fontWeight: 600, color: '#9ca3af', textTransform: 'none' }}
           >
             Skip Tour
           </Button>

@@ -186,6 +186,7 @@ const MonthlyView = ({ currentDate, setCurrentDate }: MonthlyViewProps) => {
             currentDate={currentDate}
             expanded={timelineExpanded}
             onToggle={() => setTimelineExpanded(!timelineExpanded)}
+            onDateChange={setCurrentDate}
           />
         )}
 

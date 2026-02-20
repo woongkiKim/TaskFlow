@@ -1,5 +1,6 @@
+import { useState, useEffect } from 'react';
 import {
-  Box, Typography, Paper, Avatar, Switch, Divider, Chip,
+  Box, Typography, Paper, Avatar, Switch, Divider, Chip, Select, MenuItem, FormControl,
 } from '@mui/material';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
@@ -7,9 +8,12 @@ import PersonIcon from '@mui/icons-material/Person';
 import EmailIcon from '@mui/icons-material/Email';
 import BadgeIcon from '@mui/icons-material/Badge';
 import KeyboardIcon from '@mui/icons-material/Keyboard';
+import InventoryIcon from '@mui/icons-material/Inventory';
 import { useAuth } from '../contexts/AuthContext';
 import { useThemeMode } from '../contexts/ThemeContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
+import { getBacklogSettings, saveBacklogSettings, type BacklogSettings } from '../services/backlogService';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const MOD = isMac ? 'Cmd' : 'Ctrl';
@@ -83,6 +87,29 @@ const Settings = () => {
   const { t, lang } = useLanguage();
   const shortcutGroups = SHORTCUT_GROUPS_BY_LANG[lang];
   const stepSeparator = STEP_SEPARATOR_BY_LANG[lang];
+  const { currentWorkspace } = useWorkspace();
+
+  // Backlog settings state
+  const [backlogSettings, setBacklogSettingsState] = useState<BacklogSettings>({
+    autoArchiveEnabled: false,
+    archiveDaysThreshold: 90,
+    staleNotificationDays: 60,
+    sprintRolloverEnabled: true,
+  });
+
+  useEffect(() => {
+    if (currentWorkspace?.id) {
+      setBacklogSettingsState(getBacklogSettings(currentWorkspace.id));
+    }
+  }, [currentWorkspace?.id]);
+
+  const updateBacklogSetting = <K extends keyof BacklogSettings>(key: K, value: BacklogSettings[K]) => {
+    const updated = { ...backlogSettings, [key]: value };
+    setBacklogSettingsState(updated);
+    if (currentWorkspace?.id) {
+      saveBacklogSettings(currentWorkspace.id, updated);
+    }
+  };
 
   const getInitials = () => {
     if (!user?.displayName) return '?';
@@ -166,6 +193,64 @@ const Settings = () => {
           <Switch
             checked={mode === 'dark'}
             onChange={toggleMode}
+            color="primary"
+          />
+        </Box>
+      </Paper>
+
+      {/* Backlog Management */}
+      <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider', mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+          <InventoryIcon color="primary" />
+          <Typography variant="h6" fontWeight="bold">Backlog Management</Typography>
+        </Box>
+
+        {/* Auto-archive toggle */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Box>
+            <Typography variant="subtitle2" fontWeight="600">Auto-archive stale tasks</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Automatically archive 'todo' tasks older than the threshold
+            </Typography>
+          </Box>
+          <Switch
+            checked={backlogSettings.autoArchiveEnabled}
+            onChange={(_, v) => updateBacklogSetting('autoArchiveEnabled', v)}
+            color="primary"
+          />
+        </Box>
+
+        {/* Archive threshold */}
+        {backlogSettings.autoArchiveEnabled && (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, pl: 2 }}>
+            <Typography variant="body2" color="text.secondary">Archive after (days)</Typography>
+            <FormControl size="small" sx={{ minWidth: 100 }}>
+              <Select
+                value={backlogSettings.archiveDaysThreshold}
+                onChange={e => updateBacklogSetting('archiveDaysThreshold', Number(e.target.value))}
+                sx={{ borderRadius: 2 }}
+              >
+                {[30, 60, 90, 120, 180].map(d => (
+                  <MenuItem key={d} value={d}>{d} days</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        )}
+
+        <Divider sx={{ my: 2 }} />
+
+        {/* Sprint rollover toggle */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box>
+            <Typography variant="subtitle2" fontWeight="600">Sprint auto-rollover</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Move incomplete tasks to the next sprint automatically
+            </Typography>
+          </Box>
+          <Switch
+            checked={backlogSettings.sprintRolloverEnabled}
+            onChange={(_, v) => updateBacklogSetting('sprintRolloverEnabled', v)}
             color="primary"
           />
         </Box>

@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { useLanguage } from './LanguageContext';
+import { useAuth } from './AuthContext';
+import { addTimeEntry } from '../services/timeTrackingService';
 
 type PomodoroMode = 'focus' | 'break' | 'idle';
 
@@ -9,6 +11,7 @@ interface PomodoroContextType {
     timeLeft: number;
     isRunning: boolean;
     mode: PomodoroMode;
+    completedPomodoros: number;
     startTimer: (taskId: string, taskText: string) => void;
     pauseTimer: () => void;
     resumeTimer: () => void;
@@ -23,12 +26,15 @@ const PomodoroContext = createContext<PomodoroContextType | null>(null);
 
 export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
     const { t } = useLanguage();
+    const { user } = useAuth();
     const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
     const [activeTaskText, setActiveTaskText] = useState('');
     const [timeLeft, setTimeLeft] = useState(FOCUS_DURATION);
     const [isRunning, setIsRunning] = useState(false);
     const [mode, setMode] = useState<PomodoroMode>('idle');
+    const [completedPomodoros, setCompletedPomodoros] = useState(0);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const focusStartRef = useRef<string | null>(null);
 
     // 타이머 틱
     useEffect(() => {
@@ -39,9 +45,21 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
         } else if (timeLeft === 0 && isRunning) {
             // 모드 전환
             if (mode === 'focus') {
+                // ✅ 포모도로 완료 → 시간 기록 저장
+                if (activeTaskId && user && focusStartRef.current) {
+                    addTimeEntry({
+                        taskId: activeTaskId,
+                        userId: user.uid,
+                        userName: user.displayName || '',
+                        type: 'pomodoro',
+                        startTime: focusStartRef.current,
+                        endTime: new Date().toISOString(),
+                        durationMinutes: 25,
+                    }).catch(() => { /* silent */ });
+                }
+                setCompletedPomodoros(prev => prev + 1);
                 setMode('break');
                 setTimeLeft(BREAK_DURATION);
-                // 알림 (브라우저 지원 시)
                 if ('Notification' in window && Notification.permission === 'granted') {
                     new Notification(`🍅 ${t('pomodoroComplete') as string}`, { body: t('breakTime') as string });
                 }
@@ -51,6 +69,7 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
                 setActiveTaskId(null);
                 setActiveTaskText('');
                 setTimeLeft(FOCUS_DURATION);
+                focusStartRef.current = null;
                 if ('Notification' in window && Notification.permission === 'granted') {
                     new Notification(`☕ ${t('breakTime') as string}`, { body: t('startFocus') as string });
                 }
@@ -60,7 +79,7 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
         };
-    }, [isRunning, timeLeft, mode, t]);
+    }, [isRunning, timeLeft, mode, t, activeTaskId, user]);
 
     // 알림 권한 요청
     useEffect(() => {
@@ -75,6 +94,8 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
         setMode('focus');
         setTimeLeft(FOCUS_DURATION);
         setIsRunning(true);
+        setCompletedPomodoros(0);
+        focusStartRef.current = new Date().toISOString();
     }, []);
 
     const pauseTimer = useCallback(() => {
@@ -91,6 +112,8 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
         setActiveTaskId(null);
         setActiveTaskText('');
         setTimeLeft(FOCUS_DURATION);
+        setCompletedPomodoros(0);
+        focusStartRef.current = null;
     }, []);
 
     const skipBreak = useCallback(() => {
@@ -99,11 +122,12 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
         setActiveTaskId(null);
         setActiveTaskText('');
         setTimeLeft(FOCUS_DURATION);
+        focusStartRef.current = null;
     }, []);
 
     return (
         <PomodoroContext.Provider value={{
-            activeTaskId, activeTaskText, timeLeft, isRunning, mode,
+            activeTaskId, activeTaskText, timeLeft, isRunning, mode, completedPomodoros,
             startTimer, pauseTimer, resumeTimer, resetTimer, skipBreak
         }}>
             {children}

@@ -5,6 +5,7 @@ import { createWorkspace, fetchUserWorkspaces, fetchWorkspaceMembers, fetchTeamG
 import { createProject, fetchWorkspaceProjects } from '../services/projectService';
 import { fetchProjectSprints, createSprint, updateSprint as updateSprintInDB } from '../services/sprintService';
 import { createInitiative, fetchInitiatives } from '../services/initiativeService';
+import { getBacklogSettings, autoArchiveStaleBacklog } from '../services/backlogService';
 import type { Initiative } from '../types';
 import { checkPendingInvites, acceptInvite } from '../services/invitationService';
 
@@ -111,6 +112,20 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
 
             setWorkspaces(wsList);
             setCurrentWorkspace(wsList[0]);
+
+            // Backlog auto-cleanup (runs once per day)
+            const ws = wsList[0];
+            if (ws) {
+                const lastCleanup = localStorage.getItem(`backlog_cleanup_${ws.id}`);
+                const today = new Date().toISOString().split('T')[0];
+                if (lastCleanup !== today) {
+                    const settings = getBacklogSettings(ws.id);
+                    if (settings.autoArchiveEnabled) {
+                        autoArchiveStaleBacklog(ws.id, settings.archiveDaysThreshold).catch(() => {});
+                    }
+                    localStorage.setItem(`backlog_cleanup_${ws.id}`, today);
+                }
+            }
         };
         init();
     }, [user]);

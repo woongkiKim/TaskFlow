@@ -18,16 +18,22 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import SubdirectoryArrowRightIcon from '@mui/icons-material/SubdirectoryArrowRight';
-import type { Task, Subtask, PriorityLevel, TaskType, TaskRelation, RelationType, EstimatePoint } from '../types';
+import TimerIcon from '@mui/icons-material/Timer';
+import type { Task, Subtask, PriorityLevel, TaskType, TaskRelation, RelationType, EstimatePoint, TimeEntry } from '../types';
 import {
     PRIORITY_CONFIG, TASK_TYPE_CONFIG, TASK_TYPES, STATUS_CONFIG,
     normalizePriority, STATUS_PRESETS, RELATION_TYPES, RELATION_TYPE_CONFIG,
     ESTIMATE_POINTS, ESTIMATE_CONFIG,
 } from '../types';
 import { updateTaskDetailInDB, updateSubtasksInDB } from '../services/taskService';
+import { fetchTimeEntries, addManualTimeEntry, deleteTimeEntry } from '../services/timeTrackingService';
 import { getTagColor } from './TagInput';
+import { PomodoroStartButton } from './PomodoroTimer';
+import RichTextEditor from './RichTextEditor';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 
 interface TaskDetailDialogProps {
     open: boolean;
@@ -41,6 +47,7 @@ interface TaskDetailDialogProps {
 
 const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCreateSubIssue, onTaskClick }: TaskDetailDialogProps) => {
     const { t } = useLanguage();
+    const { currentMembers } = useWorkspace();
     const [text, setText] = useState('');
     const [description, setDescription] = useState('');
     const [priority, setPriority] = useState<PriorityLevel | ''>('');
@@ -59,6 +66,10 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
     const [aiUsage, setAiUsage] = useState('');
     const [delayReason, setDelayReason] = useState('');
 
+    // Tags editing
+    const [tags, setTags] = useState<string[]>([]);
+    const [newTagText, setNewTagText] = useState('');
+
     // Issue Relations
     const [relations, setRelations] = useState<TaskRelation[]>([]);
     const [relationSearchText, setRelationSearchText] = useState('');
@@ -66,6 +77,13 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
 
     // Estimate
     const [estimate, setEstimate] = useState<EstimatePoint | null>(null);
+
+    // Time Tracking
+    const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
+    const [showTimeLog, setShowTimeLog] = useState(false);
+    const [manualMinutes, setManualMinutes] = useState('');
+    const [manualNote, setManualNote] = useState('');
+    const { user } = useAuth();
 
     // Sub-issues
     const [newSubIssueText, setNewSubIssueText] = useState('');
@@ -88,6 +106,10 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
             setDelayReason(task.delayReason || '');
             setRelations(task.relations || []);
             setEstimate((task.estimate ?? null) as EstimatePoint | null);
+            setTags(task.tags || []);
+            setNewTagText('');
+            // Load time entries
+            fetchTimeEntries(task.id).then(setTimeEntries).catch(() => {});
         }
     }, [task]);
 
@@ -110,6 +132,7 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
         if (JSON.stringify(links) !== JSON.stringify(task.links || [])) updates.links = links;
         if (JSON.stringify(relations) !== JSON.stringify(task.relations || [])) updates.relations = relations;
         if ((estimate ?? undefined) !== (task.estimate ?? undefined)) updates.estimate = estimate ?? undefined;
+        if (JSON.stringify(tags) !== JSON.stringify(task.tags || [])) updates.tags = tags;
 
         if (Object.keys(updates).length > 0) {
             try {
@@ -123,6 +146,7 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
             dueDate: dueDate || undefined, subtasks,
             blockerStatus, blockerDetail, nextAction, links, aiUsage, delayReason, relations,
             estimate: estimate ?? undefined,
+            tags: tags.length > 0 ? tags : undefined,
         };
         onUpdate(updatedTask);
     };
@@ -263,15 +287,30 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
                 )}
 
                 {/* Tags & Category */}
-                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
                     {task.category && (
                         <Chip label={task.category} size="small"
                             sx={{ fontWeight: 700, bgcolor: (task.categoryColor || '#3b82f6') + '20', color: task.categoryColor || '#3b82f6' }} />
                     )}
-                    {task.tags?.map(tag => (
-                        <Chip key={tag} label={`#${tag}`} size="small"
+                    {tags.map(tag => (
+                        <Chip key={tag} label={`#${tag}`} size="small" onDelete={() => setTags(prev => prev.filter(t => t !== tag))}
                             sx={{ fontWeight: 600, bgcolor: getTagColor(tag) + '18', color: getTagColor(tag) }} />
                     ))}
+                    <TextField
+                        size="small"
+                        placeholder="+ Tag"
+                        value={newTagText}
+                        onChange={e => setNewTagText(e.target.value.replace(/\s/g, ''))}
+                        onKeyDown={e => {
+                            if ((e.key === 'Enter' || e.key === ' ') && newTagText.trim()) {
+                                e.preventDefault();
+                                const t = newTagText.trim().replace(/^#/, '');
+                                if (t && !tags.includes(t)) setTags(prev => [...prev, t]);
+                                setNewTagText('');
+                            }
+                        }}
+                        sx={{ width: 80, '& .MuiInputBase-input': { p: '4px 8px', fontSize: '0.75rem' }, '& .MuiOutlinedInput-notchedOutline': { borderStyle: 'dashed' } }}
+                    />
                 </Box>
 
                 {/* Parent Task Breadcrumb */}
@@ -309,10 +348,117 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
                 <TextField fullWidth value={text} onChange={e => setText(e.target.value)} variant="standard"
                     sx={{ '& .MuiInputBase-input': { fontSize: '1.25rem', fontWeight: 700 } }} />
 
-                {/* Description */}
-                <TextField fullWidth placeholder={t('taskDescription') as string} value={description}
-                    onChange={e => setDescription(e.target.value)} multiline rows={3} variant="outlined"
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                {/* Description (Rich Text) */}
+                <RichTextEditor
+                    content={description}
+                    onChange={setDescription}
+                    placeholder={t('taskDescription') as string}
+                    minHeight={100}
+                    members={currentMembers.map(m => ({ uid: m.uid, displayName: m.displayName, photoURL: m.photoURL }))}
+                />
+
+                {/* Time Tracking */}
+                <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <TimerIcon sx={{ fontSize: 14, color: '#06b6d4' }} /> Time Tracking
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <PomodoroStartButton taskId={task.id} taskText={task.text} />
+                            <Chip
+                                label={(() => {
+                                    const mins = task.totalTimeSpent || 0;
+                                    if (mins === 0) return '0m';
+                                    return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+                                })()}
+                                size="small"
+                                sx={{ fontWeight: 700, bgcolor: '#06b6d418', color: '#06b6d4', fontSize: '0.75rem' }}
+                            />
+                        </Box>
+                    </Box>
+
+                    {/* Manual time input */}
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 1 }}>
+                        <TextField
+                            size="small" type="number" placeholder="Minutes"
+                            value={manualMinutes}
+                            onChange={e => setManualMinutes(e.target.value)}
+                            sx={{ width: 90, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                            slotProps={{ htmlInput: { min: 1, max: 480 } }}
+                        />
+                        <TextField
+                            size="small" placeholder="Note (optional)"
+                            value={manualNote}
+                            onChange={e => setManualNote(e.target.value)}
+                            sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        />
+                        <Button
+                            size="small" variant="outlined"
+                            disabled={!manualMinutes || Number(manualMinutes) <= 0}
+                            onClick={async () => {
+                                if (!user || !manualMinutes) return;
+                                const entry = await addManualTimeEntry(
+                                    task.id, user.uid, user.displayName || '', Number(manualMinutes), manualNote || undefined
+                                );
+                                setTimeEntries(prev => [entry, ...prev]);
+                                setManualMinutes('');
+                                setManualNote('');
+                                // Update local task totalTimeSpent
+                                onUpdate({ ...task, totalTimeSpent: (task.totalTimeSpent || 0) + Number(manualMinutes) });
+                            }}
+                            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, minWidth: 60 }}
+                        >
+                            + Add
+                        </Button>
+                    </Box>
+
+                    {/* Time log toggle */}
+                    {timeEntries.length > 0 && (
+                        <>
+                            <Button
+                                size="small" onClick={() => setShowTimeLog(!showTimeLog)}
+                                sx={{ mt: 0.5, textTransform: 'none', fontSize: '0.7rem', color: 'text.secondary' }}
+                            >
+                                {showTimeLog ? '▲ Hide' : '▼ Show'} {timeEntries.length} entries
+                            </Button>
+                            <Collapse in={showTimeLog}>
+                                <Box sx={{ maxHeight: 150, overflow: 'auto', mt: 0.5 }}>
+                                    {timeEntries.map(entry => (
+                                        <Box key={entry.id} sx={{
+                                            display: 'flex', alignItems: 'center', gap: 1, py: 0.4, px: 0.5,
+                                            borderRadius: 1, '&:hover .time-delete': { opacity: 1 },
+                                        }}>
+                                            <Chip
+                                                label={entry.type === 'pomodoro' ? '🍅' : '⏱️'}
+                                                size="small" sx={{ height: 20, fontSize: '0.7rem' }}
+                                            />
+                                            <Typography variant="caption" fontWeight={600} sx={{ minWidth: 40 }}>
+                                                {entry.durationMinutes}m
+                                            </Typography>
+                                            <Typography variant="caption" color="text.secondary" noWrap sx={{ flex: 1 }}>
+                                                {entry.note || new Date(entry.startTime).toLocaleString()}
+                                            </Typography>
+                                            <Typography variant="caption" color="text.disabled">
+                                                {entry.userName}
+                                            </Typography>
+                                            <IconButton
+                                                className="time-delete" size="small"
+                                                onClick={async () => {
+                                                    await deleteTimeEntry(entry.id, entry.taskId, entry.durationMinutes);
+                                                    setTimeEntries(prev => prev.filter(e => e.id !== entry.id));
+                                                    onUpdate({ ...task, totalTimeSpent: Math.max(0, (task.totalTimeSpent || 0) - entry.durationMinutes) });
+                                                }}
+                                                sx={{ opacity: 0, transition: 'opacity 0.15s', p: 0.3 }}
+                                            >
+                                                <DeleteOutlineIcon sx={{ fontSize: 14, color: 'error.main' }} />
+                                            </IconButton>
+                                        </Box>
+                                    ))}
+                                </Box>
+                            </Collapse>
+                        </>
+                    )}
+                </Box>
 
                 <Divider />
 

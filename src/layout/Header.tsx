@@ -40,13 +40,14 @@ const Header = ({ handleDrawerToggle, onOpenShortcuts, onStartTour }: HeaderProp
     '/planner': 'planner',
     '/reports': 'reports',
     '/ops': 'opsCenter',
+    '/okr': 'okr',
     '/settings': 'settings',
     '/team-settings': 'teamSettings',
   }), []);
 
   const pageTitle = t((ROUTE_TITLE_MAP[location.pathname] || 'dashboard') as TranslationKeys) as string;
 
-  const handleTaskUpdate = (_updatedTask: Task) => {
+  const handleTaskUpdate = () => {
     reloadTasks();
   };
 

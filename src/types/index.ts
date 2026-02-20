@@ -61,13 +61,31 @@ export const STATUS_CONFIG: Record<string, { label: string; color: string; bgCol
   'done': { label: 'Complete', color: '#16a34a', bgColor: '#f0fdf4' },
 };
 
+// --- Workspace Roles (GitHub-style hierarchy) ---
+export const ROLE_HIERARCHY = ['viewer', 'triage', 'member', 'maintainer', 'admin', 'owner'] as const;
+export type MemberRole = typeof ROLE_HIERARCHY[number];
+
+export const ROLE_CONFIG: Record<MemberRole, { label: string; labelKo: string; color: string; bgColor: string; description: string; descriptionKo: string }> = {
+  owner: { label: 'Owner', labelKo: '소유자', color: '#dc2626', bgColor: '#fef2f2', description: 'Full access, can delete workspace', descriptionKo: '전체 접근, 워크스페이스 삭제 가능' },
+  admin: { label: 'Admin', labelKo: '관리자', color: '#ea580c', bgColor: '#fff7ed', description: 'Manage workspace settings and members', descriptionKo: '워크스페이스 설정 및 멤버 관리' },
+  maintainer: { label: 'Maintainer', labelKo: '메인테이너', color: '#ca8a04', bgColor: '#fefce8', description: 'Manage team, view team reports', descriptionKo: '팀 관리, 팀 리포트 열람' },
+  member: { label: 'Member', labelKo: '멤버', color: '#2563eb', bgColor: '#eff6ff', description: 'Create and edit tasks', descriptionKo: '작업 생성 및 편집' },
+  triage: { label: 'Triage', labelKo: '분류자', color: '#7c3aed', bgColor: '#f5f3ff', description: 'Label, assign, and close issues', descriptionKo: '이슈 라벨링, 할당, 종료' },
+  viewer: { label: 'Viewer', labelKo: '뷰어', color: '#6b7280', bgColor: '#f9fafb', description: 'Read-only access', descriptionKo: '읽기 전용' },
+};
+
+/** Check if roleA has at least the same level as roleB */
+export const hasRoleLevel = (roleA: MemberRole, minRole: MemberRole): boolean => {
+  return ROLE_HIERARCHY.indexOf(roleA) >= ROLE_HIERARCHY.indexOf(minRole);
+};
+
 // --- Workspace ---
 export interface TeamMember {
   uid: string;
   displayName: string;
   email: string;
   photoURL?: string;
-  role: 'owner' | 'admin' | 'member';
+  role: MemberRole;
   joinedAt: string;
 }
 
@@ -92,6 +110,7 @@ export interface TeamGroup {
   workspaceId: string;
   name: string;
   color: string;
+  leaderId?: string;
   memberIds: string[];
   createdAt: string;
 }
@@ -136,6 +155,8 @@ export interface Sprint {
   linkedSprintIds?: string[];  // Milestone tracks these Sprint/Phase IDs
   kanbanColumns?: KanbanColumn[];
   createdAt: string;
+  scope?: 'team' | 'personal' | 'company';  // Who owns this iteration
+  dependsOn?: string[];                       // Sprint IDs that must complete before this starts
 }
 
 // --- Invitation ---
@@ -247,6 +268,24 @@ export interface Task {
 
   // Archive
   archived?: boolean;
+
+  // Time Tracking
+  totalTimeSpent?: number;  // cached total in minutes
+}
+
+// --- Time Entry ---
+export interface TimeEntry {
+  id: string;
+  taskId: string;
+  workspaceId?: string;
+  userId: string;
+  userName: string;
+  type: 'pomodoro' | 'manual';
+  startTime: string;
+  endTime: string;
+  durationMinutes: number;
+  note?: string;
+  createdAt?: unknown;      // Firestore Timestamp or ISO string
 }
 
 // --- Custom Views / Saved Filters ---
@@ -492,6 +531,38 @@ export const INITIATIVE_STATUS_CONFIG: Record<Initiative['status'], { label: str
   canceled: { label: 'Canceled', color: '#ef4444' },
 };
 
+// --- OKR ---
+export interface KeyResult {
+  id: string;
+  title: string;
+  targetValue: number;
+  currentValue: number;
+  unit: string;              // '%', '건', '점', '$' etc.
+  linkedTaskIds?: string[];
+}
+
+export interface Objective {
+  id: string;
+  title: string;
+  description?: string;
+  period: string;            // 'Q1 2026', 'Q2 2026' etc.
+  status: 'draft' | 'active' | 'completed' | 'canceled';
+  ownerId: string;
+  ownerName: string;
+  keyResults: KeyResult[];
+  workspaceId: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export const OKR_STATUS_CONFIG: Record<Objective['status'], { label: string; labelKo: string; color: string; bgColor: string }> = {
+  draft: { label: 'Draft', labelKo: '초안', color: '#94a3b8', bgColor: '#f1f5f9' },
+  active: { label: 'Active', labelKo: '진행중', color: '#3b82f6', bgColor: '#eff6ff' },
+  completed: { label: 'Completed', labelKo: '완료', color: '#10b981', bgColor: '#ecfdf5' },
+  canceled: { label: 'Canceled', labelKo: '취소', color: '#ef4444', bgColor: '#fef2f2' },
+};
+
 // --- Automation Rules ---
 export interface AutomationTrigger {
   type: 'status_change';
@@ -535,4 +606,16 @@ export const PROJECT_HEALTH_CONFIG: Record<ProjectHealth, { label: string; color
   at_risk:  { label: 'At Risk',  color: '#f59e0b', emoji: '🟡' },
   off_track:{ label: 'Off Track',color: '#ef4444', emoji: '🔴' },
 };
+
+// --- Task Comments / Activity ---
+export interface TaskComment {
+  id: string;
+  taskId?: string;
+  notificationId?: string;
+  authorUid: string;
+  authorName: string;
+  authorPhoto?: string;
+  body: string;
+  createdAt: string;
+}
 

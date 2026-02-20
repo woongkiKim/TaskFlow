@@ -141,19 +141,25 @@ const ListView = ({
     return map;
   }, [allTasks, tasks]);
 
+  // Exclude sub-issues from top-level lists — they are visible inside their parent's detail dialog
+  const topLevelTasks = useMemo(
+    () => filteredTasks.filter(task => !task.parentTaskId),
+    [filteredTasks]
+  );
+
   const todayIncompleteTasks = useMemo(
-    () => sortByOrder(filteredTasks.filter(task => !task.completed && task.createdAt.startsWith(todayKey))),
-    [filteredTasks, todayKey]
+    () => sortByOrder(topLevelTasks.filter(task => !task.completed && task.createdAt.startsWith(todayKey))),
+    [topLevelTasks, todayKey]
   );
 
   const pastIncompleteTasks = useMemo(
-    () => sortByOrder(filteredTasks.filter(task => !task.completed && !task.createdAt.startsWith(todayKey))),
-    [filteredTasks, todayKey]
+    () => sortByOrder(topLevelTasks.filter(task => !task.completed && !task.createdAt.startsWith(todayKey))),
+    [topLevelTasks, todayKey]
   );
 
   const completedTasks = useMemo(
-    () => sortByOrder(filteredTasks.filter(task => task.completed)),
-    [filteredTasks]
+    () => sortByOrder(topLevelTasks.filter(task => task.completed)),
+    [topLevelTasks]
   );
 
   const pastGrouped = useMemo(() => {
@@ -384,9 +390,9 @@ const ListView = ({
         {/* Normal date-grouped view (hidden when sprint-grouped) */}
         {!sprintGroupedTasks && todayIncompleteTasks.length > 0 && (
           <Box sx={{ mb: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5, gap: 1 }}>
               <Chip label={t('todayTasks') as string} size="small" color="primary" sx={{ fontWeight: 600 }} />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>{todayIncompleteTasks.length}</Typography>
+              <Chip label={todayIncompleteTasks.length} size="small" variant="outlined" sx={{ height: 22, minWidth: 24, fontWeight: 700, fontSize: '0.75rem', borderColor: 'primary.main', color: 'primary.main' }} />
             </Box>
 
             {onReorderTodayTasks ? (
@@ -442,9 +448,9 @@ const ListView = ({
 
         {!sprintGroupedTasks && Object.keys(pastGrouped).length > 0 && (
           <Box sx={{ mb: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5, gap: 1 }}>
               <Chip label={t('pastTasks') as string} size="small" variant="outlined" sx={{ fontWeight: 600 }} />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>{pastIncompleteTasks.length}</Typography>
+              <Chip label={pastIncompleteTasks.length} size="small" variant="outlined" sx={{ height: 22, minWidth: 24, fontWeight: 700, fontSize: '0.75rem', color: 'text.primary', borderColor: 'divider' }} />
             </Box>
             {Object.entries(pastGrouped).map(([dateKey, dateTasks]) => (
               <Box key={dateKey} sx={{ mb: 2 }}>
