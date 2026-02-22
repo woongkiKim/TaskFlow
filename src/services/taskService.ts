@@ -1,9 +1,9 @@
 import {
   collection, addDoc, getDocs, updateDoc, deleteDoc,
-  doc, query, where, orderBy, limit, startAfter, Timestamp,
-  getCountFromServer, writeBatch, arrayRemove,
+  doc, query, where, writeBatch, arrayRemove, arrayUnion, getDoc, getCountFromServer,
 } from "firebase/firestore";
-import type { Task, Subtask, TaskOwner, TaskType } from '../types';
+import type { Task, Subtask, TaskOwner, TaskType, RelationType, TaskRelation } from '../types';
+import { RELATION_TYPE_CONFIG } from '../types';
 import { db } from '../FBase';
 import { format } from 'date-fns';
 import { triggerAutomations } from './automationService';
@@ -219,11 +219,16 @@ export const toggleTaskStatusInDB = async (id: string, currentStatus: boolean): 
   const taskRef = doc(db, COLLECTION_NAME, id);
   const newCompleted = !currentStatus;
   const now = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
+  const status = newCompleted ? 'done' : 'todo';
   await updateDoc(taskRef, {
     completed: newCompleted,
-    status: newCompleted ? 'done' : 'todo',
+    status,
     updatedAt: now,
   });
+
+  if (newCompleted) {
+    handleTaskCompletionAutomation(id).catch(() => { });
+  }
 };
 
 // 5. Edit text
@@ -261,7 +266,12 @@ export const updateTaskKanbanStatusInDB = async (
   id: string, status: string, workspaceId?: string, oldStatus?: string
 ): Promise<void> => {
   const now = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
-  await updateDoc(doc(db, COLLECTION_NAME, id), { status, completed: status === 'done', updatedAt: now });
+  const isCompleted = status === 'done';
+  await updateDoc(doc(db, COLLECTION_NAME, id), { status, completed: isCompleted, updatedAt: now });
+
+  if (isCompleted) {
+    handleTaskCompletionAutomation(id).catch(() => { });
+  }
 
   // Fire automations in background (non-blocking)
   if (workspaceId) {
@@ -394,7 +404,7 @@ export const fetchTriageTasks = async (userId: string): Promise<Task[]> => {
 export const updateTaskTriageStatus = async (taskId: string, status: 'pending' | 'accepted' | 'declined' | 'snoozed'): Promise<void> => {
   try {
     const ref = doc(db, COLLECTION_NAME, taskId);
-    const updates: any = { triageStatus: status, updatedAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss') };
+    const updates: Partial<Task> = { triageStatus: status, updatedAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss') };
 
     // If declined, the UI should call unassignTask separately to remove the user.
     // We just update the status here to 'declined' for record keeping if needed.
@@ -416,4 +426,131 @@ export const unassignTask = async (taskId: string, userId: string): Promise<void
     ownerUids: arrayRemove(userId),
     updatedAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
   });
+};
+// 18. Issue Relations Management
+export const addTaskRelation = async (
+  taskId: string,
+  targetTask: Task,
+  relationType: RelationType,
+  currentTaskCode?: string,
+  currentTaskText?: string
+): Promise<void> => {
+  const batch = writeBatch(db);
+  const taskRef = doc(db, COLLECTION_NAME, taskId);
+  const targetRef = doc(db, COLLECTION_NAME, targetTask.id);
+
+  const newRel: TaskRelation = {
+    type: relationType,
+    targetTaskId: targetTask.id,
+    targetTaskCode: targetTask.taskCode,
+    targetTaskText: targetTask.text,
+  };
+
+  const invType = RELATION_TYPE_CONFIG[relationType].inverse;
+  const invRel: TaskRelation = {
+    type: invType,
+    targetTaskId: taskId,
+    targetTaskCode: currentTaskCode,
+    targetTaskText: currentTaskText,
+  };
+
+  batch.update(taskRef, { relations: arrayUnion(newRel), updatedAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss') });
+  batch.update(targetRef, { relations: arrayUnion(invRel), updatedAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss') });
+
+  await batch.commit();
+};
+
+export const removeTaskRelation = async (
+  taskId: string,
+  targetTaskId: string,
+  relationType: RelationType
+): Promise<void> => {
+  // Since arrayRemove requires the exact object, we have to fetch current relations first or use a more complex logic.
+  // For simplicity here, we fetch them. In high-concurrency, this might need transaction.
+  const taskSnap = await getDoc(doc(db, COLLECTION_NAME, taskId));
+  const targetSnap = await getDoc(doc(db, COLLECTION_NAME, targetTaskId));
+
+  if (!taskSnap.exists() || !targetSnap.exists()) return;
+
+  const taskData = taskSnap.data() as Task;
+  const targetData = targetSnap.data() as Task;
+
+  const invType = RELATION_TYPE_CONFIG[relationType].inverse;
+
+  const newTaskRels = (taskData.relations || []).filter(r => !(r.targetTaskId === targetTaskId && r.type === relationType));
+  const newTargetRels = (targetData.relations || []).filter(r => !(r.targetTaskId === taskId && r.type === invType));
+
+  const batch = writeBatch(db);
+  batch.update(doc(db, COLLECTION_NAME, taskId), { relations: newTaskRels, updatedAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss') });
+  batch.update(doc(db, COLLECTION_NAME, targetTaskId), { relations: newTargetRels, updatedAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss') });
+
+  await batch.commit();
+};
+
+// 19. Automation: Handle Task Completion (Unblock others)
+async function handleTaskCompletionAutomation(taskId: string) {
+  // Find tasks that are 'blocked_by' this taskId
+  const q = query(collection(db, COLLECTION_NAME), where("blockedBy", "array-contains", taskId));
+  const snap = await getDocs(q);
+
+  const batch = writeBatch(db);
+  const now = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
+
+  snap.docs.forEach(d => {
+    const data = d.data() as Task;
+    const newBlockedBy = (data.blockedBy || []).filter(id => id !== taskId);
+    const updates: Partial<Task> = {
+      blockedBy: newBlockedBy,
+      updatedAt: now,
+    };
+    if (newBlockedBy.length === 0) {
+      updates.blockerStatus = 'none';
+      // Optional: notify owner that the blocker is gone?
+    }
+    batch.update(d.ref, updates);
+  });
+
+  await batch.commit();
+}
+
+// 20. Sprint Rollover: Move incomplete tasks to another sprint
+export const rolloverSprintTasks = async (
+  fromSprintId: string,
+  toSprintId: string,
+  taskIds?: string[]
+): Promise<number> => {
+  let q;
+  if (taskIds && taskIds.length > 0) {
+    // Note: Firestore 'in' query is limited to 30 items. 
+    // For many tasks, we might need multiple queries or just move them all.
+    // Here we use the IDs if provided.
+    const batch = writeBatch(db);
+    const now = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
+    taskIds.forEach(id => {
+      batch.update(doc(db, COLLECTION_NAME, id), { sprintId: toSprintId, updatedAt: now });
+    });
+    await batch.commit();
+    return taskIds.length;
+  } else {
+    q = query(
+      collection(db, COLLECTION_NAME),
+      where("sprintId", "==", fromSprintId),
+      where("completed", "==", false)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return 0;
+
+    const batch = writeBatch(db);
+    const now = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
+
+    snap.docs.forEach(d => {
+      batch.update(d.ref, {
+        sprintId: toSprintId,
+        updatedAt: now,
+      });
+    });
+
+    await batch.commit();
+    return snap.size;
+  }
 };

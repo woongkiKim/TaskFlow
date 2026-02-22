@@ -3,6 +3,8 @@ import en from '../locales/en';
 import ko from '../locales/ko';
 import type { TranslationKeys } from '../locales/en';
 
+export type { TranslationKeys };
+
 type Lang = 'ko' | 'en';
 const dictionaries = { ko, en };
 
@@ -26,7 +28,7 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const t = useCallback((key: TranslationKeys): string | string[] => {
-    return dictionaries[lang][key] ?? key;
+    return dictionaries[lang][key as keyof typeof en] ?? key;
   }, [lang]);
 
   return (

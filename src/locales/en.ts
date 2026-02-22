@@ -1,11 +1,14 @@
 const en = {
   // Common
   appName: 'TaskFlow',
+  workspaces: 'Workspaces',
   cancel: 'Cancel',
   save: 'Save',
   create: 'Create',
   close: 'Close',
   name: 'Name',
+  team: 'Team',
+  all: 'All',
 
   // Sidebar
   menu: 'MENU',
@@ -101,6 +104,39 @@ const en = {
   week: 'Week',
   day: 'Day',
 
+  // IterationTimeline
+  iterationTimeline: 'Iteration Timeline',
+  allScope: 'All',
+  teamScope: 'Team',
+  personalScope: 'Personal',
+  companyScope: 'Company',
+  previousMonth: 'Previous month',
+  goToToday: 'Go to today',
+  nextMonth: 'Next month',
+  zoomIn: 'Zoom In',
+  zoomOut: 'Zoom Out',
+  noIterationsVisible: 'No iterations visible for this scope/month',
+  clickForDetails: 'Click for details',
+  dependencies: 'dependencies',
+  period: '📅 Period',
+  progressLabel: '📊 Progress',
+  durationLabel: 'Duration',
+  dependsOn: 'Depends On',
+  blocksLabel: 'Blocks',
+  linkedIterationsLabel: 'Linked Iterations',
+  statusPlanning: 'Planning',
+  statusActive: 'Active',
+  statusCompleted: 'Completed',
+
+  // DailyView dates
+  sundayShort: 'Sunday',
+  mondayShort: 'Monday',
+  tuesdayShort: 'Tuesday',
+  wednesdayShort: 'Wednesday',
+  thursdayShort: 'Thursday',
+  fridayShort: 'Friday',
+  saturdayShort: 'Saturday',
+
   // MonthlyView
   completion: 'COMPLETION',
   selectedDay: 'SELECTED DAY',
@@ -171,6 +207,7 @@ const en = {
 
   // Workspace
   members: 'members',
+  home: 'Home',
   myTasks: 'My Tasks',
   allTasks: 'All Tasks',
   projects: 'PROJECTS',
@@ -436,7 +473,7 @@ const en = {
   totalMembers: 'Total Members',
   // Weekly Report role-based
   myReport: 'My Report',
-  teamOverview: 'Team Overview',
+  teamAvgOverview: 'Team Overview',
   teamMemberReport: 'Member Report',
   selectMember: 'Select Member',
   allMembers: 'All Members',
@@ -448,6 +485,45 @@ const en = {
   avgCompletionRate: 'Avg Completion Rate',
   topPerformer: 'Top Performer',
   memberCount: 'Team Size',
+
+  // Wiki
+  wiki: 'Docs',
+  wikiSubtitle: 'Manage your team\'s knowledge in one place',
+  newDocument: 'New Document',
+  editDocument: 'Edit Document',
+  deleteDocument: 'Delete Document',
+  deleteDocumentConfirm: 'Are you sure you want to delete this document?',
+  pinnedDocs: '📌 Pinned',
+  allDocs: '📄 All Documents',
+  recentDocs: '🕐 Recently Updated',
+  searchDocs: 'Search documents...',
+  noDocsYet: 'No documents yet',
+  noDocsHint: 'Create a new document to capture your team\'s knowledge',
+  docTitle: 'Document Title',
+  docContent: 'Start writing...',
+  docIcon: 'Icon',
+  docTags: 'Tags',
+  pinDoc: 'Pin',
+  unpinDoc: 'Unpin',
+  lastEdited: 'Last edited',
+  createdBy: 'Created by',
+  preview: 'Preview',
+  editor: 'Editor',
+
+  // Block Editor
+  slashCommandHint: "Press '/' to browse block types",
+  typeOrSlash: "Type something or press '/' for commands",
+  blockType: 'Block Type',
+
+  // GitHub
+  github: 'GitHub',
+  integrations: 'Integrations',
+  discussions: 'Discussions',
+  productivity: 'Productivity',
+  automations: 'Automations',
+  customFields: 'Custom Fields',
+  gantt: 'Gantt Chart',
+  timeTracking: 'Time Tracking',
 };
 
 export default en;

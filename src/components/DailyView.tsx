@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Box, Typography, InputBase, Paper, Divider, Chip, CircularProgress, IconButton } from '@mui/material';
+import { Box, Typography, InputBase, Paper, Divider, Chip, CircularProgress, IconButton, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { format, addDays, subDays, isSameDay } from 'date-fns';
+import { ko as dateFnsKo } from 'date-fns/locale';
 import TaskItem from './TaskItem';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -16,11 +17,14 @@ import type { Task } from '../types';
 interface DailyViewProps {
   currentDate: Date;
   setCurrentDate: (date: Date) => void;
+  calendarView?: 'month' | 'week' | 'day';
+  onViewChange?: (view: 'month' | 'week' | 'day') => void;
 }
 
-const DailyView = ({ currentDate, setCurrentDate }: DailyViewProps) => {
+const DailyView = ({ currentDate, setCurrentDate, calendarView, onViewChange }: DailyViewProps) => {
   const { user } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const dateLocale = lang === 'ko' ? dateFnsKo : undefined;
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [newTaskText, setNewTaskText] = useState('');
   const [loading, setLoading] = useState(true);
@@ -30,8 +34,8 @@ const DailyView = ({ currentDate, setCurrentDate }: DailyViewProps) => {
 
   const isToday = isSameDay(currentDate, new Date());
   const dateLabel = isToday
-    ? `${t('todayComma') as string} ${format(currentDate, 'EEEE, MMMM d')}`
-    : format(currentDate, 'EEEE, MMMM d');
+    ? `${t('todayComma') as string} ${format(currentDate, 'EEEE, MMMM d', { locale: dateLocale })}`
+    : format(currentDate, 'EEEE, MMMM d', { locale: dateLocale });
 
   const completedCount = tasks.filter((t) => t.completed).length;
   const progress = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
@@ -122,7 +126,7 @@ const DailyView = ({ currentDate, setCurrentDate }: DailyViewProps) => {
   return (
     <Box sx={{ maxWidth: '800px', mx: 'auto', pb: 4 }}>
       {/* 헤더 섹션 */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
             <Box sx={{ display: 'flex', bgcolor: 'background.paper', borderRadius: 2, border: '1px solid' }}>
@@ -136,9 +140,24 @@ const DailyView = ({ currentDate, setCurrentDate }: DailyViewProps) => {
               </IconButton>
               <IconButton onClick={() => setCurrentDate(addDays(currentDate, 1))} size="small"><ChevronRightIcon /></IconButton>
             </Box>
+            {onViewChange && (
+              <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 0.3 }}>
+                <ToggleButtonGroup
+                  value={calendarView || 'day'}
+                  exclusive
+                  onChange={(_, v) => v && onViewChange(v)}
+                  size="small"
+                  sx={{ height: 30 }}
+                >
+                  <ToggleButton value="month" sx={{ px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>{t('month') as string}</ToggleButton>
+                  <ToggleButton value="week" sx={{ px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>{t('week') as string}</ToggleButton>
+                  <ToggleButton value="day" sx={{ px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>{t('day') as string}</ToggleButton>
+                </ToggleButtonGroup>
+              </Paper>
+            )}
           </Box>
-          <Typography variant="h4" fontWeight="800" gutterBottom>
-            {format(currentDate, 'MMMM d, yyyy')}
+          <Typography variant="h4" fontWeight="800" gutterBottom sx={{ fontSize: { xs: '1.5rem', sm: '2rem', md: '2.125rem' } }}>
+            {format(currentDate, 'PPP', { locale: dateLocale })}
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CalendarTodayIcon fontSize="small" color="primary" />

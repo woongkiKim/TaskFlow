@@ -1,11 +1,14 @@
 const ko = {
   // Common
   appName: 'TaskFlow',
+  workspaces: '워크스페이스',
   cancel: '취소',
   save: '저장',
   create: '생성',
   close: '닫기',
   name: '이름',
+  team: '팀',
+  all: '전체',
 
   // Sidebar
   menu: '메뉴',
@@ -101,6 +104,39 @@ const ko = {
   week: '주',
   day: '일',
 
+  // IterationTimeline
+  iterationTimeline: '이터레이션 타임라인',
+  allScope: '전체',
+  teamScope: '팀',
+  personalScope: '개인',
+  companyScope: '전사',
+  previousMonth: '이전 달',
+  goToToday: '오늘로 이동',
+  nextMonth: '다음 달',
+  zoomIn: '확대',
+  zoomOut: '축소',
+  noIterationsVisible: '이 범위/월에 해당하는 이터레이션이 없습니다',
+  clickForDetails: '클릭하여 상세 보기',
+  dependencies: '종속성',
+  period: '📅 기간',
+  progressLabel: '📊 진행률',
+  durationLabel: '기간',
+  dependsOn: '선행 조건',
+  blocksLabel: '차단 중',
+  linkedIterationsLabel: '연결된 이터레이션',
+  statusPlanning: '계획',
+  statusActive: '진행 중',
+  statusCompleted: '완료됨',
+
+  // DailyView dates
+  sundayShort: '일요일',
+  mondayShort: '월요일',
+  tuesdayShort: '화요일',
+  wednesdayShort: '수요일',
+  thursdayShort: '목요일',
+  fridayShort: '금요일',
+  saturdayShort: '토요일',
+
   // MonthlyView
   completion: '완료율',
   selectedDay: '선택된 날',
@@ -171,6 +207,7 @@ const ko = {
 
   // Workspace
   members: '명',
+  home: '홈',
   myTasks: '내 할 일',
   allTasks: '전체',
   projects: '프로젝트',
@@ -436,7 +473,7 @@ const ko = {
   totalMembers: '전체 멤버',
   // Weekly Report role-based
   myReport: '내 리포트',
-  teamOverview: '팀 평균',
+  teamAvgOverview: '팀 평균',
   teamMemberReport: '팀원 리포트',
   selectMember: '멤버 선택',
   allMembers: '전체 멤버',
@@ -448,6 +485,45 @@ const ko = {
   avgCompletionRate: '평균 완료율',
   topPerformer: '최다 완료',
   memberCount: '팀원 수',
+
+  // Wiki
+  wiki: '위키',
+  wikiSubtitle: '팀의 지식을 한곳에서 관리하세요',
+  newDocument: '새 문서',
+  editDocument: '문서 편집',
+  deleteDocument: '문서 삭제',
+  deleteDocumentConfirm: '이 문서를 삭제하시겠습니까?',
+  pinnedDocs: '📌 고정된 문서',
+  allDocs: '📄 모든 문서',
+  recentDocs: '🕐 최근 수정',
+  searchDocs: '문서 검색...',
+  noDocsYet: '아직 문서가 없습니다',
+  noDocsHint: '새 문서를 만들어 팀의 지식을 기록하세요',
+  docTitle: '문서 제목',
+  docContent: '내용을 작성하세요...',
+  docIcon: '아이콘',
+  docTags: '태그',
+  pinDoc: '고정',
+  unpinDoc: '고정 해제',
+  lastEdited: '마지막 수정',
+  createdBy: '작성자',
+  preview: '미리보기',
+  editor: '편집기',
+
+  // Block Editor
+  slashCommandHint: "'/'를 눌러 블록 유형을 선택하세요",
+  typeOrSlash: "텍스트를 입력하거나 '/'를 눌러 블록을 추가하세요",
+  blockType: '블록 유형',
+
+  // GitHub
+  github: 'GitHub',
+  integrations: '통합 연동',
+  discussions: '토론',
+  productivity: '생산성',
+  automations: '자동화 규칙',
+  customFields: '커스텀 필드',
+  gantt: '간트 차트',
+  timeTracking: '시간 추적',
 };
 
 export default ko;

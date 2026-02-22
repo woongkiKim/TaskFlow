@@ -5,7 +5,7 @@ import {
     LinearProgress, Chip, Avatar, Collapse, Tooltip, Select,
     MenuItem, FormControl, InputLabel, Dialog, DialogTitle,
     DialogContent, DialogActions, Skeleton, alpha, useTheme,
-    Slider,
+    Slider, ListSubheader,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -15,21 +15,23 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import TrackChangesIcon from '@mui/icons-material/TrackChanges';
 import FlagIcon from '@mui/icons-material/Flag';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 
 import { useAuth } from '../contexts/AuthContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { fetchObjectives, createObjective, updateObjective, deleteObjective } from '../services/okrService';
-import type { Objective, KeyResult } from '../types';
-import { OKR_STATUS_CONFIG } from '../types';
+import type { Objective, KeyResult, OkrCadence } from '../types';
+import { OKR_STATUS_CONFIG, generateOkrPeriods, getCurrentPeriod, OKR_CADENCE_CONFIG, getDateRangeForPeriod } from '../types';
 
 const t = (lang: 'ko' | 'en', en: string, ko: string) => (lang === 'ko' ? ko : en);
 
 // ─── Generate unique ID ───
 const genId = () => `kr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
-// ─── Period options ───
-const PERIODS = ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'];
+// ─── Period options (dynamic: currentYear-1 ~ currentYear+2) ───
+const ALL_PERIODS = generateOkrPeriods();
+const CADENCE_ORDER: OkrCadence[] = ['annual', 'half', 'quarterly'];
 
 const OKRPage = () => {
     const theme = useTheme();
@@ -48,8 +50,19 @@ const OKRPage = () => {
     // New Objective form
     const [newTitle, setNewTitle] = useState('');
     const [newDesc, setNewDesc] = useState('');
-    const [newPeriod, setNewPeriod] = useState('Q1 2026');
+    const [newPeriod, setNewPeriod] = useState(getCurrentPeriod('quarterly'));
+    const [newStartDate, setNewStartDate] = useState('');
+    const [newEndDate, setNewEndDate] = useState('');
     const [newStatus, setNewStatus] = useState<Objective['status']>('draft');
+
+    // Auto-fill dates when period preset changes
+    const handlePeriodChange = (val: string) => {
+        setNewPeriod(val);
+        if (val !== 'custom') {
+            const range = getDateRangeForPeriod(val);
+            if (range) { setNewStartDate(range.startDate); setNewEndDate(range.endDate); }
+        }
+    };
 
     // ─── Load ───
     const loadData = useCallback(async () => {
@@ -69,7 +82,7 @@ const OKRPage = () => {
     const toggleExpand = (id: string) => {
         setExpandedIds(prev => {
             const next = new Set(prev);
-            next.has(id) ? next.delete(id) : next.add(id);
+            if (next.has(id)) { next.delete(id); } else { next.add(id); }
             return next;
         });
     };
@@ -80,7 +93,9 @@ const OKRPage = () => {
         const obj = await createObjective({
             title: newTitle.trim(),
             description: newDesc.trim() || undefined,
-            period: newPeriod,
+            period: newPeriod === 'custom' ? t(lang, 'Custom', '커스텀') : newPeriod,
+            startDate: newStartDate || undefined,
+            endDate: newEndDate || undefined,
             status: newStatus,
             ownerId: user.uid,
             ownerName: user.displayName || 'User',
@@ -90,7 +105,7 @@ const OKRPage = () => {
         });
         setObjectives(prev => [obj, ...prev]);
         setExpandedIds(prev => new Set(prev).add(obj.id));
-        setNewTitle(''); setNewDesc(''); setAddDialogOpen(false);
+        setNewTitle(''); setNewDesc(''); setNewStartDate(''); setNewEndDate(''); setAddDialogOpen(false);
     };
 
     // ─── Delete Objective ───
@@ -175,13 +190,26 @@ const OKRPage = () => {
                     </Typography>
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-                    <FormControl size="small" sx={{ minWidth: 130 }}>
+                    <FormControl size="small" sx={{ minWidth: 160 }}>
                         <InputLabel>{t(lang, 'Period', '기간')}</InputLabel>
                         <Select value={periodFilter} label={t(lang, 'Period', '기간')}
                             onChange={e => setPeriodFilter(e.target.value)}
                             sx={{ borderRadius: 2, fontWeight: 600, fontSize: '0.85rem' }}>
                             <MenuItem value="all">{t(lang, 'All Periods', '전체')}</MenuItem>
-                            {PERIODS.map(p => <MenuItem key={p} value={p}>{p}</MenuItem>)}
+                            {CADENCE_ORDER.map(cadence => {
+                                const cfg = OKR_CADENCE_CONFIG[cadence];
+                                const items = ALL_PERIODS.filter(p => p.cadence === cadence);
+                                return [
+                                    <ListSubheader key={`hdr-${cadence}`} sx={{ fontWeight: 700, fontSize: '0.72rem', lineHeight: '28px', color: cfg.color }}>
+                                        {cfg.icon} {lang === 'ko' ? cfg.labelKo : cfg.label}
+                                    </ListSubheader>,
+                                    ...items.map(p => (
+                                        <MenuItem key={p.value} value={p.value} sx={{ fontSize: '0.85rem', pl: 4 }}>
+                                            {lang === 'ko' ? p.labelKo : p.label}
+                                        </MenuItem>
+                                    )),
+                                ];
+                            })}
                         </Select>
                     </FormControl>
                     <Button variant="contained" startIcon={<AddIcon />}
@@ -258,8 +286,15 @@ const OKRPage = () => {
                                             <Typography variant="subtitle1" fontWeight={700} noWrap>{obj.title}</Typography>
                                             <Chip label={lang === 'ko' ? cfg.labelKo : cfg.label} size="small"
                                                 sx={{ fontWeight: 700, fontSize: '0.7rem', bgcolor: cfg.bgColor, color: cfg.color, height: 22 }} />
-                                            <Chip label={obj.period} size="small" variant="outlined"
-                                                sx={{ fontWeight: 600, fontSize: '0.7rem', height: 22 }} />
+                                            <Tooltip title={obj.startDate && obj.endDate ? `${obj.startDate} ~ ${obj.endDate}` : obj.period}>
+                                                <Chip
+                                                    icon={<CalendarMonthIcon sx={{ fontSize: 14 }} />}
+                                                    label={obj.startDate && obj.endDate
+                                                        ? `${obj.period}  (${obj.startDate.slice(5)} ~ ${obj.endDate.slice(5)})`
+                                                        : obj.period}
+                                                    size="small" variant="outlined"
+                                                    sx={{ fontWeight: 600, fontSize: '0.7rem', height: 22 }} />
+                                            </Tooltip>
                                         </Box>
                                         {obj.description && (
                                             <Typography variant="body2" color="text.secondary" noWrap sx={{ ml: 3.5 }}>
@@ -431,18 +466,39 @@ const OKRPage = () => {
                         label={t(lang, 'Objective Title', '목표 제목')}
                         value={newTitle} onChange={e => setNewTitle(e.target.value)} fullWidth autoFocus
                         placeholder={t(lang, 'e.g. Improve product quality by 60%', '예: 제품 품질 60% 향상')}
+                        slotProps={{ inputLabel: { shrink: true } }}
                     />
                     <TextField
                         label={t(lang, 'Description (optional)', '설명 (선택)')}
                         value={newDesc} onChange={e => setNewDesc(e.target.value)} fullWidth multiline rows={2}
                         placeholder={t(lang, 'What does this objective aim to achieve?', '이 목표의 달성 방향을 설명해 주세요')}
+                        slotProps={{ inputLabel: { shrink: true } }}
                     />
                     <Box sx={{ display: 'flex', gap: 2 }}>
                         <FormControl size="small" sx={{ flex: 1 }}>
                             <InputLabel>{t(lang, 'Period', '기간')}</InputLabel>
                             <Select value={newPeriod} label={t(lang, 'Period', '기간')}
-                                onChange={e => setNewPeriod(e.target.value)}>
-                                {PERIODS.map(p => <MenuItem key={p} value={p}>{p}</MenuItem>)}
+                                onChange={e => handlePeriodChange(e.target.value)}>
+                                {CADENCE_ORDER.map(cadence => {
+                                    const cfg = OKR_CADENCE_CONFIG[cadence];
+                                    const items = ALL_PERIODS.filter(p => p.cadence === cadence);
+                                    return [
+                                        <ListSubheader key={`dlg-${cadence}`} sx={{ fontWeight: 700, fontSize: '0.72rem', lineHeight: '28px', color: cfg.color }}>
+                                            {cfg.icon} {lang === 'ko' ? cfg.labelKo : cfg.label}
+                                        </ListSubheader>,
+                                        ...items.map(p => (
+                                            <MenuItem key={p.value} value={p.value} sx={{ fontSize: '0.85rem', pl: 4 }}>
+                                                {lang === 'ko' ? p.labelKo : p.label}
+                                            </MenuItem>
+                                        )),
+                                    ];
+                                })}
+                                <ListSubheader sx={{ fontWeight: 700, fontSize: '0.72rem', lineHeight: '28px', color: '#64748b' }}>
+                                    ✏️ {t(lang, 'Custom', '커스텀')}
+                                </ListSubheader>
+                                <MenuItem value="custom" sx={{ fontSize: '0.85rem', pl: 4 }}>
+                                    {t(lang, 'Custom Period...', '직접 설정...')}
+                                </MenuItem>
                             </Select>
                         </FormControl>
                         <FormControl size="small" sx={{ flex: 1 }}>
@@ -457,6 +513,29 @@ const OKRPage = () => {
                             </Select>
                         </FormControl>
                     </Box>
+                    {/* Date range — always shown, auto-filled from preset or editable */}
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                        <TextField
+                            label={t(lang, 'Start Date', '시작일')}
+                            type="date" size="small" fullWidth
+                            value={newStartDate}
+                            onChange={e => setNewStartDate(e.target.value)}
+                            slotProps={{ inputLabel: { shrink: true } }}
+                        />
+                        <TextField
+                            label={t(lang, 'End Date', '종료일')}
+                            type="date" size="small" fullWidth
+                            value={newEndDate}
+                            onChange={e => setNewEndDate(e.target.value)}
+                            slotProps={{ inputLabel: { shrink: true } }}
+                        />
+                    </Box>
+                    {newPeriod !== 'custom' && newStartDate && newEndDate && (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+                            💡 {t(lang, 'Dates auto-filled from period preset. You can adjust them freely.',
+                                '기간 프리셋에서 자동 입력되었습니다. 자유롭게 수정할 수 있습니다.')}
+                        </Typography>
+                    )}
                 </DialogContent>
                 <DialogActions sx={{ px: 3, pb: 2 }}>
                     <Button onClick={() => setAddDialogOpen(false)} sx={{ textTransform: 'none' }}>

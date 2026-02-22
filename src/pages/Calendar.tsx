@@ -1,21 +1,52 @@
-import { useEffect, useState } from 'react';
-import { Box, ToggleButton, ToggleButtonGroup, Paper } from '@mui/material';
+import { useEffect, useState, useCallback } from 'react';
+import { Box } from '@mui/material';
 import WeeklyPlanner from './WeeklyPlanner';
 import MonthlyView from '../components/MonthlyView';
 import DailyView from '../components/DailyView';
-import { useLanguage } from '../contexts/LanguageContext';
 import { useSearchParams } from 'react-router-dom';
 
-const Calendar = () => {
-  const [view, setView] = useState<'month' | 'week' | 'day'>('month');
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const { t } = useLanguage();
-  const [searchParams] = useSearchParams();
+type CalendarView = 'month' | 'week' | 'day';
 
+const Calendar = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Read initial view from URL, defaulting to 'month'
+  const viewParam = searchParams.get('calView') as CalendarView | null;
+  const [view, setViewState] = useState<CalendarView>(
+    viewParam === 'month' || viewParam === 'week' || viewParam === 'day' ? viewParam : 'month'
+  );
+  const [currentDate, setCurrentDate] = useState(() => {
+    const dateParam = searchParams.get('date');
+    if (dateParam) {
+      const parsed = new Date(`${dateParam}T00:00:00`);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+    return new Date();
+  });
+
+  // When view changes, persist to URL search params
+  const setView = useCallback((newView: CalendarView) => {
+    setViewState(newView);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('calView', newView);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  // Sync with external URL changes (e.g. navigation from other components)
   useEffect(() => {
-    const viewParam = searchParams.get('view');
-    if (viewParam === 'month' || viewParam === 'week' || viewParam === 'day') {
-      setView(viewParam);
+    const vp = searchParams.get('calView') as CalendarView | null;
+    if (vp && (vp === 'month' || vp === 'week' || vp === 'day') && vp !== view) {
+      setViewState(vp);
+    }
+
+    // Legacy support: read 'view' param if 'calView' not set
+    if (!vp) {
+      const legacyVp = searchParams.get('view') as CalendarView | null;
+      if (legacyVp && (legacyVp === 'month' || legacyVp === 'week' || legacyVp === 'day') && legacyVp !== view) {
+        setViewState(legacyVp);
+      }
     }
 
     const dateParam = searchParams.get('date');
@@ -25,36 +56,28 @@ const Calendar = () => {
         setCurrentDate(parsed);
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-
-      {/* Top Bar: View Toggle */}
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 0.5 }}>
-          <ToggleButtonGroup
-            value={view}
-            exclusive
-            onChange={(_, newView) => newView && setView(newView)}
-            size="small"
-            sx={{ height: 32 }}
-          >
-            <ToggleButton value="month" sx={{ px: 2, fontSize: '0.8rem', fontWeight: 600 }}>{t('month') as string}</ToggleButton>
-            <ToggleButton value="week" sx={{ px: 2, fontSize: '0.8rem', fontWeight: 600 }}>{t('week') as string}</ToggleButton>
-            <ToggleButton value="day" sx={{ px: 2, fontSize: '0.8rem', fontWeight: 600 }}>{t('day') as string}</ToggleButton>
-          </ToggleButtonGroup>
-        </Paper>
-      </Box>
-
-      {/* View Content */}
-      <Box sx={{ flex: 1, height: '100%', pt: 2 }}>
+      <Box sx={{ flex: 1, height: '100%' }}>
         {view === 'month' ? (
-          <MonthlyView currentDate={currentDate} setCurrentDate={setCurrentDate} />
+          <MonthlyView
+            currentDate={currentDate}
+            setCurrentDate={setCurrentDate}
+            calendarView={view}
+            onViewChange={setView}
+          />
         ) : view === 'week' ? (
-          <WeeklyPlanner initialDate={currentDate} />
+          <WeeklyPlanner initialDate={currentDate} calendarView={view} onViewChange={setView} />
         ) : (
-          <DailyView currentDate={currentDate} setCurrentDate={setCurrentDate} />
+          <DailyView
+            currentDate={currentDate}
+            setCurrentDate={setCurrentDate}
+            calendarView={view}
+            onViewChange={setView}
+          />
         )}
       </Box>
     </Box>

@@ -1,9 +1,10 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useAuth } from './AuthContext';
-import type { Workspace, TeamMember, TeamGroup, Project, Sprint, ViewFilter } from '../types';
+import type { Workspace, TeamMember, TeamGroup, Project, Sprint, ViewFilter, ViewMode } from '../types';
 import { createWorkspace, fetchUserWorkspaces, fetchWorkspaceMembers, fetchTeamGroups, joinWorkspaceByInvite } from '../services/workspaceService';
 import { createProject, fetchWorkspaceProjects } from '../services/projectService';
-import { fetchProjectSprints, createSprint, updateSprint as updateSprintInDB } from '../services/sprintService';
+import { fetchProjectSprints, createSprint, updateSprint as updateSprintInDB, fetchWorkspaceSprints, deleteSprint as deleteSprintInDB } from '../services/sprintService';
+import { updateWorkspace as updateWorkspaceInDB } from '../services/workspaceService';
 import { createInitiative, fetchInitiatives } from '../services/initiativeService';
 import { getBacklogSettings, autoArchiveStaleBacklog } from '../services/backlogService';
 import type { Initiative } from '../types';
@@ -17,6 +18,7 @@ interface WorkspaceContextType {
     setCurrentWorkspace: (ws: Workspace) => void;
     addWorkspace: (name: string, color: string, type: Workspace['type']) => Promise<Workspace>;
     refreshWorkspaces: () => Promise<void>;
+    updateWorkspaceConfig: (updates: Partial<Workspace>) => Promise<void>;
 
     // Team Groups
     teamGroups: TeamGroup[];
@@ -38,10 +40,13 @@ interface WorkspaceContextType {
 
     // Sprints
     sprints: Sprint[];
+    allWorkspaceSprints: Sprint[];
     currentSprint: Sprint | null;
     setCurrentSprint: (s: Sprint | null) => void;
     addSprint: (name: string, type?: Sprint['type'], startDate?: string, endDate?: string, parentId?: string, linkedSprintIds?: string[]) => Promise<Sprint>;
     updateCurrentSprint: (updates: Partial<Sprint>) => Promise<void>;
+    updateSprint: (id: string, updates: Partial<Sprint>) => Promise<void>;
+    deleteSprint: (id: string) => Promise<void>;
     refreshSprints: () => Promise<void>;
 
     // Members
@@ -57,8 +62,8 @@ interface WorkspaceContextType {
     getLinkedSprints: (milestoneId: string) => Sprint[];
 
     // View mode (Linear/Jira style — shared between sidebar and content)
-    currentViewMode: 'list' | 'board' | 'calendar' | 'table';
-    setCurrentViewMode: (v: 'list' | 'board' | 'calendar' | 'table') => void;
+    currentViewMode: ViewMode;
+    setCurrentViewMode: (v: ViewMode) => void;
 
     // Custom View filter
     activeViewFilter: ViewFilter | null;
@@ -77,10 +82,11 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     const [projects, setProjects] = useState<Project[]>([]);
     const [currentProject, setCurrentProject] = useState<Project | null>(null);
     const [sprints, setSprints] = useState<Sprint[]>([]);
+    const [allWorkspaceSprints, setAllWorkspaceSprints] = useState<Sprint[]>([]);
     const [currentSprint, setCurrentSprint] = useState<Sprint | null>(null);
     const [currentMembers, setCurrentMembers] = useState<TeamMember[]>([]);
     const [scope, setScope] = useState<'mine' | 'all'>('mine');
-    const [currentViewMode, setCurrentViewMode] = useState<'list' | 'board' | 'calendar' | 'table'>('list');
+    const [currentViewMode, setCurrentViewMode] = useState<ViewMode>('list');
     const [activeViewFilter, setActiveViewFilter] = useState<ViewFilter | null>(null);
     const [initiatives, setInitiatives] = useState<Initiative[]>([]);
 
@@ -155,21 +161,28 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
             }
             setProjects(projs);
             setCurrentProject(projs[0]);
+
+            // All sprints for workspace
+            const allWsSprints = await fetchWorkspaceSprints(projs.map(p => p.id));
+            setAllWorkspaceSprints(allWsSprints);
         };
         load();
-    }, [currentWorkspace, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentWorkspace?.id, user?.uid]);
 
     // 3. project 선택 시 → sprints 로드
     useEffect(() => {
-        if (!currentProject) { setSprints([]); setCurrentSprint(null); return; }
+         
+        if (!currentProject?.id) { setSprints([]); setCurrentSprint(null); return; }
+        const projectId = currentProject.id;
         const load = async () => {
-            const sp = await fetchProjectSprints(currentProject.id);
+            const sp = await fetchProjectSprints(projectId);
             setSprints(sp);
             const active = sp.find(s => s.status === 'active');
-            setCurrentSprint(active || null);
+            setCurrentSprint(active ?? null);
         };
         load();
-    }, [currentProject]);
+    }, [currentProject?.id]);
 
     // --- Actions ---
     const addWorkspace = useCallback(async (name: string, color: string, type: Workspace['type']) => {
@@ -186,6 +199,18 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
         const wsList = await fetchUserWorkspaces(user.uid);
         setWorkspaces(wsList);
     }, [user]);
+
+    const updateWorkspaceConfig = useCallback(async (updates: Partial<Workspace>) => {
+        if (!currentWorkspace) return;
+        try {
+            await updateWorkspaceInDB(currentWorkspace.id, updates);
+            setCurrentWorkspace(prev => prev ? { ...prev, ...updates } : null);
+            setWorkspaces(prev => prev.map(ws => ws.id === currentWorkspace.id ? { ...ws, ...updates } : ws));
+        } catch (e) {
+            console.error(e);
+            throw e;
+        }
+    }, [currentWorkspace]);
 
     const addProject = useCallback(async (name: string, color: string, teamGroupId?: string, initiativeId?: string) => {
         if (!user || !currentWorkspace) throw new Error('No workspace');
@@ -235,6 +260,29 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
         }
     }, [currentSprint]);
 
+    const updateSprint = useCallback(async (id: string, updates: Partial<Sprint>) => {
+        try {
+            await updateSprintInDB(id, updates);
+            setSprints(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+            setAllWorkspaceSprints(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+        } catch (e) {
+            console.error(e);
+            throw e;
+        }
+    }, []);
+
+    const deleteSprint = useCallback(async (id: string) => {
+        try {
+            await deleteSprintInDB(id);
+            setSprints(prev => prev.filter(s => s.id !== id));
+            setAllWorkspaceSprints(prev => prev.filter(s => s.id !== id));
+            if (currentSprint?.id === id) setCurrentSprint(null);
+        } catch (e) {
+            console.error(e);
+            throw e;
+        }
+    }, [currentSprint]);
+
     const refreshSprints = useCallback(async () => {
         if (!currentProject) return;
         const sp = await fetchProjectSprints(currentProject.id);
@@ -272,10 +320,10 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     }, [currentWorkspace]);
 
     const value: WorkspaceContextType = {
-        workspaces, currentWorkspace, setCurrentWorkspace, addWorkspace, refreshWorkspaces,
+        workspaces, currentWorkspace, setCurrentWorkspace, addWorkspace, refreshWorkspaces, updateWorkspaceConfig,
         teamGroups, currentTeamGroup, setCurrentTeamGroup, refreshTeamGroups,
         projects, currentProject, setCurrentProject, addProject, refreshProjects,
-        sprints, currentSprint, setCurrentSprint, addSprint, updateCurrentSprint, refreshSprints,
+        sprints, allWorkspaceSprints, currentSprint, setCurrentSprint, addSprint, updateCurrentSprint, updateSprint, deleteSprint, refreshSprints,
         currentMembers, refreshMembers,
         scope, setScope,
         activeViewFilter, setActiveViewFilter, currentViewMode, setCurrentViewMode,
@@ -290,6 +338,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components -- hook is intentionally co-located with provider
 export const useWorkspace = (): WorkspaceContextType => {
     const ctx = useContext(WorkspaceContext);
     if (!ctx) throw new Error('useWorkspace must be used within WorkspaceProvider');

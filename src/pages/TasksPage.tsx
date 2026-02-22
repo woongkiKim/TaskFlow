@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { toast } from 'sonner';
-import { useOutletContext } from 'react-router-dom';
 import {
-    Box, ToggleButtonGroup, ToggleButton, CircularProgress, Typography, Chip,
-    InputBase, Paper, Grow, IconButton, Tooltip, Snackbar, Button, LinearProgress,
+    Box, Typography, Button, ToggleButtonGroup, ToggleButton,
+    alpha, IconButton, Tooltip, Divider, CircularProgress,
+    Menu, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, TextField,
+    Snackbar, Chip, Grow, Paper, InputBase, LinearProgress
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
@@ -11,6 +11,7 @@ import FlagIcon from '@mui/icons-material/Flag';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import KeyboardIcon from '@mui/icons-material/Keyboard';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
@@ -19,19 +20,30 @@ import BusinessIcon from '@mui/icons-material/Business';
 import {
     fetchProjectTasks, fetchPersonalTasks, fetchMyWorkTasks, addTaskToDB,
     toggleTaskStatusInDB, updateTaskTextInDB, deleteTaskFromDB, updateTaskKanbanStatusInDB,
-    updateTaskOrdersInDB,
+    updateTaskOrdersInDB, rolloverSprintTasks
 } from '../services/taskService';
+import { fetchCustomViews, saveCustomView, deleteCustomView } from '../services/savedViewService';
 import { updateProjectColumns, DEFAULT_KANBAN_COLUMNS } from '../services/projectService';
-import type { Task, KanbanColumn, TaskType, TaskOwner, PriorityLevel } from '../types';
+import type { Task, KanbanColumn, TaskType, TaskOwner, PriorityLevel, CustomView, ViewMode as GlobalViewMode } from '../types';
 import ListView from '../components/ListView';
 import BoardView from '../components/BoardView';
 import TableView from '../components/TableView';
+import GanttChart from '../components/GanttChart';
 import CategoryFilter from '../components/CategoryFilter';
 import AddTaskDialog from '../components/AddTaskDialog';
 import TaskDetailDialog from '../components/TaskDetailDialog';
-import MonthlyView from '../components/MonthlyView';
+import Calendar from './Calendar';
+import TimelineIcon from '@mui/icons-material/Timeline';
+import SaveIcon from '@mui/icons-material/Save';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import SpeedIcon from '@mui/icons-material/Speed';
+import ArticleIcon from '@mui/icons-material/Article';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import { toast } from 'sonner';
 
-type ViewMode = 'list' | 'board' | 'calendar' | 'table';
+
+type LocalViewMode = GlobalViewMode;
 type TaskScope = 'personal' | 'work';
 const sortTasksByOrder = (arr: Task[]) => [...arr].sort((a, b) => {
     const ao = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER;
@@ -42,36 +54,40 @@ const sortTasksByOrder = (arr: Task[]) => [...arr].sort((a, b) => {
 
 const TasksPage = () => {
     const { user } = useAuth();
-    const { t } = useLanguage();
+    const { t, lang } = useLanguage();
     const { currentProject, setCurrentProject, currentWorkspace, currentSprint, scope, sprints, updateCurrentSprint, currentViewMode, setCurrentViewMode, activeViewFilter, setActiveViewFilter, projects } = useWorkspace();
-
-    // Receive shortcut-triggered addTask state from MainLayout
-    const outletCtx = useOutletContext<{ addTaskOpen?: boolean; setAddTaskOpen?: (v: boolean) => void } | undefined>();
 
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
-    const viewMode = currentViewMode;
+    const viewMode = currentViewMode as LocalViewMode;
     const setViewMode = setCurrentViewMode;
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
     const [addDialogOpen, setAddDialogOpen] = useState(false);
     const [detailTask, setDetailTask] = useState<Task | null>(null);
 
-    // Open add dialog when keyboard shortcut fires
-    useEffect(() => {
-        if (outletCtx?.addTaskOpen) {
-            setAddDialogOpen(true);
-            outletCtx.setAddTaskOpen?.(false);
-        }
-    }, [outletCtx?.addTaskOpen]);
-    const [calendarDate, setCalendarDate] = useState(new Date());
+    // Saved Views
+    const [savedViews, setSavedViews] = useState<CustomView[]>([]);
+    const [activeSavedViewId, setActiveSavedViewId] = useState<string | null>(null);
+    const [isSavingView, setIsSavingView] = useState(false);
+    const [newViewName, setNewViewName] = useState('');
+    const [saveViewDialogOpen, setSaveViewDialogOpen] = useState(false);
+    const [viewAnchorEl, setViewAnchorEl] = useState<null | HTMLElement>(null);
+    const [selectedViewForMenu, setSelectedViewForMenu] = useState<CustomView | null>(null);
+
+    // Sprint Management
+    const [sprintAnchorEl, setSprintAnchorEl] = useState<null | HTMLElement>(null);
+    const [rolloverDialogOpen, setRolloverDialogOpen] = useState(false);
+    const [targetSprintId, setTargetSprintId] = useState('');
+    const [isRollingOver, setIsRollingOver] = useState(false);
+
     const [taskScope, setTaskScope] = useState<TaskScope>('personal');
 
     // Determine available view modes based on iteration type
     const iterationType = currentSprint?.type;
-    const availableViews: ViewMode[] = useMemo(() => {
+    const availableViews: LocalViewMode[] = useMemo(() => {
         if (iterationType === 'milestone') return ['list'];
         if (iterationType === 'phase') return ['list', 'table', 'calendar'];
-        return ['list', 'board', 'calendar', 'table'];
+        return ['list', 'board', 'calendar', 'table', 'timeline'];
     }, [iterationType]);
 
     // Auto-correct viewMode when iteration type changes
@@ -87,6 +103,18 @@ const TasksPage = () => {
     const [quickAddFocused, setQuickAddFocused] = useState(false);
     const quickAddRef = useRef<HTMLInputElement>(null);
 
+    // Fetch saved views
+    useEffect(() => {
+        if (!currentWorkspace) return;
+        const loadViews = async () => {
+            try {
+                const views = await fetchCustomViews(currentWorkspace.id, currentProject?.id);
+                setSavedViews(views);
+            } catch (e) { console.error('Failed to load views:', e); }
+        };
+        loadViews();
+    }, [currentWorkspace, currentProject]);
+
     // Fetch tasks — branches by taskScope
     useEffect(() => {
         if (!user) return;
@@ -95,20 +123,16 @@ const TasksPage = () => {
             try {
                 let data: Task[] = [];
                 if (currentProject) {
-                    // Project selected → always show project tasks
                     data = await fetchProjectTasks(currentProject.id);
                 } else if (activeViewFilter?.initiativeId && currentWorkspace) {
-                    // Initiative View: Fetch tasks from all linked projects
                     const linkedProjs = projects.filter(p => p.initiativeId === activeViewFilter.initiativeId);
                     if (linkedProjs.length > 0) {
                         const results = await Promise.all(linkedProjs.map(p => fetchProjectTasks(p.id)));
                         data = results.flat();
                     }
                 } else if (taskScope === 'work' && currentWorkspace) {
-                    // Work tab → all tasks where I'm tagged in this workspace
                     data = await fetchMyWorkTasks(user.uid, currentWorkspace.id);
                 } else {
-                    // Personal tab → my personal tasks only
                     data = await fetchPersonalTasks(user.uid);
                 }
                 setTasks(data);
@@ -117,6 +141,7 @@ const TasksPage = () => {
         };
         load();
     }, [user, currentProject, currentWorkspace, taskScope, activeViewFilter, projects]);
+
 
     // Filter: scope + sprint
     const filteredTasks = useMemo(() => {
@@ -447,9 +472,82 @@ const TasksPage = () => {
         }
     };
 
+    // --- View Management Handlers ---
+    const handleApplyView = useCallback((view: CustomView | null) => {
+        if (!view) {
+            setActiveViewFilter(null);
+            setViewMode('list');
+            setActiveSavedViewId(null);
+            return;
+        }
+        setActiveViewFilter(view.filters);
+        setViewMode(view.viewMode as LocalViewMode);
+        setActiveSavedViewId(view.id);
+    }, [setActiveViewFilter, setViewMode]);
+
+    const handleSaveNewView = async () => {
+        if (!user || !currentWorkspace || !newViewName.trim()) return;
+        setIsSavingView(true);
+        try {
+            const view = await saveCustomView({
+                name: newViewName.trim(),
+                icon: '📋',
+                color: '#6366f1',
+                filters: activeViewFilter || {},
+                viewMode: viewMode,
+                workspaceId: currentWorkspace.id,
+                projectId: currentProject?.id || '',
+                createdBy: user.uid,
+            });
+            setSavedViews(prev => [...prev, view]);
+            setActiveSavedViewId(view.id);
+            setSaveViewDialogOpen(false);
+            setNewViewName('');
+            toast.success('View saved successfully');
+        } catch (e) {
+            console.error('Failed to save view:', e);
+            toast.error('Failed to save view');
+        } finally {
+            setIsSavingView(false);
+        }
+    };
+
+    const handleDeleteView = async (id: string) => {
+        try {
+            await deleteCustomView(id);
+            setSavedViews(prev => prev.filter(v => v.id !== id));
+            if (activeSavedViewId === id) {
+                handleApplyView(null);
+            }
+            toast.success('View deleted');
+        } catch (e) {
+            console.error('Failed to delete view:', e);
+            toast.error('Failed to delete view');
+        }
+    };
+
     const handleTaskUpdate = (updatedTask: Task) => {
         setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
     };
+
+    const handleRolloverTasks = async () => {
+        if (!currentSprint || !targetSprintId) return;
+        setIsRollingOver(true);
+        try {
+            const count = await rolloverSprintTasks(currentSprint.id, targetSprintId);
+            toast.success(lang === 'ko' ? `${count}개의 할 일이 연기되었습니다.` : `${count} tasks rolled over successfully.`);
+            setRolloverDialogOpen(false);
+            // Refresh tasks
+            const data = currentProject ? await fetchProjectTasks(currentProject.id) : [];
+            setTasks(data);
+        } catch (e) {
+            console.error('Rollover failed:', e);
+            toast.error('Rollover failed');
+        } finally {
+            setIsRollingOver(false);
+        }
+    };
+
 
     // Sub-issue creation
     const handleCreateSubIssue = async (parentTask: Task, subIssueText: string) => {
@@ -467,7 +565,7 @@ const TasksPage = () => {
                 assigneePhoto: user.photoURL || '',
             });
             setTasks(prev => [savedTask, ...prev]);
-            toast.success(`Sub-issue created: ${subIssueText}`);
+            toast.success('Sub-issue created: ' + subIssueText);
         } catch { toast.error('Failed to create sub-issue'); }
     };
 
@@ -533,7 +631,7 @@ const TasksPage = () => {
             }
 
             // 1-4 → Switch views (only if available)
-            const viewKeys: Record<string, ViewMode> = { '1': 'list', '2': 'board', '3': 'calendar', '4': 'table' };
+            const viewKeys: Record<string, LocalViewMode> = { '1': 'list', '2': 'board', '3': 'calendar', '4': 'table' };
             if (viewKeys[e.key] && availableViews.includes(viewKeys[e.key])) {
                 e.preventDefault();
                 setViewMode(viewKeys[e.key]);
@@ -592,25 +690,39 @@ const TasksPage = () => {
                         </Box>
                     )}
                     {currentSprint && (
-                        <Chip
-                            icon={
-                                currentSprint.type === 'milestone' ? <FlagIcon sx={{ fontSize: 14 }} /> :
-                                    currentSprint.type === 'phase' ? <ListAltIcon sx={{ fontSize: 14 }} /> :
-                                        <RocketLaunchIcon sx={{ fontSize: 14 }} />
-                            }
-                            label={
-                                currentSprint.type === 'milestone' ? `🎯 ${currentSprint.name}` :
-                                    currentSprint.type === 'phase' ? `📋 ${currentSprint.name}` :
-                                        `${currentSprint.name}`
-                            }
-                            size="small"
-                            color={
-                                currentSprint.type === 'milestone' ? 'error' :
-                                    currentSprint.type === 'phase' ? 'success' :
-                                        'primary'
-                            }
-                            variant="outlined"
-                            sx={{ fontWeight: 600, fontSize: '0.75rem' }} />
+                        <>
+                            <Chip
+                                icon={
+                                    currentSprint.type === 'milestone' ? <FlagIcon sx={{ fontSize: 14 }} /> :
+                                        currentSprint.type === 'phase' ? <ListAltIcon sx={{ fontSize: 14 }} /> :
+                                            <RocketLaunchIcon sx={{ fontSize: 14 }} />
+                                }
+                                label={
+                                    currentSprint.type === 'milestone' ? '🎯 ' + currentSprint.name :
+                                        currentSprint.type === 'phase' ? '📋 ' + currentSprint.name :
+                                            currentSprint.name
+                                }
+                                size="small"
+                                color={
+                                    currentSprint.type === 'milestone' ? 'error' :
+                                        currentSprint.type === 'phase' ? 'success' :
+                                            'primary'
+                                }
+                                variant="outlined"
+                                onClick={(e) => setSprintAnchorEl(e.currentTarget)}
+                                sx={{ fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }} />
+                            <Menu
+                                anchorEl={sprintAnchorEl}
+                                open={Boolean(sprintAnchorEl)}
+                                onClose={() => setSprintAnchorEl(null)}
+                                PaperProps={{ sx: { borderRadius: 2, minWidth: 180 } }}
+                            >
+                                <MenuItem onClick={() => { setSprintAnchorEl(null); setRolloverDialogOpen(true); }}>
+                                    <SpeedIcon sx={{ fontSize: 18, mr: 1, color: 'text.secondary' }} />
+                                    {lang === 'ko' ? '다음으로 넘기기 (Rollover)' : 'Rollover Tasks'}
+                                </MenuItem>
+                            </Menu>
+                        </>
                     )}
                     {!currentSprint && sprints.length > 0 && (
                         <Chip label={t('backlog') as string} size="small" variant="outlined"
@@ -619,10 +731,81 @@ const TasksPage = () => {
                 </Box>
 
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    {/* View Switcher (System + Custom) */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: 'background.paper', borderRadius: 2.5, p: 0.5, border: '1px solid', borderColor: 'divider', overflowX: 'auto', maxWidth: { xs: '300px', sm: '100%' }, scrollbarWidth: 'none' }}>
+                        {[
+                            { id: 'list', name: (t('listView') as string), icon: <ArticleIcon sx={{ fontSize: 18 }} /> },
+                            { id: 'board', name: (t('boardView') as string), icon: <DashboardIcon sx={{ fontSize: 18 }} /> },
+                            { id: 'calendar', name: (t('calendarView') as string), icon: <CalendarMonthIcon sx={{ fontSize: 18 }} /> },
+                            { id: 'table', name: (t('tableView') as string), icon: <SpeedIcon sx={{ fontSize: 18 }} /> },
+                            { id: 'timeline', name: 'Timeline', icon: <TimelineIcon sx={{ fontSize: 18 }} /> },
+                        ].map((v) => (
+                            <Button
+                                key={v.id}
+                                size="small"
+                                onClick={() => {
+                                    if (viewMode !== v.id) {
+                                        setViewMode(v.id as GlobalViewMode);
+                                        setActiveSavedViewId(null);
+                                    }
+                                }}
+                                sx={{
+                                    minWidth: 'auto', px: 1.5, py: 0.5, borderRadius: 2,
+                                    color: (viewMode === v.id && !activeSavedViewId) ? 'primary.main' : 'text.secondary',
+                                    bgcolor: (viewMode === v.id && !activeSavedViewId) ? alpha('#6366f1', 0.1) : 'transparent',
+                                    fontWeight: (viewMode === v.id && !activeSavedViewId) ? 700 : 500,
+                                    fontSize: '0.78rem', textTransform: 'none', gap: 0.8, whiteSpace: 'nowrap',
+                                    '&:hover': { bgcolor: alpha('#6366f1', 0.05) }
+                                }}
+                            >
+                                {v.icon} {v.name as string}
+                            </Button>
+                        ))}
+                        {savedViews.length > 0 && <Divider orientation="vertical" flexItem sx={{ mx: 1, my: 0.5 }} />}
+                        {savedViews.map(view => (
+                            <Box key={view.id} sx={{ display: 'flex', alignItems: 'center' }}>
+                                <Button
+                                    size="small"
+                                    onClick={() => handleApplyView(view)}
+                                    sx={{
+                                        minWidth: 'auto', px: 1.5, py: 0.5, borderRadius: 2,
+                                        color: activeSavedViewId === view.id ? 'primary.main' : 'text.secondary',
+                                        bgcolor: activeSavedViewId === view.id ? alpha('#6366f1', 0.1) : 'transparent',
+                                        fontWeight: activeSavedViewId === view.id ? 700 : 500,
+                                        fontSize: '0.78rem', textTransform: 'none', gap: 0.8, whiteSpace: 'nowrap',
+                                        '&:hover': { bgcolor: alpha('#6366f1', 0.05) }
+                                    }}
+                                >
+                                    {view.icon || '📋'} {view.name}
+                                </Button>
+                                <IconButton 
+                                    size="small" 
+                                    onClick={(e) => {
+                                        setViewAnchorEl(e.currentTarget);
+                                        setSelectedViewForMenu(view);
+                                    }}
+                                    sx={{ p: 0.3, ml: -1, mr: 0.5, color: 'text.secondary', opacity: 0.4, '&:hover': { opacity: 1 } }}
+                                >
+                                    <MoreVertIcon sx={{ fontSize: 14 }} />
+                                </IconButton>
+                            </Box>
+                        ))}
+                        <Tooltip title="Save Current View as Custom">
+                            <IconButton 
+                                size="small" 
+                                onClick={() => setSaveViewDialogOpen(true)}
+                                sx={{ ml: 0.5, bgcolor: 'action.hover', border: '1px dashed', borderColor: 'divider' }}
+                            >
+                                <SaveIcon sx={{ fontSize: 16 }} />
+                            </IconButton>
+                        </Tooltip>
+                    </Box>
+
                     {allTags.length > 0 && viewMode !== 'calendar' && (
                         <CategoryFilter allTags={allTags} selectedTag={selectedTag} onSelectTag={setSelectedTag} />
                     )}
                 </Box>
+
             </Box>
 
             {/* 🌟 Quick-Add Bar — always visible, all views */}
@@ -728,11 +911,11 @@ const TasksPage = () => {
                         <CheckCircleIcon sx={{ fontSize: 28, color: progressStats.percent === 100 ? 'white' : 'action.disabled' }} />
                         <Box sx={{ flex: 1 }}>
                             <Typography variant="body1" fontWeight={700} color={progressStats.percent === 100 ? 'white' : 'text.primary'}>
-                                {progressStats.percent === 100 ? `🎉 ${t('achieved') as string}` : `🎯 ${t('notAchieved') as string}`}
+                                {progressStats.percent === 100 ? (lang === 'ko' ? '🎉 달성됨' : '🎉 Achieved') : (lang === 'ko' ? '🎯 미달성' : '🎯 Not Achieved')}
                             </Typography>
                             <Typography variant="caption" color={progressStats.percent === 100 ? 'rgba(255,255,255,0.8)' : 'text.secondary'}>
                                 {(t('tasksCompletedCount') as string).replace('{done}', String(progressStats.done)).replace('{total}', String(progressStats.total))}
-                                {currentSprint.endDate && ` · ${t('targetDate') as string}: ${currentSprint.endDate}`}
+                                {currentSprint.endDate && ' · ' + (t('targetDate') as string) + ': ' + currentSprint.endDate}
                             </Typography>
                         </Box>
                         <Typography variant="h5" fontWeight={800} color={progressStats.percent === 100 ? 'white' : 'text.secondary'}>
@@ -755,7 +938,7 @@ const TasksPage = () => {
                             Custom view active
                         </Typography>
                         <Chip
-                            label={`${viewFilteredTasks.length} tasks`}
+                            label={String(viewFilteredTasks.length) + ' tasks'}
                             size="small"
                             sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }}
                         />
@@ -772,14 +955,110 @@ const TasksPage = () => {
             <Box sx={{ flex: 1, overflow: 'hidden' }}>
                 {viewMode === 'list' && <ListView tasks={viewFilteredTasks} selectedTag={selectedTag} onAddInline={handleAddInline} onToggle={handleToggle} onDelete={handleDelete} onEdit={handleEdit} onTaskClick={setDetailTask} onMoveTask={handleMoveListTask} onReorderTodayTasks={handleReorderTodayTasks} sprintGroups={sprintGroups} allTasks={tasks} />}
                 {viewMode === 'board' && <BoardView tasks={viewFilteredTasks} columns={currentSprint?.kanbanColumns || currentProject?.kanbanColumns || DEFAULT_KANBAN_COLUMNS} selectedTag={selectedTag} onKanbanStatusChange={handleKanbanStatusChange} onMoveTaskInColumn={handleMoveBoardTask} onReorderTasksInColumn={handleReorderBoardTasks} onTaskClick={setDetailTask} onColumnsChange={handleColumnsChange} onAddTask={handleBoardInlineAdd} />}
-                {viewMode === 'calendar' && <MonthlyView currentDate={calendarDate} setCurrentDate={setCalendarDate} />}
+                {viewMode === 'calendar' && <Calendar />}
                 {viewMode === 'table' && <TableView tasks={viewFilteredTasks} selectedTag={selectedTag} onToggle={handleToggle} onTaskClick={setDetailTask} />}
+                {viewMode === 'timeline' && (
+                    <GanttChart 
+                        items={viewFilteredTasks.map(t => ({
+                            id: t.id,
+                            name: t.text,
+                            startDate: t.startDate || t.createdAt,
+                            targetDate: t.dueDate,
+                            createdAt: t.createdAt,
+                            color: t.categoryColor || '#6366f1'
+                        }))}
+                        onItemClick={(item) => setDetailTask(tasks.find(t => t.id === item.id) || null)}
+                    />
+                )}
             </Box>
+
 
             <AddTaskDialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} onSubmit={handleAddDialog} />
             <TaskDetailDialog open={!!detailTask} task={detailTask} allTasks={tasks} onClose={() => setDetailTask(null)} onUpdate={handleTaskUpdate} onCreateSubIssue={handleCreateSubIssue} onTaskClick={(task) => setDetailTask(task)} />
 
+            {/* Save View Dialog */}
+            <Dialog open={saveViewDialogOpen} onClose={() => setSaveViewDialogOpen(false)} maxWidth="xs" fullWidth>
+                <DialogTitle sx={{ fontWeight: 700 }}>💾 {lang === 'ko' ? '현재 뷰 저장' : 'Save Current View'}</DialogTitle>
+                <DialogContent>
+                    <TextField
+                        autoFocus
+                        margin="dense"
+                        label={lang === 'ko' ? '뷰 이름' : 'View Name'}
+                        fullWidth
+                        variant="outlined"
+                        value={newViewName}
+                        onChange={(e) => setNewViewName(e.target.value)}
+                        placeholder="e.g. My Urgent Tasks"
+                        sx={{ mt: 1 }}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setSaveViewDialogOpen(false)}>{t('cancel')}</Button>
+                    <Button 
+                        onClick={handleSaveNewView} 
+                        variant="contained" 
+                        disabled={!newViewName.trim() || isSavingView}
+                        sx={{ borderRadius: 2 }}
+                    >
+                        {isSavingView ? <CircularProgress size={20} /> : t('save')}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Rollover Dialog */}
+            <Dialog open={rolloverDialogOpen} onClose={() => setRolloverDialogOpen(false)} maxWidth="xs" fullWidth>
+                <DialogTitle sx={{ fontWeight: 700 }}>🔄 {lang === 'ko' ? '작업 연기 (Rollover)' : 'Rollover Incomplete Tasks'}</DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        {lang === 'ko' ? '현재 스프린트의 완료되지 않은 모든 작업을 선택한 스프린트로 이동합니다.' : 'Move all incomplete tasks from the current sprint to the selected target sprint.'}
+                    </Typography>
+                    <TextField
+                        select
+                        fullWidth
+                        label={lang === 'ko' ? '대상 스프린트' : 'Target Sprint'}
+                        value={targetSprintId}
+                        onChange={(e) => setTargetSprintId(e.target.value)}
+                        SelectProps={{ native: true }}
+                    >
+                        <option value="">{lang === 'ko' ? '스프린트 선택' : 'Select Sprint'}</option>
+                        {sprints.filter(s => s.id !== currentSprint?.id).map(s => (
+                            <option key={s.id} value={s.id}>{s.name} ({s.type})</option>
+                        ))}
+                    </TextField>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setRolloverDialogOpen(false)}>{t('cancel')}</Button>
+                    <Button 
+                        onClick={handleRolloverTasks} 
+                        variant="contained" 
+                        disabled={!targetSprintId || isRollingOver}
+                        sx={{ borderRadius: 2 }}
+                    >
+                        {isRollingOver ? <CircularProgress size={20} /> : (lang === 'ko' ? '연기 실행' : 'Rollover')}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* View Context Menu */}
+            <Menu
+                anchorEl={viewAnchorEl}
+                open={Boolean(viewAnchorEl)}
+                onClose={() => setViewAnchorEl(null)}
+                PaperProps={{ sx: { borderRadius: 2, minWidth: 120, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' } }}
+            >
+                <MenuItem onClick={() => {
+                    if (selectedViewForMenu) {
+                        handleDeleteView(selectedViewForMenu.id);
+                        setViewAnchorEl(null);
+                    }
+                }} sx={{ color: 'error.main', fontSize: '0.85rem' }}>
+                    <DeleteIcon sx={{ fontSize: 16, mr: 1 }} />
+                    {t('delete')}
+                </MenuItem>
+            </Menu>
+
             {/* Undo Delete Snackbar */}
+
             <Snackbar
                 open={!!pendingDelete}
                 autoHideDuration={5000}

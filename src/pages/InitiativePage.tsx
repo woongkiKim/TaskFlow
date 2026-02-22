@@ -184,9 +184,9 @@ const InitiativePage = () => {
     };
 
     return (
-        <Box sx={{ p: 4, flex: 1, overflow: 'auto', bgcolor: 'background.default', minHeight: '100%' }}>
+        <Box sx={{ p: { xs: 2, sm: 3, md: 4 }, flex: 1, overflow: 'auto', bgcolor: 'background.default', minHeight: '100%' }}>
             {/* Header Section */}
-            <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: { xs: 3, md: 5 }, flexWrap: 'wrap', gap: 2 }}>
                 <Box>
                     <Button
                         startIcon={<ArrowBackIcon />}
@@ -216,7 +216,7 @@ const InitiativePage = () => {
                             />
                         )}
                     </Box>
-                    <Typography variant="h3" fontWeight={800} sx={{ letterSpacing: -1, mb: 1 }}>
+                    <Typography variant="h3" fontWeight={800} sx={{ letterSpacing: -1, mb: 1, fontSize: { xs: '1.75rem', sm: '2.25rem', md: '3rem' } }}>
                         {initiative.name}
                     </Typography>
                     {initiative.description && (
@@ -225,7 +225,7 @@ const InitiativePage = () => {
                         </Typography>
                     )}
                 </Box>
-                <Box sx={{ display: 'flex', gap: 2 }}>
+                <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
                     <Button
                         variant="outlined"
                         startIcon={<ListAltIcon />}
@@ -259,7 +259,7 @@ const InitiativePage = () => {
                     value={initProgress}
                     sx={{ height: 10, borderRadius: 5, bgcolor: 'action.hover', '& .MuiLinearProgress-bar': { borderRadius: 5 } }}
                 />
-                <Box sx={{ display: 'flex', gap: 4, mt: 3 }}>
+                <Box sx={{ display: 'flex', gap: { xs: 2, md: 4 }, mt: 3, flexWrap: 'wrap' }}>
                     <Box>
                         <Typography variant="caption" color="text.secondary" display="block">{textByLang('Projects', '\uD504\uB85C\uC81D\uD2B8')}</Typography>
                         <Typography variant="subtitle1" fontWeight={700}>{linkedProjects.length}</Typography>
@@ -300,7 +300,7 @@ const InitiativePage = () => {
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 4 }}>
                 {/* Main Content: Projects List */}
                 <Box sx={{ flex: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                             <Typography variant="h6" fontWeight={700}>{textByLang('Projects', '\uD504\uB85C\uC81D\uD2B8')}</Typography>
                             <Tabs value={viewMode} onChange={(_, v) => setViewMode(v)} sx={{ minHeight: 0, '& .MuiTab-root': { minHeight: 32, py: 0 } }}>
@@ -331,7 +331,7 @@ const InitiativePage = () => {
                         </Paper>
                     ) : (
                         viewMode === 'list' ? (
-                            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: 2 }}>
+                            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(auto-fill, minmax(280px, 1fr))' }, gap: 2 }}>
                                 {linkedProjects.map(proj => {
                                     const pStats = stats[proj.id] || { total: 0, completed: 0 };
                                     const pProgress = pStats.total > 0 ? Math.round((pStats.completed / pStats.total) * 100) : 0;

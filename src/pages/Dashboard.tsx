@@ -1,6 +1,7 @@
 // src/pages/Dashboard.tsx
 import { useState, useMemo, useEffect } from 'react';
-import { Box, Typography, Paper, Divider, Skeleton, Chip, Fab, Fade, InputBase, Menu, MenuItem } from '@mui/material';
+import { Box, Typography, Paper, Divider, Skeleton, Chip, Fab, Fade, InputBase, Menu, MenuItem, IconButton, Tooltip } from '@mui/material';
+import SendIcon from '@mui/icons-material/Send';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import AddIcon from '@mui/icons-material/Add';
 import BlockIcon from '@mui/icons-material/Block';
@@ -18,6 +19,7 @@ import { useWorkspace } from '../contexts/WorkspaceContext';
 import { fetchWorkspaceProjects } from '../services/projectService';
 import { updateTaskCategoryInDB } from '../services/taskService';
 import type { Task, Project } from '../types';
+import ActivityFeed from '../components/ActivityFeed';
 
 const sortByOrder = (arr: Task[]) => [...arr].sort((a, b) => {
   const ao = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER;
@@ -72,15 +74,20 @@ const Dashboard = () => {
 
   const handleAddTaskInput = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && newTaskText.trim()) {
-      await addTask({
-        text: newTaskText,
-        category: selectedProject?.name,
-        categoryColor: selectedProject?.color,
-        projectId: selectedProject?.id,
-        workspaceId: workspace?.id,
-      });
-      setNewTaskText('');
+      await submitNewTask();
     }
+  };
+
+  const submitNewTask = async () => {
+    if (!newTaskText.trim()) return;
+    await addTask({
+      text: newTaskText,
+      category: selectedProject?.name,
+      categoryColor: selectedProject?.color,
+      projectId: selectedProject?.id,
+      workspaceId: workspace?.id,
+    });
+    setNewTaskText('');
   };
 
   const handleCategoryChange = async (id: string, category: string | null, categoryColor: string | null) => {
@@ -190,6 +197,18 @@ const Dashboard = () => {
           onChange={(e) => setNewTaskText(e.target.value)}
           onKeyDown={handleAddTaskInput}
         />
+        {newTaskText.trim() && (
+          <Tooltip title="할 일 추가 (Enter)">
+            <IconButton
+              size="small"
+              color="primary"
+              onClick={submitNewTask}
+              sx={{ mr: 0.5, transition: 'transform 0.15s', '&:hover': { transform: 'scale(1.15)' } }}
+            >
+              <SendIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
         {/* Project Selector */}
         <Box onClick={(e) => setProjectAnchorEl(e.currentTarget)} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5, cursor: 'pointer', borderRadius: 2, '&:hover': { bgcolor: 'action.hover' } }}>
           {selectedProject ? (
@@ -252,6 +271,11 @@ const Dashboard = () => {
           <TaskItem key={task.id} task={task} projects={projects} onToggle={toggleTask} onDelete={deleteTask} onEdit={updateTask} onCategoryChange={handleCategoryChange} onClick={handleTaskClick} />
         ))}
       </Box>
+
+      {/* Recent Activity */}
+      <Paper sx={{ p: 2.5, borderRadius: 3, border: '1px solid', borderColor: 'divider', mt: 4, mb: 3 }}>
+        <ActivityFeed limit={10} />
+      </Paper>
 
       <Fab color="primary" onClick={() => setAddDialogOpen(true)} sx={{ position: 'fixed', bottom: 32, right: 32, zIndex: 100 }}>
         <AddIcon />

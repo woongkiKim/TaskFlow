@@ -5,6 +5,7 @@ import type {
   Task, Project, Sprint, Workspace, TeamMember, TeamGroup,
   Decision, Handoff, Issue, Notification, Initiative,
   CustomView, IssueTemplate, AutomationRule, KanbanColumn,
+  WikiDocument,
 } from '../../types';
 
 export const MOCK_USER_ID = 'mock_user_001';
@@ -64,6 +65,8 @@ export const mockProjects: Project[] = [
     createdAt: '2025-12-01 10:00:00',
     kanbanColumns: defaultColumns,
     status: 'active',
+    startDate: '2025-12-01',
+    targetDate: '2026-03-15',
     description: 'TaskFlow 2.0 버전 개발 프로젝트 — 칸반, 알림, 다크모드 등 핵심 기능 포함',
   },
   {
@@ -75,6 +78,8 @@ export const mockProjects: Project[] = [
     createdAt: '2026-01-15 14:00:00',
     kanbanColumns: designColumns,
     status: 'active',
+    startDate: '2026-01-15',
+    targetDate: '2026-02-28',
     description: '마케팅 랜딩 페이지 리디자인 — 히어로, 프라이싱, 고객 후기 포함',
   },
   {
@@ -86,6 +91,8 @@ export const mockProjects: Project[] = [
     createdAt: '2026-02-01 09:00:00',
     kanbanColumns: defaultColumns,
     status: 'active',
+    startDate: '2026-02-10',
+    targetDate: '2026-04-30',
     description: 'React Native 기반 모바일 앱 MVP 개발',
   },
 ];
@@ -473,6 +480,7 @@ export const mockInitiatives: Initiative[] = [
     name: 'Q1 제품 출시',
     description: '2026년 Q1 내 TaskFlow v2.0 정식 출시. 웹 + 모바일 동시 런칭.',
     status: 'active',
+    startDate: '2025-12-01',
     targetDate: '2026-03-31',
     color: '#6366f1',
     workspaceId: MOCK_WS_ID,
@@ -485,12 +493,65 @@ export const mockInitiatives: Initiative[] = [
     name: '사용자 확보 캠페인',
     description: 'Product Hunt 런칭 + 블로그 마케팅으로 초기 1,000명 사용자 확보',
     status: 'planned',
-    targetDate: '2026-04-30',
+    startDate: '2026-04-01',
+    targetDate: '2026-06-30',
     color: '#f59e0b',
     workspaceId: MOCK_WS_ID,
     projectIds: [MOCK_PROJECT_B],
     createdBy: 'mock_user_002',
     createdAt: '2026-02-01 09:00:00',
+  },
+  {
+    id: 'mock_init_003',
+    name: 'Q2 인프라 안정화',
+    description: 'CI/CD 파이프라인, 모니터링, 로드밸런싱 등 운영 인프라 구축',
+    status: 'planned',
+    startDate: '2026-04-01',
+    targetDate: '2026-05-31',
+    color: '#10b981',
+    workspaceId: MOCK_WS_ID,
+    projectIds: [MOCK_PROJECT_A],
+    createdBy: 'mock_user_003',
+    createdAt: '2026-02-15 09:00:00',
+  },
+  {
+    id: 'mock_init_004',
+    name: 'Enterprise 기능 개발',
+    description: 'SSO, RBAC 고도화, 감사 로그, 데이터 내보내기 등 기업용 기능',
+    status: 'planned',
+    startDate: '2026-06-01',
+    targetDate: '2026-09-30',
+    color: '#8b5cf6',
+    workspaceId: MOCK_WS_ID,
+    projectIds: [],
+    createdBy: MOCK_USER_ID,
+    createdAt: '2026-02-18 10:00:00',
+  },
+  {
+    id: 'mock_init_005',
+    name: '디자인 시스템 v1 구축',
+    description: '공통 컴포넌트 라이브러리 및 디자인 토큰 정의 완료',
+    status: 'completed',
+    startDate: '2025-10-01',
+    targetDate: '2025-12-15',
+    color: '#ec4899',
+    workspaceId: MOCK_WS_ID,
+    projectIds: [MOCK_PROJECT_A],
+    createdBy: 'mock_user_004',
+    createdAt: '2025-10-01 09:00:00',
+  },
+  {
+    id: 'mock_init_006',
+    name: 'Slack 연동 PoC',
+    description: 'Slack 봇을 통한 작업 알림 PoC — 비용 대비 효과 부족으로 취소',
+    status: 'canceled',
+    startDate: '2025-11-01',
+    targetDate: '2025-12-31',
+    color: '#ef4444',
+    workspaceId: MOCK_WS_ID,
+    projectIds: [],
+    createdBy: 'mock_user_005',
+    createdAt: '2025-11-01 09:00:00',
   },
 ];
 
@@ -936,6 +997,8 @@ export const mockObjectives: import('../../types').Objective[] = [
     title: '제품 품질 60% 향상',
     description: 'Q1 중 버그율 감소 및 코드 커버리지 향상을 통해 제품 안정성 확보',
     period: 'Q1 2026',
+    startDate: '2026-01-01',
+    endDate: '2026-03-31',
     status: 'active',
     ownerId: MOCK_USER_ID,
     ownerName: '김영수',
@@ -953,6 +1016,8 @@ export const mockObjectives: import('../../types').Objective[] = [
     title: '사용자 온보딩 개선',
     description: '신규 사용자의 첫 주 리텐션을 높이고 온보딩 퍼널 전환율 개선',
     period: 'Q1 2026',
+    startDate: '2026-01-01',
+    endDate: '2026-03-31',
     status: 'active',
     ownerId: 'mock_user_002',
     ownerName: '박지현',
@@ -968,6 +1033,8 @@ export const mockObjectives: import('../../types').Objective[] = [
     id: 'mock_okr_003',
     title: '팀 생산성 20% 향상',
     period: 'Q2 2026',
+    startDate: '2026-04-01',
+    endDate: '2026-06-30',
     status: 'draft',
     ownerId: 'mock_user_003',
     ownerName: '이민수',
@@ -978,6 +1045,507 @@ export const mockObjectives: import('../../types').Objective[] = [
     workspaceId: MOCK_WS_ID,
     createdBy: 'mock_user_003',
     createdAt: '2026-02-01 11:00:00',
+  },
+  {
+    id: 'mock_okr_004',
+    title: '연간 매출 목표 달성',
+    description: '2026년 전체 ARR $500K 달성을 위한 전략적 목표',
+    period: 'FY2026',
+    startDate: '2026-01-01',
+    endDate: '2026-12-31',
+    status: 'active',
+    ownerId: MOCK_USER_ID,
+    ownerName: '김영수',
+    keyResults: [
+      { id: 'kr_008', title: 'ARR $500K 달성', targetValue: 500, currentValue: 120, unit: 'K$' },
+      { id: 'kr_009', title: '유료 전환율 5%', targetValue: 5, currentValue: 2.1, unit: '%' },
+    ],
+    workspaceId: MOCK_WS_ID,
+    createdBy: MOCK_USER_ID,
+    createdAt: '2026-01-02 08:00:00',
+  },
+  {
+    id: 'mock_okr_005',
+    title: '모바일 앱 MVP 출시',
+    description: '2월 말~4월 중순 비표준 기간으로 MVP 개발 및 출시',
+    period: '커스텀',
+    startDate: '2026-02-24',
+    endDate: '2026-04-15',
+    status: 'draft',
+    ownerId: 'mock_user_005',
+    ownerName: '정우진',
+    keyResults: [
+      { id: 'kr_010', title: '핵심 기능 5개 구현', targetValue: 5, currentValue: 1, unit: '개' },
+      { id: 'kr_011', title: 'TestFlight 배포', targetValue: 1, currentValue: 0, unit: '회' },
+    ],
+    workspaceId: MOCK_WS_ID,
+    createdBy: 'mock_user_005',
+    createdAt: '2026-02-20 09:00:00',
+  },
+];
+
+// ─── Wiki Documents ──────────────────────────────────────
+export const mockWikiDocuments: WikiDocument[] = [
+  {
+    id: 'mock_wiki_folder_001',
+    title: '개발 문서',
+    content: '',
+    icon: '📁',
+    isFolder: true,
+    visibility: 'workspace',
+    workspaceId: MOCK_WS_ID,
+    createdBy: MOCK_USER_ID,
+    createdByName: '김영수',
+    tags: [],
+    createdAt: '2026-01-05 09:00:00',
+  },
+  {
+    id: 'mock_wiki_001',
+    title: '🚀 신규 입사자 온보딩 가이드',
+    content: `# 신규 입사자 온보딩 가이드
+
+TaskFlow에 오신 것을 환영합니다! 이 문서는 새로운 팀원이 빠르게 적응할 수 있도록 안내합니다.
+
+## 1일차 — 환경 설정
+
+### 개발 환경
+- **Node.js** 18+ 설치
+- **pnpm** 패키지 매니저 사용
+- VSCode 확장: ESLint, Prettier, GitLens
+
+### 저장소 클론
+\`\`\`bash
+git clone https://github.com/jambo/taskflow.git
+cd taskflow
+pnpm install
+pnpm dev
+\`\`\`
+
+## 2일차 — 코드 구조 파악
+- \`src/pages/\` — 각 페이지 컴포넌트
+- \`src/components/\` — 재사용 가능한 UI 컴포넌트
+- \`src/services/\` — API 및 Firebase 서비스
+- \`src/contexts/\` — React Context (Auth, Language, Workspace)
+
+## 3일차 — 첫 PR
+> 첫 주 안에 작은 버그 수정이나 번역 추가를 통해 PR을 보내보세요!
+
+---
+*최종 수정: 2026년 2월 15일*`,
+    icon: '🚀',
+    visibility: 'workspace',
+    workspaceId: MOCK_WS_ID,
+    createdBy: MOCK_USER_ID,
+    createdByName: '김영수',
+    pinned: true,
+    tags: ['온보딩', '가이드'],
+    createdAt: '2026-01-10 09:00:00',
+    updatedAt: '2026-02-15 14:00:00',
+    updatedBy: MOCK_USER_ID,
+    updatedByName: '김영수',
+  },
+  {
+    id: 'mock_wiki_002',
+    title: '🔑 계정 및 권한 설정',
+    content: `# 계정 및 권한 설정
+
+## Slack 채널
+| 채널 | 용도 |
+|------|------|
+| #general | 전체 공지 |
+| #dev | 개발 논의 |
+| #design | 디자인 리뷰 |
+| #random | 잡담 |
+
+## 권한 매트릭스
+- **Owner**: 모든 권한
+- **Admin**: 멤버 관리, 프로젝트 생성
+- **Member**: 태스크 생성/편집
+- **Viewer**: 읽기 전용
+
+## 필수 도구
+1. GitHub 저장소 접근 권한 요청
+2. Figma 디자인 파일 초대
+3. Firebase 콘솔 접근 (Admin 이상)`,
+    icon: '🔑',
+    visibility: 'workspace',
+    workspaceId: MOCK_WS_ID,
+    createdBy: 'mock_user_002',
+    createdByName: '박지현',
+    tags: ['온보딩', '권한'],
+    createdAt: '2026-01-11 10:00:00',
+  },
+  {
+    id: 'mock_wiki_003',
+    title: '📡 API 가이드',
+    content: `# TaskFlow API 가이드
+
+## 인증
+모든 API 요청에는 Firebase Auth 토큰이 필요합니다.
+
+\`\`\`typescript
+const token = await auth.currentUser?.getIdToken();
+fetch('/api/tasks', {
+  headers: { Authorization: \`Bearer \${token}\` }
+});
+\`\`\`
+
+## 주요 엔드포인트
+
+### Tasks
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/tasks | 전체 태스크 조회 |
+| POST | /api/tasks | 태스크 생성 |
+| PATCH | /api/tasks/:id | 태스크 수정 |
+| DELETE | /api/tasks/:id | 태스크 삭제 |
+
+### Projects
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/projects | 워크스페이스 프로젝트 목록 |
+| POST | /api/projects | 프로젝트 생성 |
+
+## 에러 처리
+\`\`\`json
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Resource not found"
+  }
+}
+\`\`\``,
+    icon: '📡',
+    parentId: 'mock_wiki_folder_001',
+    visibility: 'workspace',
+    workspaceId: MOCK_WS_ID,
+    createdBy: 'mock_user_003',
+    createdByName: '이민수',
+    pinned: true,
+    tags: ['API', '개발'],
+    createdAt: '2026-01-20 11:00:00',
+    updatedAt: '2026-02-10 16:30:00',
+    updatedBy: 'mock_user_003',
+    updatedByName: '이민수',
+  },
+  {
+    id: 'mock_wiki_004',
+    title: '🔄 스프린트 2 회고',
+    content: `# Sprint 2 — Polish 회고
+
+**기간:** 2026년 2월 3일 ~ 2월 14일
+
+## ✅ 잘된 점 (Keep)
+- 칸반 보드 드래그 앤 드롭 구현 완료
+- 코드 리뷰 시간 평균 4시간 → 2시간으로 개선
+- 디자인 시스템 컴포넌트 10개 추가
+
+## 🔧 개선할 점 (Problem)
+- QA 테스트가 스프린트 마무리에 집중됨
+- 번역 키 관리가 수동적 → 자동화 필요
+
+## 💡 시도할 점 (Try)
+- 스프린트 초반부터 QA 진행
+- i18n 키 자동 추출 스크립트 도입
+- 주간 디자인 리뷰 정례화
+
+## 📊 스프린트 통계
+- 계획: **24 포인트**
+- 완료: **21 포인트** (87.5%)
+- 이월: 3 포인트`,
+    icon: '🔄',
+    workspaceId: MOCK_WS_ID,
+    projectId: MOCK_PROJECT_A,
+    createdBy: 'mock_user_002',
+    createdByName: '박지현',
+    tags: ['회고', 'Sprint 2'],
+    createdAt: '2026-02-15 17:00:00',
+  },
+  {
+    id: 'mock_wiki_005',
+    title: '📐 코딩 컨벤션',
+    content: `# 코딩 컨벤션
+
+## TypeScript
+- \`strict\` 모드 필수
+- \`any\` 사용 최소화 (\`unknown\` 또는 제네릭 선호)
+- 인터페이스는 \`I\` 접두어 없이 \`PascalCase\`
+
+## React
+- **함수형 컴포넌트 + Hooks** 사용
+- 상태 관리: Context API (전역), useState (로컬)
+- \`useCallback\` / \`useMemo\`는 성능 이슈가 있을 때만
+
+## 파일 구조
+\`\`\`
+ComponentName/
+├── ComponentName.tsx
+├── ComponentName.test.tsx
+└── index.ts
+\`\`\`
+
+## Git 커밋 규칙
+\`\`\`
+feat: 새 기능 추가
+fix: 버그 수정
+docs: 문서 변경
+style: 코드 포맷 (기능 변경 X)
+refactor: 리팩토링
+test: 테스트 추가/수정
+chore: 빌드/도구 변경
+\`\`\`
+
+## PR 규칙
+- 제목: \`[타입] 간단한 설명\`
+- 리뷰어 최소 1명 승인 필요
+- 모든 CI 통과 필수`,
+    icon: '📐',
+    parentId: 'mock_wiki_folder_001',
+    visibility: 'workspace',
+    workspaceId: MOCK_WS_ID,
+    createdBy: MOCK_USER_ID,
+    createdByName: '김영수',
+    pinned: true,
+    tags: ['컨벤션', '개발'],
+    createdAt: '2025-12-20 09:00:00',
+    updatedAt: '2026-02-01 11:00:00',
+    updatedBy: MOCK_USER_ID,
+    updatedByName: '김영수',
+  },
+  {
+    id: 'mock_wiki_006',
+    title: '🚢 배포 프로세스',
+    content: `# 배포 프로세스
+
+## 환경
+| 환경 | URL | 브랜치 |
+|------|-----|--------|
+| Development | dev.taskflow.app | \`develop\` |
+| Staging | staging.taskflow.app | \`release/*\` |
+| Production | taskflow.app | \`main\` |
+
+## 배포 절차
+1. \`develop\` → \`release/x.y.z\` 브랜치 생성
+2. Staging에 자동 배포 (GitHub Actions)
+3. QA 검증 (1~2일)
+4. 승인 후 \`main\`에 머지
+5. Production 자동 배포
+6. 버전 태그 생성
+
+## 핫픽스
+\`\`\`
+main → hotfix/issue-number → main + develop
+\`\`\`
+
+## 롤백
+\`\`\`bash
+# Firebase Hosting 롤백
+firebase hosting:clone <previous-version> live
+\`\`\`
+
+> ⚠️ 금요일 오후 5시 이후 배포 금지!`,
+    icon: '🚢',
+    parentId: 'mock_wiki_folder_001',
+    visibility: 'private',
+    workspaceId: MOCK_WS_ID,
+    createdBy: 'mock_user_003',
+    createdByName: '이민수',
+    tags: ['배포', 'DevOps'],
+    createdAt: '2026-01-05 14:00:00',
+    updatedAt: '2026-02-18 09:00:00',
+    updatedBy: 'mock_user_003',
+    updatedByName: '이민수',
+  },
+  {
+    id: 'mock_wiki_007',
+    title: '📝 주간 회의록 템플릿',
+    content: `# 주간 회의록
+
+## 📅 날짜: YYYY-MM-DD
+**참석자:** @전원
+
+---
+
+## 🔍 지난 주 리뷰
+- [ ] 액션 아이템 1
+- [ ] 액션 아이템 2
+
+## 📋 이번 주 안건
+1. **안건 1**: 설명
+2. **안건 2**: 설명
+
+## 💬 논의 사항
+- 
+
+## ✅ 결정 사항
+- 
+
+## 📌 액션 아이템
+| 담당 | 액션 | 기한 |
+|------|------|------|
+| @이름 | ... | MM/DD |
+
+---
+*다음 회의: YYYY-MM-DD*`,
+    icon: '📝',
+    workspaceId: MOCK_WS_ID,
+    createdBy: 'mock_user_004',
+    createdByName: '최서연',
+    tags: ['회의', '템플릿'],
+    createdAt: '2026-02-01 09:00:00',
+  },
+];
+
+// ─── Activity Log ──────────────────────────────────────
+import type { ActivityEntry } from '../../types';
+
+export const mockActivities: ActivityEntry[] = [
+  {
+    id: 'act_001',
+    entityType: 'task',
+    entityId: 'mock_task_001',
+    entityTitle: '사용자 인증 시스템 구현',
+    action: 'status_changed',
+    workspaceId: MOCK_WS_ID,
+    userId: MOCK_USER_ID,
+    userName: '김영수',
+    changes: [{ field: 'status', displayField: '상태', from: 'inprogress', to: 'in-review' }],
+    timestamp: '2026-02-20 16:30:00',
+  },
+  {
+    id: 'act_002',
+    entityType: 'task',
+    entityId: 'mock_task_002',
+    entityTitle: '대시보드 차트 리팩토링',
+    action: 'assigned',
+    workspaceId: MOCK_WS_ID,
+    userId: 'mock_user_002',
+    userName: '박지현',
+    changes: [{ field: 'assignee', displayField: '담당자', to: '이민수' }],
+    timestamp: '2026-02-20 15:15:00',
+  },
+  {
+    id: 'act_003',
+    entityType: 'wiki',
+    entityId: 'mock_wiki_001',
+    entityTitle: '신규 입사자 온보딩 가이드',
+    action: 'updated',
+    workspaceId: MOCK_WS_ID,
+    userId: MOCK_USER_ID,
+    userName: '김영수',
+    changes: [
+      { field: 'content', displayField: '내용', from: '(이전 버전)', to: '(수정됨)' },
+      { field: 'tags', displayField: '태그', from: '온보딩', to: '온보딩, 가이드' },
+    ],
+    timestamp: '2026-02-20 14:00:00',
+  },
+  {
+    id: 'act_004',
+    entityType: 'task',
+    entityId: 'mock_task_003',
+    entityTitle: '모바일 반응형 디자인 적용',
+    action: 'priority_changed',
+    workspaceId: MOCK_WS_ID,
+    userId: 'mock_user_003',
+    userName: '이민수',
+    changes: [{ field: 'priority', displayField: '우선순위', from: 'P2', to: 'P0' }],
+    timestamp: '2026-02-20 11:45:00',
+  },
+  {
+    id: 'act_005',
+    entityType: 'task',
+    entityId: 'mock_task_005',
+    entityTitle: 'API 엔드포인트 보안 강화',
+    action: 'created',
+    workspaceId: MOCK_WS_ID,
+    userId: 'mock_user_002',
+    userName: '박지현',
+    timestamp: '2026-02-20 10:30:00',
+  },
+  {
+    id: 'act_006',
+    entityType: 'sprint',
+    entityId: 'mock_sprint_002',
+    entityTitle: 'Sprint 2',
+    action: 'created',
+    workspaceId: MOCK_WS_ID,
+    userId: MOCK_USER_ID,
+    userName: '김영수',
+    description: '스프린트 2 시작 (2026.02.03 ~ 2026.02.14)',
+    timestamp: '2026-02-19 09:00:00',
+  },
+  {
+    id: 'act_007',
+    entityType: 'task',
+    entityId: 'mock_task_001',
+    entityTitle: '사용자 인증 시스템 구현',
+    action: 'commented',
+    workspaceId: MOCK_WS_ID,
+    userId: 'mock_user_003',
+    userName: '이민수',
+    description: 'OAuth2 플로우 테스트 완료, PKCE 적용 확인 필요',
+    timestamp: '2026-02-19 17:20:00',
+  },
+  {
+    id: 'act_008',
+    entityType: 'wiki',
+    entityId: 'mock_wiki_003',
+    entityTitle: 'API 가이드',
+    action: 'created',
+    workspaceId: MOCK_WS_ID,
+    userId: 'mock_user_003',
+    userName: '이민수',
+    timestamp: '2026-02-18 11:00:00',
+  },
+  {
+    id: 'act_009',
+    entityType: 'task',
+    entityId: 'mock_task_004',
+    entityTitle: '다국어 지원 (i18n)',
+    action: 'completed',
+    workspaceId: MOCK_WS_ID,
+    userId: 'mock_user_004',
+    userName: '최서연',
+    changes: [{ field: 'status', displayField: '상태', from: 'inprogress', to: 'done' }],
+    timestamp: '2026-02-18 09:30:00',
+  },
+  {
+    id: 'act_010',
+    entityType: 'task',
+    entityId: 'mock_task_002',
+    entityTitle: '대시보드 차트 리팩토링',
+    action: 'updated',
+    workspaceId: MOCK_WS_ID,
+    userId: 'mock_user_002',
+    userName: '박지현',
+    changes: [
+      { field: 'description', displayField: '설명', from: '(없음)', to: 'Recharts → Nivo 마이그레이션' },
+      { field: 'dueDate', displayField: '마감일', from: '2026-02-10', to: '2026-02-15' },
+    ],
+    timestamp: '2026-02-17 14:15:00',
+  },
+  {
+    id: 'act_011',
+    entityType: 'task',
+    entityId: 'mock_task_006',
+    entityTitle: '캘린더 뷰 통합',
+    action: 'moved',
+    workspaceId: MOCK_WS_ID,
+    userId: MOCK_USER_ID,
+    userName: '김영수',
+    changes: [{ field: 'sprint', displayField: '스프린트', from: 'Sprint 1', to: 'Sprint 2' }],
+    timestamp: '2026-02-17 10:00:00',
+  },
+  {
+    id: 'act_012',
+    entityType: 'wiki',
+    entityId: 'mock_wiki_001',
+    entityTitle: '신규 입사자 온보딩 가이드',
+    action: 'pinned',
+    workspaceId: MOCK_WS_ID,
+    userId: MOCK_USER_ID,
+    userName: '김영수',
+    timestamp: '2026-02-16 16:00:00',
   },
 ];
 

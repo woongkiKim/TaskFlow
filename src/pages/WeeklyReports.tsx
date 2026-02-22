@@ -1,9 +1,11 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Box, Typography, Paper, Grid, Button, IconButton, Chip, CircularProgress,
   Tabs, Tab, Avatar, Select, MenuItem, FormControl, InputLabel, alpha, Tooltip,
-  Dialog, DialogTitle, DialogContent, DialogActions,
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, Autocomplete,
+  InputAdornment, Divider,
 } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import PieChartIcon from '@mui/icons-material/PieChart';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -500,16 +502,17 @@ function TeamOverviewContent({
 // Main Page Component
 // ═══════════════════════════════════════════════
 const WeeklyReports = () => {
-  const { t, language } = useLanguage();
+  const { t, lang } = useLanguage();
   const { user } = useAuth();
-  const { currentMembers, teamGroups, currentWorkspace } = useWorkspace();
+  const { teamGroups, currentMembers } = useWorkspace();
   const { tasks: allTasks, loading } = useTasks();
-  const isKo = language === 'ko';
+  const isKo = lang === 'ko';
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [activeTab, setActiveTab] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>('my');
   const [selectedMemberUid, setSelectedMemberUid] = useState<string>('');
+  const [selectedTeamId, setSelectedTeamId] = useState<string>('all');
   const [infoOpen, setInfoOpen] = useState(false);
 
   // Per-page onboarding
@@ -538,17 +541,30 @@ const WeeklyReports = () => {
 
   // Determine which UIDs this user can view
   const viewableUids = useMemo((): string[] => {
+    let uids: string[] = [];
     if (hasRoleLevel(role, 'admin')) {
-      return (currentMembers || []).map(m => m.uid);
+      uids = (currentMembers || []).map(m => m.uid);
+    } else if (role === 'maintainer' && myTeamGroup) {
+      uids = myTeamGroup.memberIds;
+    } else {
+      uids = [uid];
     }
-    if (role === 'maintainer' && myTeamGroup) {
-      return myTeamGroup.memberIds;
+
+    if (selectedTeamId !== 'all') {
+      const tg = teamGroups.find(t => t.id === selectedTeamId);
+      if (tg) {
+        uids = uids.filter(id => tg.memberIds.includes(id));
+      }
     }
-    return [uid];
-  }, [role, currentMembers, myTeamGroup, uid]);
+    return uids;
+  }, [role, currentMembers, myTeamGroup, uid, selectedTeamId, teamGroups]);
 
   // Determine which team group member IDs to show in overview
   const teamMemberIds = useMemo((): string[] => {
+    if (selectedTeamId !== 'all') {
+      const tg = teamGroups.find(t => t.id === selectedTeamId);
+      return tg ? tg.memberIds : [];
+    }
     if (hasRoleLevel(role, 'admin')) {
       return (currentMembers || []).map(m => m.uid);
     }
@@ -556,30 +572,30 @@ const WeeklyReports = () => {
       return myTeamGroup.memberIds;
     }
     return [uid];
-  }, [role, currentMembers, myTeamGroup, uid]);
+  }, [role, currentMembers, myTeamGroup, uid, selectedTeamId, teamGroups]);
 
   // Filter tasks based on view mode & selected member
-  const getTasksForUid = (targetUid: string) =>
-    allTasks.filter(tk => tk.ownerUids?.includes(targetUid));
+  const getTasksForUid = useCallback((targetUid: string) =>
+    allTasks.filter(tk => tk.ownerUids?.includes(targetUid)), [allTasks]);
 
-  const thisWeekTasksForUid = (targetUid: string) =>
+  const thisWeekTasksForUid = useCallback((targetUid: string) =>
     getTasksForUid(targetUid).filter(tk =>
       isWithinInterval(new Date(tk.createdAt), { start: weekStart, end: weekEnd })
-    );
+    ), [getTasksForUid, weekStart, weekEnd]);
 
-  const lastWeekTasksForUid = (targetUid: string) =>
+  const lastWeekTasksForUid = useCallback((targetUid: string) =>
     getTasksForUid(targetUid).filter(tk =>
       isWithinInterval(new Date(tk.createdAt), { start: lastWeekStart, end: lastWeekEnd })
-    );
+    ), [getTasksForUid, lastWeekStart, lastWeekEnd]);
 
   // My tasks
-  const myThisWeekTasks = useMemo(() => thisWeekTasksForUid(uid), [allTasks, uid, weekStart, weekEnd]);
-  const myLastWeekTasks = useMemo(() => lastWeekTasksForUid(uid), [allTasks, uid, lastWeekStart, lastWeekEnd]);
+  const myThisWeekTasks = useMemo(() => thisWeekTasksForUid(uid), [thisWeekTasksForUid, uid]);
+  const myLastWeekTasks = useMemo(() => lastWeekTasksForUid(uid), [lastWeekTasksForUid, uid]);
 
   // Selected member tasks
   const selectedUid = selectedMemberUid || uid;
-  const selectedThisWeekTasks = useMemo(() => thisWeekTasksForUid(selectedUid), [allTasks, selectedUid, weekStart, weekEnd]);
-  const selectedLastWeekTasks = useMemo(() => lastWeekTasksForUid(selectedUid), [allTasks, selectedUid, lastWeekStart, lastWeekEnd]);
+  const selectedThisWeekTasks = useMemo(() => thisWeekTasksForUid(selectedUid), [thisWeekTasksForUid, selectedUid]);
+  const selectedLastWeekTasks = useMemo(() => lastWeekTasksForUid(selectedUid), [lastWeekTasksForUid, selectedUid]);
   const selectedMemberName = (currentMembers || []).find(m => m.uid === selectedUid)?.displayName;
 
   // Navigation
@@ -775,29 +791,76 @@ const WeeklyReports = () => {
                 {t('teamMemberReport') as string}
               </Button>
 
-              {/* Member selector (only visible in memberDetail mode) */}
-              {viewMode === 'memberDetail' && (
-                <FormControl size="small" sx={{ ml: 'auto', minWidth: 160 }}>
-                  <InputLabel sx={{ fontSize: '0.8rem' }}>{t('selectMember') as string}</InputLabel>
+              {/* Team selection (Only for admin) */}
+              {canSeeAllMembers && (
+                <FormControl size="small" sx={{ ml: 1, minWidth: 140 }}>
+                  <InputLabel sx={{ fontSize: '0.8rem' }}>{t('team') as string}</InputLabel>
                   <Select
-                    value={selectedMemberUid || viewableUids[0] || ''}
-                    label={t('selectMember') as string}
-                    onChange={e => setSelectedMemberUid(e.target.value)}
+                    value={selectedTeamId}
+                    label={t('team') as string}
+                    onChange={e => {
+                      setSelectedTeamId(e.target.value);
+                      setSelectedMemberUid('');
+                    }}
                     sx={{ borderRadius: 2, height: 36, fontSize: '0.8rem' }}
                   >
-                    {viewableUids.map(vUid => {
-                      const m = (currentMembers || []).find(mem => mem.uid === vUid);
-                      return (
-                        <MenuItem key={vUid} value={vUid} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar src={m?.photoURL} sx={{ width: 20, height: 20, fontSize: 10 }}>
-                            {(m?.displayName || vUid).charAt(0).toUpperCase()}
-                          </Avatar>
-                          <Typography variant="body2" fontSize="0.8rem">{m?.displayName || vUid.slice(0, 6)}</Typography>
-                        </MenuItem>
-                      );
-                    })}
+                    <MenuItem value="all">{t('all') as string || 'All'}</MenuItem>
+                    <Divider />
+                    {teamGroups.map(tg => (
+                      <MenuItem key={tg.id} value={tg.id} sx={{ fontSize: '0.8rem' }}>
+                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: tg.color, mr: 1 }} />
+                        {tg.name}
+                      </MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
+              )}
+
+              {/* Member selector (only visible in memberDetail mode) */}
+              {viewMode === 'memberDetail' && (
+                <Box sx={{ ml: 'auto', minWidth: 220 }}>
+                  <Autocomplete
+                    size="small"
+                    options={(currentMembers || []).filter(m => viewableUids.includes(m.uid))}
+                    groupBy={(option) => {
+                      const tg = teamGroups.find(g => g.memberIds.includes(option.uid));
+                      return tg ? tg.name : (t('unassigned') as string || 'Unassigned');
+                    }}
+                    getOptionLabel={(option) => option.displayName || option.uid}
+                    value={(currentMembers || []).find(m => m.uid === selectedMemberUid) || null}
+                    onChange={(_, newValue) => setSelectedMemberUid(newValue?.uid || '')}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label={t('selectMember') as string}
+                        sx={{
+                          '& .MuiInputBase-root': { borderRadius: 2, height: 38, fontSize: '0.8rem' },
+                          '& .MuiInputLabel-root': { fontSize: '0.8rem' }
+                        }}
+                        InputProps={{
+                          ...params.InputProps,
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <SearchIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    )}
+                    renderOption={(props, option) => (
+                      <li {...props} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px' }}>
+                        <Avatar src={option.photoURL} sx={{ width: 24, height: 24, fontSize: 11 }}>
+                          {option.displayName.charAt(0)}
+                        </Avatar>
+                        <Box>
+                          <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 600 }}>{option.displayName}</Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>{option.email}</Typography>
+                        </Box>
+                      </li>
+                    )}
+                    sx={{ width: '100%' }}
+                  />
+                </Box>
               )}
             </Paper>
           )}

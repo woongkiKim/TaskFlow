@@ -87,8 +87,10 @@ export const regenerateInviteCode = async (wsId: string): Promise<string> => {
     return newCode;
 };
 
-export const updateWorkspace = async (wsId: string, updates: Partial<Pick<Workspace, 'name' | 'color' | 'type'>>): Promise<void> => {
-    await updateDoc(doc(db, WS_COLLECTION, wsId), updates);
+export const updateWorkspace = async (wsId: string, updates: Partial<Workspace>): Promise<void> => {
+    const clean: Record<string, unknown> = {};
+    Object.entries(updates).forEach(([k, v]) => { if (v !== undefined) clean[k] = v; });
+    await updateDoc(doc(db, WS_COLLECTION, wsId), clean);
 };
 
 // --- Team Groups ---

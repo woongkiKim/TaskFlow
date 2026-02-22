@@ -10,7 +10,7 @@ import MemberAutocomplete from '../components/MemberAutocomplete';
 import TaskAutocomplete from '../components/TaskAutocomplete';
 import type {
     Task, TeamMember,
-    HandoffType, IssueCategory, IssueScope,
+    HandoffType, IssueCategory, IssueScope, Sprint,
 } from '../types';
 import {
     HANDOFF_TYPE_CONFIG, HANDOFF_CHECKLISTS, HANDOFF_TYPES,
@@ -329,3 +329,56 @@ export const AddIssueDialog = ({ open, onClose, onSubmit, userName, userUid, mem
     );
 };
 
+
+// ─── Sprint Rollover Dialog ──────────────────────────
+export const SprintRolloverDialog = ({ open, onClose, onSubmit, currentSprint, allSprints }: {
+    open: boolean; onClose: () => void;
+    currentSprint: Sprint; allSprints: Sprint[];
+    onSubmit: (targetSprintId: string) => void;
+}) => {
+    const { lang } = useLanguage();
+    const [targetSprintId, setTargetSprintId] = useState('');
+
+    const otherSprints = allSprints.filter(s => s.id !== currentSprint.id);
+
+    return (
+        <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+            <DialogTitle sx={{ fontWeight: 700 }}>🚀 {textByLang(lang, 'Sprint Rollover', '스프린트 이월')}</DialogTitle>
+            <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
+                <Typography variant="body2" color="text.secondary">
+                    {textByLang(lang, 
+                        `You are about to move all incomplete tasks from ${currentSprint.name} to another sprint.`,
+                        `${currentSprint.name}의 모든 미완료 작업을 다른 스프린트로 이월합니다.`
+                    )}
+                </Typography>
+                <FormControl fullWidth size="small">
+                    <InputLabel>{textByLang(lang, 'Target Sprint', '대상 스프린트')}</InputLabel>
+                    <Select 
+                        value={targetSprintId} 
+                        label={textByLang(lang, 'Target Sprint', '대상 스프린트')} 
+                        onChange={e => setTargetSprintId(e.target.value)}
+                    >
+                        {otherSprints.map(s => (
+                            <MenuItem key={s.id} value={s.id}>{s.name} ({s.status})</MenuItem>
+                        ))}
+                    </Select>
+                </FormControl>
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={onClose}>{textByLang(lang, 'Cancel', '취소')}</Button>
+                <Button 
+                    variant="contained" 
+                    color="primary"
+                    disabled={!targetSprintId}
+                    onClick={() => {
+                        onSubmit(targetSprintId);
+                        setTargetSprintId('');
+                    }}
+                    sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+                >
+                    {textByLang(lang, 'Confirm Rollover', '이월 확인')}
+                </Button>
+            </DialogActions>
+        </Dialog>
+    );
+};

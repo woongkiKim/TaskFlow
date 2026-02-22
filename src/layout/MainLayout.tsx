@@ -4,7 +4,7 @@ import {
   Box, Toolbar, Dialog, DialogTitle, DialogContent,
   Typography, Chip, Divider, CircularProgress,
 } from '@mui/material';
-import Sidebar, { DRAWER_WIDTH } from './Sidebar';
+import Sidebar, { DRAWER_WIDTH, COLLAPSED_DRAWER_WIDTH } from './Sidebar';
 import Header from './Header';
 import CommandMenu from '../components/CommandMenu';
 import OnboardingTour from '../components/OnboardingTour';
@@ -86,6 +86,16 @@ const MainLayout = () => {
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
+  const [createWsOpen, setCreateWsOpen] = useState(false);
+  const [joinWsOpen, setJoinWsOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem('sidebarCollapsed');
+    return saved === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('sidebarCollapsed', sidebarCollapsed.toString());
+  }, [sidebarCollapsed]);
 
   const [gPressed, setGPressed] = useState(false);
 
@@ -158,7 +168,8 @@ const MainLayout = () => {
     if (gPressed) {
       setGPressed(false);
       const navMap: Record<string, string> = {
-        b: '/',
+        h: '/',
+        b: '/tasks',
         i: '/inbox',
         c: '/calendar',
         p: '/planner',
@@ -181,19 +192,35 @@ const MainLayout = () => {
 
   return (
     <Box sx={{ display: 'flex' }}>
-      <Header handleDrawerToggle={handleDrawerToggle} onOpenShortcuts={() => setShortcutsOpen(true)} onStartTour={startTour} />
-      <Sidebar mobileOpen={mobileOpen} handleDrawerToggle={handleDrawerToggle} />
+      <Header
+        handleDrawerToggle={handleDrawerToggle}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
+        onStartTour={startTour}
+      />
+      <Sidebar
+        mobileOpen={mobileOpen}
+        handleDrawerToggle={handleDrawerToggle}
+        createWsOpen={createWsOpen}
+        setCreateWsOpen={setCreateWsOpen}
+        joinWsOpen={joinWsOpen}
+        setJoinWsOpen={setJoinWsOpen}
+        collapsed={sidebarCollapsed}
+        setCollapsed={setSidebarCollapsed}
+      />
 
       <Box
         component="main"
         data-tour="main-content"
         sx={{
           flexGrow: 1,
-          p: 3,
-          width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
+          p: { xs: 1.5, sm: 2, md: 3 },
+          width: { md: `calc(100% - ${sidebarCollapsed ? COLLAPSED_DRAWER_WIDTH : DRAWER_WIDTH}px)` },
           minHeight: '100vh',
           bgcolor: 'background.default',
+          overflow: 'hidden',
+          transition: 'width 0.2s ease-in-out, margin-left 0.2s ease-in-out',
         }}
+        className="main-content-transition"
       >
         <Toolbar />
         <Suspense fallback={

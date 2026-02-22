@@ -9,7 +9,10 @@ import type {
   Decision, Handoff, Issue, Notification, Initiative, Objective,
   CustomView, ViewFilter, IssueTemplate, AutomationRule,
   Subtask, TaskOwner, TaskType, KanbanColumn, MemberRole,
+  WikiDocument, ActivityEntry, ActivityEntityType,
+  RelationType, TaskRelation,
 } from '../../types';
+import { RELATION_TYPE_CONFIG } from '../../types';
 
 // --- Collection names ---
 const C = {
@@ -27,6 +30,8 @@ const C = {
   issueTemplates: 'issueTemplates',
   automationRules: 'automationRules',
   objectives: 'objectives',
+  wikiDocuments: 'wikiDocuments',
+  activities: 'activities',
 };
 
 // --- Seed all data on first load ---
@@ -47,6 +52,8 @@ export const seedAllData = () => {
   db.seedCollection(C.issueTemplates, data.mockIssueTemplates);
   db.seedCollection(C.automationRules, data.mockAutomationRules);
   db.seedCollection(C.objectives, data.mockObjectives);
+  db.seedCollection(C.wikiDocuments, data.mockWikiDocuments);
+  db.seedCollection(C.activities, data.mockActivities);
   _seeded = true;
   console.log(
     '%c Mock Mode Active - Using dummy data',
@@ -229,6 +236,88 @@ export const unassignTask = async (taskId: string, _userId: string): Promise<voi
   });
 };
 
+// 18. Issue Relations Management
+export const addTaskRelation = async (
+  taskId: string,
+  targetTask: Task,
+  relationType: RelationType,
+  currentTaskCode?: string,
+  currentTaskText?: string,
+): Promise<void> => {
+  const task = await db.getById<Task>(C.tasks, taskId);
+  const target = await db.getById<Task>(C.tasks, targetTask.id);
+  if (!task || !target) return;
+
+  const newRel: TaskRelation = {
+    type: relationType,
+    targetTaskId: targetTask.id,
+    targetTaskCode: targetTask.taskCode,
+    targetTaskText: targetTask.text,
+  };
+
+  const invType = RELATION_TYPE_CONFIG[relationType].inverse;
+  const invRel: TaskRelation = {
+    type: invType,
+    targetTaskId: taskId,
+    targetTaskCode: currentTaskCode,
+    targetTaskText: currentTaskText,
+  };
+
+  await db.update(C.tasks, taskId, {
+    relations: [...(task.relations || []), newRel],
+    updatedAt: now(),
+  });
+  await db.update(C.tasks, targetTask.id, {
+    relations: [...(target.relations || []), invRel],
+    updatedAt: now(),
+  });
+};
+
+export const removeTaskRelation = async (
+  taskId: string,
+  targetTaskId: string,
+  relationType: RelationType,
+): Promise<void> => {
+  const task = await db.getById<Task>(C.tasks, taskId);
+  const target = await db.getById<Task>(C.tasks, targetTaskId);
+  if (!task || !target) return;
+
+  const invType = RELATION_TYPE_CONFIG[relationType].inverse;
+
+  await db.update(C.tasks, taskId, {
+    relations: (task.relations || []).filter(
+      r => !(r.targetTaskId === targetTaskId && r.type === relationType),
+    ),
+    updatedAt: now(),
+  });
+  await db.update(C.tasks, targetTaskId, {
+    relations: (target.relations || []).filter(
+      r => !(r.targetTaskId === taskId && r.type === invType),
+    ),
+    updatedAt: now(),
+  });
+};
+
+// 20. Sprint Rollover
+export const rolloverSprintTasks = async (
+  fromSprintId: string,
+  toSprintId: string,
+  taskIds?: string[],
+): Promise<number> => {
+  if (taskIds && taskIds.length > 0) {
+    for (const id of taskIds) {
+      await db.update(C.tasks, id, { sprintId: toSprintId, updatedAt: now() });
+    }
+    return taskIds.length;
+  }
+  const all = await db.getAll<Task>(C.tasks, { sprintId: fromSprintId });
+  const incomplete = all.filter(t => !t.completed && t.status !== 'done');
+  for (const t of incomplete) {
+    await db.update(C.tasks, t.id, { sprintId: toSprintId, updatedAt: now() });
+  }
+  return incomplete.length;
+};
+
 // ===============================================================
 // Project Service
 // ===============================================================
@@ -304,6 +393,12 @@ export const updateSprint = async (
 
 export const deleteSprint = async (id: string): Promise<void> => {
   await db.remove(C.sprints, id);
+};
+
+export const fetchWorkspaceSprints = async (projectIds: string[]): Promise<Sprint[]> => {
+  seedAllData();
+  const all = await db.getAll<Sprint>(C.sprints);
+  return all.filter(s => projectIds.includes(s.projectId)).sort((a, b) => a.order - b.order);
 };
 
 // ===============================================================
@@ -666,3 +761,56 @@ export const deleteObjective = async (id: string): Promise<void> => {
   await db.remove(C.objectives, id);
 };
 
+// ===============================================================
+// Wiki Service
+// ===============================================================
+export const fetchWikiDocuments = async (workspaceId: string): Promise<WikiDocument[]> => {
+  seedAllData();
+  return db.getAll<WikiDocument>(C.wikiDocuments, { workspaceId });
+};
+
+export const createWikiDocument = async (
+  d: Omit<WikiDocument, 'id' | 'createdAt'>,
+): Promise<WikiDocument> => {
+  seedAllData();
+  return db.add<WikiDocument>(C.wikiDocuments, { ...d, createdAt: now() } as Omit<WikiDocument, 'id'>);
+};
+
+export const updateWikiDocument = async (
+  id: string,
+  updates: Partial<Omit<WikiDocument, 'id' | 'createdAt' | 'workspaceId' | 'createdBy'>>,
+): Promise<void> => {
+  seedAllData();
+  await db.update(C.wikiDocuments, id, { ...updates, updatedAt: now() });
+};
+
+export const deleteWikiDocument = async (id: string): Promise<void> => {
+  seedAllData();
+  await db.remove(C.wikiDocuments, id);
+};
+
+// ===============================================================
+// Activity Log Service
+// ===============================================================
+export const fetchActivities = async (
+  workspaceId: string,
+  opts?: { entityType?: ActivityEntityType; entityId?: string; limit?: number },
+): Promise<ActivityEntry[]> => {
+  seedAllData();
+  let all = await db.getAll<ActivityEntry>(C.activities, { workspaceId });
+  if (opts?.entityType) all = all.filter(a => a.entityType === opts.entityType);
+  if (opts?.entityId) all = all.filter(a => a.entityId === opts.entityId);
+  all.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  return all.slice(0, opts?.limit || 50);
+};
+
+export const logActivity = async (
+  entry: Omit<ActivityEntry, 'id'>,
+): Promise<string> => {
+  seedAllData();
+  const added = await db.add<ActivityEntry>(C.activities, {
+    ...entry,
+    timestamp: entry.timestamp || now(),
+  } as Omit<ActivityEntry, 'id'>);
+  return added.id;
+};

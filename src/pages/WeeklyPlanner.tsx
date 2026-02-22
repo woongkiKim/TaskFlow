@@ -164,7 +164,8 @@ const DraggableTaskCard = ({ task, isEditing, editText, editInputRef, onEditStar
                 textDecoration: task.completed ? 'line-through' : 'none',
                 color: task.completed ? 'text.secondary' : 'text.primary',
                 flexGrow: 1,
-                wordBreak: 'break-word',
+                wordBreak: 'keep-all',
+                overflowWrap: 'break-word',
               }}
               onDoubleClick={() => onEditStart(task)}
             >
@@ -223,10 +224,12 @@ const DroppableColumn = ({
 
 interface WeeklyPlannerProps {
   initialDate?: Date;
+  calendarView?: 'month' | 'week' | 'day';
+  onViewChange?: (view: 'month' | 'week' | 'day') => void;
 }
 
 // --- Main Component ---
-const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
+const WeeklyPlanner = ({ initialDate, calendarView, onViewChange }: WeeklyPlannerProps) => {
   const { user } = useAuth();
   const { currentWorkspace: workspace } = useWorkspace(); // Use workspace context
   const { t, lang } = useLanguage();
@@ -692,14 +695,30 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
               </Box>
               <Typography variant="body2" color="text.secondary">{weekRange}</Typography>
             </Box>
-            <IconButton
-              size="small"
-              onClick={() => navigate(`/calendar?view=month&date=${format(currentDate, 'yyyy-MM-dd')}`)}
-              sx={{ border: '1px solid', borderColor: 'divider' }}
-              title={textByLang('Go to calendar', '캘린더로 이동')}
-            >
-              <CalendarMonthIcon fontSize="small" />
-            </IconButton>
+            {onViewChange ? (
+              <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 0.3 }}>
+                <ToggleButtonGroup
+                  value={calendarView || 'week'}
+                  exclusive
+                  onChange={(_, v) => v && onViewChange(v)}
+                  size="small"
+                  sx={{ height: 30 }}
+                >
+                  <ToggleButton value="month" sx={{ px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>{t('month') as string}</ToggleButton>
+                  <ToggleButton value="week" sx={{ px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>{t('week') as string}</ToggleButton>
+                  <ToggleButton value="day" sx={{ px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>{t('day') as string}</ToggleButton>
+                </ToggleButtonGroup>
+              </Paper>
+            ) : (
+              <IconButton
+                size="small"
+                onClick={() => navigate(`/calendar?view=month&date=${format(currentDate, 'yyyy-MM-dd')}`)}
+                sx={{ border: '1px solid', borderColor: 'divider' }}
+                title={textByLang('Go to calendar', '캘린더로 이동')}
+              >
+                <CalendarMonthIcon fontSize="small" />
+              </IconButton>
+            )}
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CategoryFilter allTags={allTags} selectedTag={selectedTag} onSelectTag={setSelectedTag} />
@@ -787,10 +806,9 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
           </Paper>
         ) : (
           <Box sx={{
-            display: { xs: 'flex', md: 'grid' },
-            gridTemplateColumns: { md: `repeat(${days.length}, minmax(0, 1fr))` },
+            display: 'flex',
             gap: { xs: 2, md: 1 },
-            overflowX: { xs: 'auto', md: 'hidden' },
+            overflowX: 'auto',
             pb: 2,
             flexGrow: 1,
             '&::-webkit-scrollbar': { height: 8 },
@@ -811,7 +829,7 @@ const WeeklyPlanner = ({ initialDate }: WeeklyPlannerProps) => {
                   key={dayKey}
                   elevation={0}
                   sx={{
-                    minWidth: { xs: 260, md: 0 }, flex: 1, display: 'flex', flexDirection: 'column',
+                    minWidth: 140, flex: 1, display: 'flex', flexDirection: 'column',
                     bgcolor: isToday ? 'primary.50' : 'background.paper',
                     border: '1px solid', borderColor: isToday ? 'primary.main' : 'divider',
                     borderRadius: 3, height: '100%'

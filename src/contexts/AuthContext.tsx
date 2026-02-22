@@ -11,6 +11,7 @@ interface AuthContextType {
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
+  updateDisplayName: (newName: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -35,10 +36,10 @@ const MOCK_USER = {
   providerData: [],
   refreshToken: '',
   tenantId: null,
-  delete: async () => {},
+  delete: async () => { },
   getIdToken: async () => 'mock-token',
   getIdTokenResult: async () => ({ token: 'mock-token', claims: {}, authTime: '', issuedAtTime: '', expirationTime: '', signInProvider: null, signInSecondFactor: null }),
-  reload: async () => {},
+  reload: async () => { },
   toJSON: () => ({}),
   phoneNumber: null,
   providerId: 'mock',
@@ -82,7 +83,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return signOut(auth);
   };
 
-  const value = { user, loading, signInWithGoogle, logout };
+  // 4. 프로필 업데이트 함수
+  const updateDisplayName = async (newName: string) => {
+    if (IS_MOCK) {
+      if (user) setUser({ ...user, displayName: newName } as User);
+      return;
+    }
+    if (auth.currentUser) {
+      const { updateProfile } = await import('firebase/auth');
+      await updateProfile(auth.currentUser, { displayName: newName });
+      setUser({ ...auth.currentUser }); // Force refresh of user object in state
+    }
+  };
+
+  const value = { user, loading, signInWithGoogle, logout, updateDisplayName };
 
   if (loading) {
     return (

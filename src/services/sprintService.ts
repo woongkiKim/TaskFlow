@@ -37,6 +37,21 @@ export const fetchProjectSprints = async (projectId: string): Promise<Sprint[]> 
     return snap.docs.map(d => ({ id: d.id, ...d.data() } as Sprint)).sort((a, b) => a.order - b.order);
 };
 
+// 2.1 워크스페이스 전체 스프린트 목록
+export const fetchWorkspaceSprints = async (projectIds: string[]): Promise<Sprint[]> => {
+    if (projectIds.length === 0) return [];
+    // Firestore where 'in' clause supports up to 10-30 items depending on version. 
+    // Usually project count is small.
+    const results: Sprint[] = [];
+    // Chunk by 10
+    for (let i = 0; i < projectIds.length; i += 10) {
+        const chunk = projectIds.slice(i, i + 10);
+        const snap = await getDocs(query(collection(db, SPRINTS_COLLECTION), where('projectId', 'in', chunk)));
+        results.push(...snap.docs.map(d => ({ id: d.id, ...d.data() } as Sprint)));
+    }
+    return results.sort((a, b) => a.order - b.order);
+};
+
 // 3. 스프린트 업데이트
 export const updateSprint = async (
     id: string,

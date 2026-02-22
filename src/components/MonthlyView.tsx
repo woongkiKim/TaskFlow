@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
-import { Box, Typography, IconButton, Paper, Grid, InputBase, Button, CircularProgress, Divider, Tooltip } from '@mui/material';
+import { Box, Typography, IconButton, Paper, Grid, InputBase, Button, CircularProgress, Divider, Tooltip, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AddIcon from '@mui/icons-material/Add';
 import { format, isSameDay, parseISO } from 'date-fns';
+import { ko as dateFnsKo } from 'date-fns/locale';
 
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -19,12 +20,15 @@ import { getWeeklyPlannerPreferences } from '../utils/plannerPreferences';
 interface MonthlyViewProps {
   currentDate: Date;
   setCurrentDate: (date: Date) => void;
+  calendarView?: 'month' | 'week' | 'day';
+  onViewChange?: (view: 'month' | 'week' | 'day') => void;
 }
 
-const MonthlyView = ({ currentDate, setCurrentDate }: MonthlyViewProps) => {
+const MonthlyView = ({ currentDate, setCurrentDate, calendarView, onViewChange }: MonthlyViewProps) => {
   const { user } = useAuth();
-  const { t } = useLanguage();
-  const { sprints } = useWorkspace();
+  const { t, lang } = useLanguage();
+  const dateLocale = lang === 'ko' ? dateFnsKo : undefined;
+  const { sprints, allWorkspaceSprints } = useWorkspace();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,8 +82,8 @@ const MonthlyView = ({ currentDate, setCurrentDate }: MonthlyViewProps) => {
       const newTask = await addTaskToDB(newTaskText.trim(), user.uid, targetTime);
       setTasks(prev => [newTask, ...prev]);
       setNewTaskText('');
-    } catch (e) {
-      toast.error(t('addFailed') as string);
+    } catch {
+      toast.error(t('deleteFailed') as string);
     }
   };
 
@@ -94,7 +98,7 @@ const MonthlyView = ({ currentDate, setCurrentDate }: MonthlyViewProps) => {
 
     try {
       await toggleTaskStatusInDB(id, taskToToggle.completed);
-    } catch (error) {
+    } catch {
       setTasks(previousTasks);
       toast.error(t('toggleFailed') as string);
     }
@@ -107,7 +111,7 @@ const MonthlyView = ({ currentDate, setCurrentDate }: MonthlyViewProps) => {
 
     try {
       await updateTaskTextInDB(id, newText);
-    } catch (error) {
+    } catch {
       setTasks(previousTasks);
       toast.error(t('editFailed') as string);
     }
@@ -120,7 +124,7 @@ const MonthlyView = ({ currentDate, setCurrentDate }: MonthlyViewProps) => {
 
     try {
       await deleteTaskFromDB(id);
-    } catch (error) {
+    } catch {
       setTasks(previousTasks);
       toast.error(t('deleteFailed') as string);
     }
@@ -144,7 +148,7 @@ const MonthlyView = ({ currentDate, setCurrentDate }: MonthlyViewProps) => {
       {/* [Left] Calendar Grid Area */}
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         {/* Navigation & Header */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Box sx={{ display: 'flex', bgcolor: 'background.paper', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
               <IconButton onClick={() => setCurrentDate(getPrevMonth(currentDate))} size="small"><ChevronLeftIcon /></IconButton>
@@ -157,12 +161,29 @@ const MonthlyView = ({ currentDate, setCurrentDate }: MonthlyViewProps) => {
               <IconButton onClick={() => setCurrentDate(getNextMonth(currentDate))} size="small"><ChevronRightIcon /></IconButton>
             </Box>
             <Typography variant="h5" fontWeight="800">
-              {format(currentDate, 'MMMM yyyy')}
+              {format(currentDate, 'MMMM yyyy', { locale: dateLocale })}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ bgcolor: 'action.hover', px: 1, py: 0.3, borderRadius: 1, fontSize: '0.7rem' }}>
               {t('basedOnCreatedDate') as string}
             </Typography>
           </Box>
+
+          {/* View Toggle */}
+          {onViewChange && (
+            <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 0.3 }}>
+              <ToggleButtonGroup
+                value={calendarView || 'month'}
+                exclusive
+                onChange={(_, v) => v && onViewChange(v)}
+                size="small"
+                sx={{ height: 30 }}
+              >
+                <ToggleButton value="month" sx={{ px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>{t('month') as string}</ToggleButton>
+                <ToggleButton value="week" sx={{ px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>{t('week') as string}</ToggleButton>
+                <ToggleButton value="day" sx={{ px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>{t('day') as string}</ToggleButton>
+              </ToggleButtonGroup>
+            </Paper>
+          )}
 
           {/* Completion Widget */}
           <Paper sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 1, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
@@ -180,9 +201,9 @@ const MonthlyView = ({ currentDate, setCurrentDate }: MonthlyViewProps) => {
         </Box>
 
         {/* ── Iteration Timeline ── */}
-        {sprints.length > 0 && (
+        {allWorkspaceSprints.length > 0 && (
           <IterationTimeline
-            sprints={sprints}
+            sprints={allWorkspaceSprints}
             currentDate={currentDate}
             expanded={timelineExpanded}
             onToggle={() => setTimelineExpanded(!timelineExpanded)}
@@ -224,7 +245,7 @@ const MonthlyView = ({ currentDate, setCurrentDate }: MonthlyViewProps) => {
                     }
                   }}
                   sx={{
-                    minHeight: 100,
+                    minHeight: { xs: 70, sm: 85, md: 100 },
                     borderRight: '1px solid #f0f0f0',
                     borderBottom: '1px solid #f0f0f0',
                     bgcolor: isSelected ? 'primary.50' : (isCurrentMonth ? 'background.paper' : 'rgba(249, 250, 251, 0.5)'),
@@ -301,9 +322,10 @@ const MonthlyView = ({ currentDate, setCurrentDate }: MonthlyViewProps) => {
       <Paper
         elevation={4}
         sx={{
-          width: 320,
+          width: { md: 280, lg: 320 },
+          minWidth: { md: 240 },
           borderRadius: 4,
-          display: 'flex',
+          display: { xs: 'none', md: 'flex' },
           flexDirection: 'column',
           border: '1px solid', borderColor: 'divider'
         }}
@@ -316,10 +338,10 @@ const MonthlyView = ({ currentDate, setCurrentDate }: MonthlyViewProps) => {
             </Typography>
           </Box>
           <Typography variant="h5" fontWeight="800" gutterBottom>
-            {format(selectedDate, 'MMM d')}
+            {format(selectedDate, 'MMM d', { locale: dateLocale })}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {format(selectedDate, 'EEEE')} · {selectedDayTasks.length} {t('activeTasks') as string}
+            {format(selectedDate, 'EEEE', { locale: dateLocale })} · {selectedDayTasks.length} {t('activeTasks') as string}
           </Typography>
 
           {/* Add Task Input */}

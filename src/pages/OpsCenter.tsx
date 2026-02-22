@@ -40,8 +40,9 @@ import {
 } from '../types';
 import { format } from 'date-fns';
 import TabPanel from '../components/TabPanel';
-import { AddDecisionDialog, AddHandoffDialog, AddIssueDialog, MetricCard } from './OpsCenterDialogs';
+import { AddDecisionDialog, AddHandoffDialog, AddIssueDialog, MetricCard, SprintRolloverDialog } from './OpsCenterDialogs';
 import TaskDetailDialog from '../components/TaskDetailDialog';
+import { rolloverSprintTasks } from '../services/taskService';
 import type { Task } from '../types';
 
 const textByLang = (lang: 'ko' | 'en', en: string, ko: string) => (lang === 'ko' ? ko : en);
@@ -138,6 +139,7 @@ const OpsCenter = () => {
     const [snackMsg, setSnackMsg] = useState('');
     const [drillDown, setDrillDown] = useState<'p0' | 'blocked' | 'due48h' | 'overdue' | null>(null);
     const [detailTask, setDetailTask] = useState<Task | null>(null);
+    const [rolloverOpen, setRolloverOpen] = useState(false);
 
     const handleUpdateTask = useCallback(() => {
         setDetailTask(null);
@@ -285,6 +287,23 @@ const OpsCenter = () => {
         setSnackMsg(textByLang(lang, 'Issue logged', '이슈가 기록되었습니다'));
     };
 
+    // ═══ SPRINT ROLLOVER HANDLER ═══════════════════════════
+    const handleSprintRollover = async (targetSprintId: string) => {
+        if (!currentSprint) return;
+        try {
+            const count = await rolloverSprintTasks(currentSprint.id, targetSprintId);
+            setSnackMsg(textByLang(lang, 
+                `Successfully rolled over ${count} tasks to the next sprint.`, 
+                `${count}개의 작업을 다음 스프린트로 이월했습니다.`
+            ));
+            reloadTasks();
+            setRolloverOpen(false);
+        } catch (error) {
+            console.error('Error rolling over sprint tasks:', error);
+            setSnackMsg(textByLang(lang, 'Failed to roll over sprint tasks.', '스프린트 작업 이월에 실패했습니다.'));
+        }
+    };
+
     // ═══ INITIAL LOADING — stable skeleton, never flickers ═══
     if (isInitialLoading) {
         return (
@@ -394,6 +413,16 @@ const OpsCenter = () => {
                             <Typography variant="caption" color="text.secondary">
                                 {sprintProgress.done}/{sprintProgress.total} {textByLang(lang, 'tasks done', '작업 완료')}
                             </Typography>
+                            {sprintProgress.total > sprintProgress.done && (
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    onClick={(e) => { e.stopPropagation(); setRolloverOpen(true); }}
+                                    sx={{ mt: 1, textTransform: 'none', py: 0, fontSize: '0.7rem' }}
+                                >
+                                    {textByLang(lang, 'Rollover Incomplete', '미완료 작업 이월')}
+                                </Button>
+                            )}
                         </Paper>
                     )}
                 </Box>
@@ -961,9 +990,21 @@ const OpsCenter = () => {
                 onSubmit={handleAddIssue} userName={user?.displayName || textByLang(lang, 'User', '사용자')}
                 userUid={user?.uid || ''} members={currentMembers} />
 
-            <Snackbar open={!!snackMsg} autoHideDuration={3000} onClose={() => setSnackMsg('')}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-                <Alert severity="success" variant="filled" sx={{ fontWeight: 600 }}>{snackMsg}</Alert>
+            {/* Sprint Rollover Dialog */}
+            {currentSprint && (
+                <SprintRolloverDialog
+                    open={rolloverOpen}
+                    onClose={() => setRolloverOpen(false)}
+                    onSubmit={handleSprintRollover}
+                    currentSprint={currentSprint}
+                    allSprints={sprints}
+                />
+            )}
+
+            <Snackbar open={!!snackMsg} autoHideDuration={4000} onClose={() => setSnackMsg('')}>
+                <Alert onClose={() => setSnackMsg('')} severity="success" sx={{ width: '100%', borderRadius: 3 }}>
+                    {snackMsg}
+                </Alert>
             </Snackbar>
 
             {/* Task Detail Dialog (inline modal) */}

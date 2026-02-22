@@ -232,6 +232,8 @@ const Header = ({ handleDrawerToggle, onOpenShortcuts, onStartTour }: HeaderProp
               {t('logout') as string}
             </MenuItem>
           </Menu>
+
+
         </Toolbar>
       </AppBar>
 

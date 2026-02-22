@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
     Dialog, DialogTitle, DialogContent, DialogActions,
     TextField, Button, Box, ToggleButtonGroup, ToggleButton, Chip, Typography,
@@ -28,7 +28,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { toast } from 'sonner';
 import { CATEGORY_COLORS } from '../constants/colors';
-import RichTextEditor from './RichTextEditor';
+import BlockEditor from './BlockEditor';
 
 
 
@@ -59,6 +59,7 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
     // Core fields
     const [text, setText] = useState('');
     const [description, setDescription] = useState('');
+    const descriptionRef = useRef('');
     const [priority, setPriority] = useState<PriorityLevel | ''>('');
     const [taskType, setTaskType] = useState<TaskType>('task');
     const [category, setCategory] = useState('');
@@ -199,7 +200,7 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
         if (!text.trim()) return;
         onSubmit({
             text: text.trim(),
-            description: description.trim() || undefined,
+            description: descriptionRef.current.trim() || undefined,
             priority: priority || undefined,
             type: taskType,
             category: category.trim() || undefined,
@@ -220,7 +221,7 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
             estimate: estimate ?? undefined,
         });
         // Reset
-        setText(''); setDescription(''); setPriority(''); setTaskType('task');
+        setText(''); setDescription(''); descriptionRef.current = ''; setPriority(''); setTaskType('task');
         setCategory(''); setCategoryColor(CATEGORY_COLORS[0]);
         setDueDate(defaultDueDate);
         setTagText(''); setTags([]); setSelectedOwners([]);
@@ -338,13 +339,12 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
                 {/* Detail Mode — all remaining fields */}
                 <Collapse in={detailMode}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-                        {/* Description (Rich Text) */}
-                        <RichTextEditor
-                            content={description}
-                            onChange={setDescription}
-                            placeholder={t('taskDescription') as string}
+                        {/* Description (Block Editor) */}
+                        <BlockEditor
+                            key={detailMode ? 'add-task-editor' : 'add-task-hidden'}
+                            initialContent={description}
+                            onChange={(md) => { descriptionRef.current = md; }}
                             minHeight={70}
-                            members={currentMembers.map(m => ({ uid: m.uid, displayName: m.displayName, photoURL: m.photoURL }))}
                         />
 
                         {/* Task Type */}

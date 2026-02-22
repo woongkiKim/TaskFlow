@@ -98,6 +98,11 @@ export interface Workspace {
   memberUids?: string[];
   createdBy: string;
   inviteCode: string;
+  githubConfig?: {
+    accessToken?: string;
+    lastSyncedAt?: string;
+  };
+  integrations?: import('./integrations').WorkspaceIntegrations;
   createdAt: string;
 }
 
@@ -116,6 +121,8 @@ export interface TeamGroup {
 }
 
 // --- Project ---
+import type { GitHubRepo } from './github';
+
 export interface Project {
   id: string;
   name: string;
@@ -126,12 +133,13 @@ export interface Project {
   createdBy: string;
   createdAt: string;
   kanbanColumns?: KanbanColumn[];
-  taskCounter?: number; // for T-XXX auto-increment
-  initiativeId?: string; // Links project to a strategic initiative
+  taskCounter?: number;
+  initiativeId?: string;
   startDate?: string;
   targetDate?: string;
   status?: 'active' | 'completed' | 'paused' | 'planned';
   description?: string;
+  githubRepo?: GitHubRepo;
 }
 
 export interface KanbanColumn {
@@ -214,6 +222,7 @@ export interface Task {
   priority?: string;         // P0 | P1 | P2 | P3 (or legacy high/medium/low)
   type?: TaskType;
   description?: string;
+  startDate?: string;
   dueDate?: string;
   subtasks?: Subtask[];
   category?: string;
@@ -305,13 +314,15 @@ export interface ViewFilter {
   initiativeId?: string;       // filter by strategic initiative
 }
 
+export type ViewMode = 'list' | 'board' | 'calendar' | 'table' | 'timeline';
+
 export interface CustomView {
   id: string;
   name: string;
   icon: string;                // emoji
   color: string;               // hex
   filters: ViewFilter;
-  viewMode?: 'list' | 'board' | 'calendar' | 'table';
+  viewMode: ViewMode;
 
   // Scope
   projectId: string;           // which project this view belongs to
@@ -464,6 +475,7 @@ export const NOTIFICATION_TYPES = [
   'sprint_completed',    // 스프린트가 완료됨
   'task_due_soon',       // 마감일 임박
   'task_overdue',        // 마감일 초과
+  'comment_added',       // 새 댓글 달림
 ] as const;
 export type NotificationType = typeof NOTIFICATION_TYPES[number];
 
@@ -476,6 +488,7 @@ export const NOTIFICATION_TYPE_CONFIG: Record<NotificationType, { label: string;
   sprint_completed: { label: 'Sprint Completed', icon: '🏁', color: '#10b981' },
   task_due_soon: { label: 'Due Soon', icon: '⏰', color: '#f97316' },
   task_overdue: { label: 'Overdue', icon: '🔴', color: '#ef4444' },
+  comment_added: { label: 'New Comment', icon: '💬', color: '#06b6d4' },
 };
 
 export interface Notification {
@@ -512,6 +525,7 @@ export interface Initiative {
   name: string;
   description?: string;
   status: 'planned' | 'active' | 'completed' | 'canceled';
+  startDate?: string;
   targetDate?: string;
   color: string;
 
@@ -541,11 +555,98 @@ export interface KeyResult {
   linkedTaskIds?: string[];
 }
 
+// OKR Period cadences — following industry patterns (Viva Goals, Quantive, Weekdone)
+export const OKR_CADENCES = ['quarterly', 'half', 'annual', 'custom'] as const;
+export type OkrCadence = typeof OKR_CADENCES[number];
+
+export const OKR_CADENCE_CONFIG: Record<OkrCadence, { label: string; labelKo: string; icon: string; color: string }> = {
+  quarterly: { label: 'Quarterly',  labelKo: '분기',   icon: '📅', color: '#6366f1' },
+  half:      { label: 'Half-Year',  labelKo: '반기',   icon: '📆', color: '#8b5cf6' },
+  annual:    { label: 'Annual',     labelKo: '연간',   icon: '🗓️', color: '#0ea5e9' },
+  custom:    { label: 'Custom',     labelKo: '커스텀', icon: '✏️', color: '#64748b' },
+};
+
+export interface OkrPeriodOption {
+  value: string;         // 'Q1 2026', 'H1 2026', 'FY2026', etc.
+  label: string;         // same as value (display)
+  labelKo: string;       // '2026년 1분기', '2026년 상반기', '2026 회계연도'
+  cadence: OkrCadence;
+  year: number;
+  startMonth: number;    // 1-indexed
+  endMonth: number;      // 1-indexed
+}
+
+/**
+ * Dynamically generate OKR period options.
+ * Ranges from (currentYear - 1) to (currentYear + 2), covering 4 years.
+ * This allows users to review past OKRs and plan 2+ years ahead.
+ */
+export function generateOkrPeriods(currentYear?: number): OkrPeriodOption[] {
+  const year = currentYear ?? new Date().getFullYear();
+  const periods: OkrPeriodOption[] = [];
+
+  for (let y = year - 1; y <= year + 2; y++) {
+    // Annual
+    periods.push({
+      value: `FY${y}`, label: `FY${y}`, labelKo: `${y} 회계연도`,
+      cadence: 'annual', year: y, startMonth: 1, endMonth: 12,
+    });
+    // Half-Year
+    periods.push(
+      { value: `H1 ${y}`, label: `H1 ${y}`, labelKo: `${y}년 상반기`, cadence: 'half', year: y, startMonth: 1, endMonth: 6 },
+      { value: `H2 ${y}`, label: `H2 ${y}`, labelKo: `${y}년 하반기`, cadence: 'half', year: y, startMonth: 7, endMonth: 12 },
+    );
+    // Quarterly
+    periods.push(
+      { value: `Q1 ${y}`, label: `Q1 ${y}`, labelKo: `${y}년 1분기`, cadence: 'quarterly', year: y, startMonth: 1, endMonth: 3 },
+      { value: `Q2 ${y}`, label: `Q2 ${y}`, labelKo: `${y}년 2분기`, cadence: 'quarterly', year: y, startMonth: 4, endMonth: 6 },
+      { value: `Q3 ${y}`, label: `Q3 ${y}`, labelKo: `${y}년 3분기`, cadence: 'quarterly', year: y, startMonth: 7, endMonth: 9 },
+      { value: `Q4 ${y}`, label: `Q4 ${y}`, labelKo: `${y}년 4분기`, cadence: 'quarterly', year: y, startMonth: 10, endMonth: 12 },
+    );
+  }
+
+  return periods;
+}
+
+/** Get the "current" period value based on today's date */
+export function getCurrentPeriod(cadence: OkrCadence = 'quarterly'): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1; // 1-indexed
+  switch (cadence) {
+    case 'annual': return `FY${y}`;
+    case 'half': return m <= 6 ? `H1 ${y}` : `H2 ${y}`;
+    case 'quarterly':
+    default:
+      if (m <= 3) return `Q1 ${y}`;
+      if (m <= 6) return `Q2 ${y}`;
+      if (m <= 9) return `Q3 ${y}`;
+      return `Q4 ${y}`;
+  }
+}
+
+/** Get the start/end ISO date strings for a given period value */
+export function getDateRangeForPeriod(periodValue: string): { startDate: string; endDate: string } | null {
+  const p = ALL_PERIOD_OPTIONS.find(o => o.value === periodValue);
+  if (!p) return null;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const lastDay = new Date(p.year, p.endMonth, 0).getDate(); // last day of endMonth
+  return {
+    startDate: `${p.year}-${pad(p.startMonth)}-01`,
+    endDate: `${p.year}-${pad(p.endMonth)}-${pad(lastDay)}`,
+  };
+}
+
+/** Pre-generated period options (module-level cache) */
+const ALL_PERIOD_OPTIONS = generateOkrPeriods();
+
 export interface Objective {
   id: string;
   title: string;
   description?: string;
-  period: string;            // 'Q1 2026', 'Q2 2026' etc.
+  period: string;            // 'Q1 2026', 'H1 2026', 'FY2026', 'Custom', etc.
+  startDate?: string;        // ISO date — auto-filled from preset, or user-overridden
+  endDate?: string;          // ISO date — auto-filled from preset, or user-overridden
   status: 'draft' | 'active' | 'completed' | 'canceled';
   ownerId: string;
   ownerName: string;
@@ -562,6 +663,72 @@ export const OKR_STATUS_CONFIG: Record<Objective['status'], { label: string; lab
   completed: { label: 'Completed', labelKo: '완료', color: '#10b981', bgColor: '#ecfdf5' },
   canceled: { label: 'Canceled', labelKo: '취소', color: '#ef4444', bgColor: '#fef2f2' },
 };
+
+// --- Wiki / Documents ---
+export type WikiVisibility = 'workspace' | 'private' | 'public' | 'team' | 'members';
+
+export const WIKI_VISIBILITY_CONFIG: Record<WikiVisibility, { label: string; labelKo: string; icon: string; color: string }> = {
+  workspace: { label: 'Entire Team', labelKo: '팀 전체', icon: '👥', color: '#3b82f6' },
+  private: { label: 'Only me', labelKo: '나만 보기', icon: '🔒', color: '#f59e0b' },
+  public: { label: 'Public', labelKo: '공개', icon: '🌐', color: '#10b981' },
+  team: { label: 'Specific Team', labelKo: '특정 팀', icon: '🏢', color: '#8b5cf6' },
+  members: { label: 'Specific Members', labelKo: '특정 인원', icon: '👤', color: '#ea580c' },
+};
+
+export interface WikiDocument {
+  id: string;
+  title: string;
+  content: string;          // Markdown body
+  icon?: string;            // emoji icon for the doc
+  isFolder?: boolean;       // true = folder, false/undefined = document
+  parentId?: string;        // parent doc/folder id for nesting
+  visibility?: WikiVisibility; // access control level
+  // Granular access control
+  allowedTeamIds?: string[];    // group IDs when visibility = 'team'
+  allowedTeamNames?: string[];  // group names for display
+  allowedMemberIds?: string[];  // user IDs when visibility = 'members'
+  allowedMemberNames?: string[];// user names for display
+  linkedDocIds?: string[];  // cross-referenced document IDs
+  workspaceId: string;
+  projectId?: string;       // optional project association
+  createdBy: string;
+  createdByName?: string;
+  updatedBy?: string;
+  updatedByName?: string;
+  pinned?: boolean;
+  favoritedBy?: string[];   // user IDs who favorited this doc
+  readBy?: string[];        // user IDs who have read this doc
+  comments?: WikiComment[]; // inline comments
+  versions?: WikiVersion[]; // version history snapshots
+  tags?: string[];
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface DocumentPresence {
+  userId: string;
+  userName: string;
+  userPhoto?: string;
+  lastSeen: string;
+}
+
+export interface WikiComment {
+  id: string;
+  authorUid: string;
+  authorName: string;
+  authorPhoto?: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface WikiVersion {
+  id: string;
+  title: string;
+  content: string;
+  editedBy: string;
+  editedByName: string;
+  editedAt: string;
+}
 
 // --- Automation Rules ---
 export interface AutomationTrigger {
@@ -619,3 +786,36 @@ export interface TaskComment {
   createdAt: string;
 }
 
+// --- Activity Log ---
+export type ActivityEntityType = 'task' | 'wiki' | 'project' | 'sprint' | 'okr' | 'member';
+export type ActivityAction =
+  | 'created' | 'updated' | 'deleted'
+  | 'commented' | 'assigned' | 'unassigned'
+  | 'status_changed' | 'priority_changed'
+  | 'moved' | 'pinned' | 'unpinned'
+  | 'favorited' | 'unfavorited'
+  | 'completed' | 'reopened'
+  | 'archived';
+
+export interface FieldChange {
+  field: string;
+  displayField?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface ActivityEntry {
+  id: string;
+  entityType: ActivityEntityType;
+  entityId: string;
+  entityTitle: string;
+  action: ActivityAction;
+  workspaceId: string;
+  userId: string;
+  userName: string;
+  userPhoto?: string;
+  changes?: FieldChange[];
+  description?: string;
+  metadata?: Record<string, unknown>;
+  timestamp: string;
+}

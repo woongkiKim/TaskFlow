@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
     Dialog, DialogTitle, DialogContent, DialogActions, Box, Typography, TextField, Chip,
     IconButton, Checkbox, InputBase, Divider, ToggleButtonGroup, ToggleButton,
@@ -20,16 +20,17 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import SubdirectoryArrowRightIcon from '@mui/icons-material/SubdirectoryArrowRight';
 import TimerIcon from '@mui/icons-material/Timer';
 import type { Task, Subtask, PriorityLevel, TaskType, TaskRelation, RelationType, EstimatePoint, TimeEntry } from '../types';
+import ActivityFeed from './ActivityFeed';
 import {
     PRIORITY_CONFIG, TASK_TYPE_CONFIG, TASK_TYPES, STATUS_CONFIG,
     normalizePriority, STATUS_PRESETS, RELATION_TYPES, RELATION_TYPE_CONFIG,
     ESTIMATE_POINTS, ESTIMATE_CONFIG,
 } from '../types';
-import { updateTaskDetailInDB, updateSubtasksInDB } from '../services/taskService';
+import { updateTaskDetailInDB, updateSubtasksInDB, addTaskRelation, removeTaskRelation } from '../services/taskService';
 import { fetchTimeEntries, addManualTimeEntry, deleteTimeEntry } from '../services/timeTrackingService';
 import { getTagColor } from './TagInput';
 import { PomodoroStartButton } from './PomodoroTimer';
-import RichTextEditor from './RichTextEditor';
+import BlockEditor from './BlockEditor';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -46,10 +47,11 @@ interface TaskDetailDialogProps {
 }
 
 const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCreateSubIssue, onTaskClick }: TaskDetailDialogProps) => {
-    const { t } = useLanguage();
-    const { currentMembers } = useWorkspace();
+    const { t, lang } = useLanguage();
+    useWorkspace();
     const [text, setText] = useState('');
     const [description, setDescription] = useState('');
+    const descriptionRef = useRef('');
     const [priority, setPriority] = useState<PriorityLevel | ''>('');
     const [taskType, setTaskType] = useState<TaskType>('task');
     const [status, setStatus] = useState('');
@@ -92,6 +94,7 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
         if (task) {
             setText(task.text);
             setDescription(task.description || '');
+            descriptionRef.current = task.description || '';
             const norm = normalizePriority(task.priority);
             setPriority(norm || '');
             setTaskType(task.type || 'task');
@@ -118,7 +121,7 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
     const handleSave = async () => {
         const updates: Partial<Task> = {};
         if (text !== task.text) updates.text = text;
-        if (description !== (task.description || '')) updates.description = description;
+        if (descriptionRef.current !== (task.description || '')) updates.description = descriptionRef.current;
         const normPriority = normalizePriority(task.priority) || '';
         if (priority !== normPriority) updates.priority = priority || undefined;
         if (taskType !== (task.type || 'task')) updates.type = taskType;
@@ -141,7 +144,7 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
         }
 
         const updatedTask: Task = {
-            ...task, text, description: description || undefined,
+            ...task, text, description: descriptionRef.current || undefined,
             priority: priority || undefined, type: taskType, status,
             dueDate: dueDate || undefined, subtasks,
             blockerStatus, blockerDetail, nextAction, links, aiUsage, delayReason, relations,
@@ -182,7 +185,7 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
     };
 
     // Issue Relations handlers
-    const handleAddRelation = (targetTask: Task) => {
+    const handleAddRelation = async (targetTask: Task) => {
         if (!targetTask || targetTask.id === task.id) return;
         // Prevent duplicate
         if (relations.some(r => r.targetTaskId === targetTask.id && r.type === selectedRelationType)) return;
@@ -193,41 +196,36 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
             targetTaskCode: targetTask.taskCode,
             targetTaskText: targetTask.text,
         };
-        const updatedRelations = [...relations, newRelation];
-        setRelations(updatedRelations);
+        setRelations(prev => [...prev, newRelation]);
         setRelationSearchText('');
 
-        // Sync inverse relation on the target task
-        const inverseCfg = RELATION_TYPE_CONFIG[selectedRelationType];
-        const inverseRelation: TaskRelation = {
-            type: inverseCfg.inverse,
-            targetTaskId: task.id,
-            targetTaskCode: task.taskCode,
-            targetTaskText: task.text,
-        };
-        const targetRelations = targetTask.relations || [];
-        if (!targetRelations.some(r => r.targetTaskId === task.id && r.type === inverseCfg.inverse)) {
-            updateTaskDetailInDB(targetTask.id, {
-                relations: [...targetRelations, inverseRelation],
-            }).catch(() => { });
+        try {
+            await addTaskRelation(
+                task.id,
+                targetTask,
+                selectedRelationType,
+                task.taskCode,
+                task.text
+            );
+        } catch (e) {
+            console.error('Failed to add relation:', e);
+            // Rollback local state if needed
+            setRelations(prev => prev.filter(r => !(r.targetTaskId === targetTask.id && r.type === selectedRelationType)));
         }
     };
 
-    const handleRemoveRelation = (idx: number) => {
+    const handleRemoveRelation = async (idx: number) => {
         const removed = relations[idx];
-        const updatedRelations = relations.filter((_, i) => i !== idx);
-        setRelations(updatedRelations);
+        if (!removed) return;
 
-        // Remove inverse from target
-        if (removed) {
-            const targetTask = allTasks.find(t => t.id === removed.targetTaskId);
-            if (targetTask) {
-                const inverseCfg = RELATION_TYPE_CONFIG[removed.type];
-                const targetRelations = (targetTask.relations || []).filter(
-                    r => !(r.targetTaskId === task.id && r.type === inverseCfg.inverse)
-                );
-                updateTaskDetailInDB(targetTask.id, { relations: targetRelations }).catch(() => { });
-            }
+        setRelations(prev => prev.filter((_, i) => i !== idx));
+
+        try {
+            await removeTaskRelation(task.id, removed.targetTaskId, removed.type);
+        } catch (e) {
+            console.error('Failed to remove relation:', e);
+            // Rollback local state if needed
+            setRelations(prev => [...prev, removed]);
         }
     };
 
@@ -348,13 +346,12 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
                 <TextField fullWidth value={text} onChange={e => setText(e.target.value)} variant="standard"
                     sx={{ '& .MuiInputBase-input': { fontSize: '1.25rem', fontWeight: 700 } }} />
 
-                {/* Description (Rich Text) */}
-                <RichTextEditor
-                    content={description}
-                    onChange={setDescription}
-                    placeholder={t('taskDescription') as string}
+                {/* Description (Block Editor) */}
+                <BlockEditor
+                    key={task?.id || 'new'}
+                    initialContent={description}
+                    onChange={(md) => { descriptionRef.current = md; }}
                     minHeight={100}
-                    members={currentMembers.map(m => ({ uid: m.uid, displayName: m.displayName, photoURL: m.photoURL }))}
                 />
 
                 {/* Time Tracking */}
@@ -864,6 +861,13 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
                         </Typography>
                     )}
                 </Box>
+
+                <Divider />
+
+                {/* Activity Log */}
+                <ActivityFeed entityType="task" entityId={task.id} compact limit={20}
+                  title={lang === 'ko' ? '변경 이력' : 'Change History'} />
+
             </DialogContent>
             <DialogActions sx={{ px: 3, pb: 2 }}>
                 <Button onClick={handleClose} color="inherit" sx={{ borderRadius: 2 }}>{t('cancel') as string}</Button>

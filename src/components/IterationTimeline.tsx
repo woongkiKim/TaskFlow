@@ -2,6 +2,7 @@ import { useMemo, useState, useCallback } from 'react';
 import {
     Box, Typography, Tooltip, Collapse, IconButton, Slider, alpha, Chip,
     Dialog, DialogTitle, DialogContent, DialogActions, Button, LinearProgress,
+    Menu, MenuItem, Divider,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -22,7 +23,9 @@ import {
     startOfMonth, endOfMonth, differenceInDays, parseISO,
     isWithinInterval, format, addMonths, subMonths,
 } from 'date-fns';
+import { ko as dateFnsKo } from 'date-fns/locale';
 import type { Sprint } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface IterationTimelineProps {
     sprints: Sprint[];
@@ -39,18 +42,6 @@ const COLORS = {
     milestone: { bg: '#ef4444', light: 'rgba(239,68,68,0.12)', text: '#dc2626', gradient: 'linear-gradient(135deg, #ef4444, #f87171)' },
 };
 
-const SCOPE_CONFIG = {
-    personal: { icon: PersonIcon, label: '개인', labelEn: 'Personal', color: '#8b5cf6', bg: '#f5f3ff' },
-    team: { icon: GroupIcon, label: '팀', labelEn: 'Team', color: '#3b82f6', bg: '#eff6ff' },
-    company: { icon: BusinessIcon, label: '전사', labelEn: 'Company', color: '#f59e0b', bg: '#fffbeb' },
-};
-
-const STATUS_CONFIG = {
-    planning: { label: 'Planning', color: '#94a3b8', bg: '#f1f5f9' },
-    active: { label: 'Active', color: '#3b82f6', bg: '#dbeafe' },
-    completed: { label: 'Completed', color: '#10b981', bg: '#d1fae5' },
-};
-
 // Zoom levels
 const ZOOM_LEVELS = [
     { label: 'XS', row: 28, bar: 10, childBar: 7, fontSize: '0.6rem' },
@@ -60,11 +51,33 @@ const ZOOM_LEVELS = [
     { label: 'XL', row: 68, bar: 28, childBar: 20, fontSize: '0.8rem' },
 ];
 
+import { useWorkspace } from '../contexts/WorkspaceContext';
+
 const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateChange }: IterationTimelineProps) => {
+    const { t, lang } = useLanguage();
+    const { teamGroups, projects } = useWorkspace();
+    const dateLocale = lang === 'ko' ? dateFnsKo : undefined;
     const [zoomIdx, setZoomIdx] = useState(2);
     const [selectedSprint, setSelectedSprint] = useState<Sprint | null>(null);
     const [scopeFilter, setScopeFilter] = useState<'all' | 'personal' | 'team' | 'company'>('all');
+    const [selectedTeamGroupId, setSelectedTeamGroupId] = useState<string | null>(null);
+    const [teamAnchorEl, setTeamAnchorEl] = useState<null | HTMLElement>(null);
+
     const zoom = ZOOM_LEVELS[zoomIdx];
+
+    // Scope config with translated labels
+    const SCOPE_CONFIG = useMemo(() => ({
+        personal: { icon: PersonIcon, label: t('personalScope') as string, color: '#8b5cf6', bg: '#f5f3ff' },
+        team: { icon: GroupIcon, label: t('teamScope') as string, color: '#3b82f6', bg: '#eff6ff' },
+        company: { icon: BusinessIcon, label: t('companyScope') as string, color: '#f59e0b', bg: '#fffbeb' },
+    }), [t]);
+
+    // Status config with translated labels
+    const STATUS_CONFIG = useMemo(() => ({
+        planning: { label: t('statusPlanning') as string, color: '#94a3b8', bg: '#f1f5f9' },
+        active: { label: t('statusActive') as string, color: '#3b82f6', bg: '#dbeafe' },
+        completed: { label: t('statusCompleted') as string, color: '#10b981', bg: '#d1fae5' },
+    }), [t]);
 
     const monthStart = startOfMonth(currentDate);
     const monthEnd = endOfMonth(currentDate);
@@ -104,11 +117,21 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
         return result;
     }, [sprints]);
 
-    // Filter by scope
+    // Filter by scope and selected team
     const scopeFilteredRows = useMemo(() => {
-        if (scopeFilter === 'all') return rows;
-        return rows.filter(({ sprint }) => sprint.scope === scopeFilter);
-    }, [rows, scopeFilter]);
+        let filtered = rows;
+        if (scopeFilter !== 'all') {
+            filtered = rows.filter(({ sprint }) => sprint.scope === scopeFilter);
+        }
+
+        if (scopeFilter === 'team' && selectedTeamGroupId) {
+            filtered = filtered.filter(({ sprint }) => {
+                const project = projects.find(p => p.id === sprint.projectId);
+                return project?.teamGroupId === selectedTeamGroupId;
+            });
+        }
+        return filtered;
+    }, [rows, scopeFilter, selectedTeamGroupId, projects]);
 
     // Filter to only show items overlapping with the current month
     const visibleRows = useMemo(() => {
@@ -196,9 +219,9 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
     const getDuration = (sp: Sprint): string => {
         if (!sp.startDate || !sp.endDate) return '—';
         const days = differenceInDays(parseISO(sp.endDate), parseISO(sp.startDate));
-        if (days < 7) return `${days}d`;
-        if (days < 30) return `${Math.round(days / 7)}w`;
-        return `${Math.round(days / 30)}mo`;
+        if (days < 7) return `${days}${lang === 'ko' ? '일' : 'd'}`;
+        if (days < 30) return `${Math.round(days / 7)}${lang === 'ko' ? '주' : 'w'}`;
+        return `${Math.round(days / 30)}${lang === 'ko' ? '개월' : 'mo'}`;
     };
 
     // Day label interval
@@ -218,7 +241,7 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                         {expanded ? <ExpandLessIcon sx={{ fontSize: 14 }} /> : <ExpandMoreIcon sx={{ fontSize: 14 }} />}
                     </IconButton>
                     <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ letterSpacing: 0.5, textTransform: 'uppercase', fontSize: '0.6rem' }}>
-                        Iteration Timeline
+                        {t('iterationTimeline') as string}
                     </Typography>
                     <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.6rem', ml: 0.5 }}>
                         ({visibleRows.length})
@@ -233,16 +256,36 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                             {(['all', 'team', 'personal', 'company'] as const).map(s => {
                                 const isActive = scopeFilter === s;
                                 const cfg = s === 'all' ? null : SCOPE_CONFIG[s];
+                                const scopeLabel = s === 'all' ? t('allScope') as string : cfg!.label;
                                 return (
                                     <Chip
                                         key={s}
                                         size="small"
-                                        label={s === 'all' ? 'All' : cfg!.labelEn}
+                                        label={isActive && s === 'team' && selectedTeamGroupId
+                                            ? `${scopeLabel}: ${teamGroups.find(tg => tg.id === selectedTeamGroupId)?.name || ''}`
+                                            : scopeLabel}
                                         icon={s === 'all' ? undefined : (() => {
                                             const Icon = cfg!.icon;
                                             return <Icon sx={{ fontSize: 12 }} />;
                                         })()}
-                                        onClick={() => setScopeFilter(s)}
+                                        onClick={(e) => {
+                                            if (s === 'team') {
+                                                if (isActive) {
+                                                    // If already team, show menu to switch team
+                                                    setTeamAnchorEl(e.currentTarget);
+                                                } else {
+                                                    setScopeFilter(s);
+                                                    if (teamGroups.length > 1) {
+                                                        setTeamAnchorEl(e.currentTarget);
+                                                    } else if (teamGroups.length === 1) {
+                                                        setSelectedTeamGroupId(teamGroups[0].id);
+                                                    }
+                                                }
+                                            } else {
+                                                setScopeFilter(s);
+                                                setSelectedTeamGroupId(null);
+                                            }
+                                        }}
                                         sx={{
                                             height: 20, fontSize: '0.55rem', fontWeight: 700,
                                             bgcolor: isActive ? (cfg?.bg || alpha('#6366f1', 0.12)) : 'transparent',
@@ -251,6 +294,7 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                                             borderColor: isActive ? (cfg?.color || '#6366f1') : 'transparent',
                                             '& .MuiChip-icon': { color: isActive ? cfg?.color : 'text.disabled' },
                                             cursor: 'pointer',
+                                            '&:hover': { bgcolor: isActive ? (cfg?.bg || alpha('#6366f1', 0.15)) : alpha('#6366f1', 0.05) }
                                         }}
                                     />
                                 );
@@ -260,17 +304,17 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                         {/* Date navigation */}
                         {onDateChange && (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.2, mr: 0.5, bgcolor: alpha('#f1f5f9', 0.8), borderRadius: 1.5, px: 0.3 }}>
-                                <Tooltip title="Previous month" arrow>
+                                <Tooltip title={t('previousMonth') as string} arrow>
                                     <IconButton size="small" onClick={goToPrevMonth} sx={{ p: 0.2 }}>
                                         <ChevronLeftIcon sx={{ fontSize: 14 }} />
                                     </IconButton>
                                 </Tooltip>
-                                <Tooltip title="Go to today" arrow>
+                                <Tooltip title={t('goToToday') as string} arrow>
                                     <IconButton size="small" onClick={goToToday} sx={{ p: 0.2 }}>
                                         <TodayIcon sx={{ fontSize: 12 }} />
                                     </IconButton>
                                 </Tooltip>
-                                <Tooltip title="Next month" arrow>
+                                <Tooltip title={t('nextMonth') as string} arrow>
                                     <IconButton size="small" onClick={goToNextMonth} sx={{ p: 0.2 }}>
                                         <ChevronRightIcon sx={{ fontSize: 14 }} />
                                     </IconButton>
@@ -279,7 +323,7 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                         )}
 
                         {/* Zoom controls */}
-                        <Tooltip title="Zoom Out" arrow>
+                        <Tooltip title={t('zoomOut') as string} arrow>
                             <IconButton
                                 size="small"
                                 onClick={handleZoomOut}
@@ -302,7 +346,7 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                                 '& .MuiSlider-rail': { height: 2 },
                             }}
                         />
-                        <Tooltip title="Zoom In" arrow>
+                        <Tooltip title={t('zoomIn') as string} arrow>
                             <IconButton
                                 size="small"
                                 onClick={handleZoomIn}
@@ -398,7 +442,7 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                                     {/* Label */}
                                     <Box sx={{ width: indent ? 150 : 140, flexShrink: 0, pl: indent ? 2.5 : 1, display: 'flex', alignItems: 'center', gap: 0.3, zIndex: 3 }}>
                                         {ScopeIcon && (
-                                            <Tooltip title={scopeCfg!.labelEn} arrow>
+                                            <Tooltip title={scopeCfg!.label} arrow>
                                                 <ScopeIcon sx={{ fontSize: 10, color: scopeCfg!.color, flexShrink: 0 }} />
                                             </Tooltip>
                                         )}
@@ -412,7 +456,7 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                                             🎯 {sp.name}
                                         </Typography>
                                         {depCount > 0 && (
-                                            <Tooltip title={`${depCount} dependencies`} arrow>
+                                            <Tooltip title={`${depCount} ${t('dependencies') as string}`} arrow>
                                                 <LinkIcon sx={{ fontSize: 10, color: 'text.disabled' }} />
                                             </Tooltip>
                                         )}
@@ -420,7 +464,7 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
 
                                     {/* Timeline area */}
                                     <Box sx={{ flex: 1, position: 'relative', height: '100%' }}>
-                                        <Tooltip title={`${sp.name} · Click for details`} arrow>
+                                        <Tooltip title={`${sp.name} · ${t('clickForDetails') as string}`} arrow>
                                             <Box sx={{
                                                 position: 'absolute',
                                                 left: `${pct}%`,
@@ -480,7 +524,7 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                                 <Box sx={{ width: indent ? 150 : 140, flexShrink: 0, pl: indent ? 2.5 : 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', zIndex: 3 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
                                         {ScopeIcon && (
-                                            <Tooltip title={scopeCfg!.labelEn} arrow>
+                                            <Tooltip title={scopeCfg!.label} arrow>
                                                 <ScopeIcon sx={{ fontSize: 10, color: scopeCfg!.color, flexShrink: 0 }} />
                                             </Tooltip>
                                         )}
@@ -498,7 +542,7 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                                             {sp.type === 'phase' ? '📋' : '🚀'} {sp.name}
                                         </Typography>
                                         {depCount > 0 && (
-                                            <Tooltip title={`${depCount} dep`} arrow>
+                                            <Tooltip title={`${depCount} ${t('dependencies') as string}`} arrow>
                                                 <LinkIcon sx={{ fontSize: 9, color: 'text.disabled', flexShrink: 0 }} />
                                             </Tooltip>
                                         )}
@@ -513,7 +557,7 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                                 {/* Timeline area */}
                                 <Box sx={{ flex: 1, position: 'relative', height: '100%', display: 'flex', alignItems: 'center' }}>
                                     <Tooltip
-                                        title={`${sp.name}${sp.startDate ? ` · ${format(parseISO(sp.startDate), 'MMM d')}` : ''}${sp.endDate ? ` ~ ${format(parseISO(sp.endDate), 'MMM d')}` : ''} · ${Math.round(progress)}% · Click for details`}
+                                        title={`${sp.name}${sp.startDate ? ` · ${format(parseISO(sp.startDate), 'MMM d', { locale: dateLocale })}` : ''}${sp.endDate ? ` ~ ${format(parseISO(sp.endDate), 'MMM d', { locale: dateLocale })}` : ''} · ${Math.round(progress)}% · ${t('clickForDetails') as string}`}
                                         arrow
                                     >
                                         <Box sx={{
@@ -626,11 +670,39 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                     {visibleRows.length === 0 && (
                         <Box sx={{ py: 3, textAlign: 'center' }}>
                             <Typography variant="caption" color="text.disabled">
-                                No iterations visible for this scope/month
+                                {t('noIterationsVisible') as string}
                             </Typography>
                         </Box>
                     )}
                 </Box>
+
+                {/* Team Selection Menu */}
+                <Menu
+                    anchorEl={teamAnchorEl}
+                    open={Boolean(teamAnchorEl)}
+                    onClose={() => setTeamAnchorEl(null)}
+                    PaperProps={{ sx: { borderRadius: 2, mt: 0.5, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' } }}
+                >
+                    <MenuItem
+                        selected={selectedTeamGroupId === null}
+                        onClick={() => { setSelectedTeamGroupId(null); setTeamAnchorEl(null); }}
+                        sx={{ fontSize: '0.75rem', fontWeight: 600 }}
+                    >
+                        {t('allTasks') as string}
+                    </MenuItem>
+                    <Divider sx={{ my: 0.5 }} />
+                    {teamGroups.map(tg => (
+                        <MenuItem
+                            key={tg.id}
+                            selected={selectedTeamGroupId === tg.id}
+                            onClick={() => { setSelectedTeamGroupId(tg.id); setTeamAnchorEl(null); }}
+                            sx={{ fontSize: '0.75rem', fontWeight: 600 }}
+                        >
+                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: tg.color, mr: 1 }} />
+                            {tg.name}
+                        </MenuItem>
+                    ))}
+                </Menu>
             </Collapse>
 
             {/* ── Sprint Detail Dialog ── */}
@@ -670,7 +742,7 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                                             {scopeCfg && (
                                                 <Chip
                                                     icon={(() => { const I = scopeCfg.icon; return <I sx={{ fontSize: 12 }} />; })()}
-                                                    label={scopeCfg.labelEn}
+                                                    label={scopeCfg.label}
                                                     size="small"
                                                     sx={{ height: 20, fontSize: '0.6rem', fontWeight: 700, bgcolor: scopeCfg.bg, color: scopeCfg.color, '& .MuiChip-icon': { color: scopeCfg.color } }}
                                                 />
@@ -683,17 +755,17 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                                 {/* Date & Progress */}
                                 <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2.5 }}>
                                     <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'action.hover' }}>
-                                        <Typography variant="caption" color="text.secondary" fontWeight={700}>📅 Period</Typography>
+                                        <Typography variant="caption" color="text.secondary" fontWeight={700}>{t('period') as string}</Typography>
                                         <Typography variant="body2" fontWeight={600} sx={{ mt: 0.3 }}>
-                                            {sp.startDate ? format(parseISO(sp.startDate), 'MMM d, yyyy') : '—'}
+                                            {sp.startDate ? format(parseISO(sp.startDate), 'PPP', { locale: dateLocale }) : '—'}
                                         </Typography>
                                         <Typography variant="body2" fontWeight={600}>
-                                            → {sp.endDate ? format(parseISO(sp.endDate), 'MMM d, yyyy') : '—'}
+                                            → {sp.endDate ? format(parseISO(sp.endDate), 'PPP', { locale: dateLocale }) : '—'}
                                         </Typography>
-                                        <Typography variant="caption" color="text.disabled">Duration: {duration}</Typography>
+                                        <Typography variant="caption" color="text.disabled">{t('durationLabel') as string}: {duration}</Typography>
                                     </Box>
                                     <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'action.hover' }}>
-                                        <Typography variant="caption" color="text.secondary" fontWeight={700}>📊 Progress</Typography>
+                                        <Typography variant="caption" color="text.secondary" fontWeight={700}>{t('progressLabel') as string}</Typography>
                                         <Typography variant="h5" fontWeight={800} sx={{ mt: 0.3, color: color.text }}>{Math.round(progress)}%</Typography>
                                         <LinearProgress
                                             variant="determinate"
@@ -711,14 +783,14 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                                 {deps.length > 0 && (
                                     <Box sx={{ mb: 2 }}>
                                         <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                                            <ArrowForwardIcon sx={{ fontSize: 12, transform: 'rotate(180deg)' }} /> Depends On ({deps.length})
+                                            <ArrowForwardIcon sx={{ fontSize: 12, transform: 'rotate(180deg)' }} /> {t('dependsOn') as string} ({deps.length})
                                         </Typography>
                                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                                             {deps.map(d => d && (
                                                 <Box key={d.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5, borderRadius: 1.5, bgcolor: 'action.hover' }}>
                                                     <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: COLORS[d.type]?.bg || '#6366f1' }} />
                                                     <Typography variant="caption" fontWeight={600}>{d.name}</Typography>
-                                                    <Chip label={d.status} size="small" sx={{ ml: 'auto', height: 16, fontSize: '0.55rem', fontWeight: 700, bgcolor: STATUS_CONFIG[d.status]?.bg, color: STATUS_CONFIG[d.status]?.color }} />
+                                                    <Chip label={STATUS_CONFIG[d.status]?.label || d.status} size="small" sx={{ ml: 'auto', height: 16, fontSize: '0.55rem', fontWeight: 700, bgcolor: STATUS_CONFIG[d.status]?.bg, color: STATUS_CONFIG[d.status]?.color }} />
                                                 </Box>
                                             ))}
                                         </Box>
@@ -729,14 +801,14 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                                 {linkedSprints.length > 0 && (
                                     <Box sx={{ mb: 2 }}>
                                         <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                                            <LinkIcon sx={{ fontSize: 12 }} /> Linked Iterations ({linkedSprints.length})
+                                            <LinkIcon sx={{ fontSize: 12 }} /> {t('linkedIterationsLabel') as string} ({linkedSprints.length})
                                         </Typography>
                                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                                             {linkedSprints.map(ls => ls && (
                                                 <Box key={ls.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5, borderRadius: 1.5, bgcolor: 'action.hover' }}>
                                                     <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: COLORS[ls.type]?.bg || '#6366f1' }} />
                                                     <Typography variant="caption" fontWeight={600}>{ls.name}</Typography>
-                                                    <Chip label={ls.status} size="small" sx={{ ml: 'auto', height: 16, fontSize: '0.55rem', fontWeight: 700, bgcolor: STATUS_CONFIG[ls.status]?.bg, color: STATUS_CONFIG[ls.status]?.color }} />
+                                                    <Chip label={STATUS_CONFIG[ls.status]?.label || ls.status} size="small" sx={{ ml: 'auto', height: 16, fontSize: '0.55rem', fontWeight: 700, bgcolor: STATUS_CONFIG[ls.status]?.bg, color: STATUS_CONFIG[ls.status]?.color }} />
                                                 </Box>
                                             ))}
                                         </Box>
@@ -747,14 +819,14 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                                 {dependents.length > 0 && (
                                     <Box sx={{ mb: 2 }}>
                                         <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                                            <ArrowForwardIcon sx={{ fontSize: 12 }} /> Blocks ({dependents.length})
+                                            <ArrowForwardIcon sx={{ fontSize: 12 }} /> {t('blocksLabel') as string} ({dependents.length})
                                         </Typography>
                                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                                             {dependents.map(dep => (
                                                 <Box key={dep.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5, borderRadius: 1.5, bgcolor: alpha('#ef4444', 0.04) }}>
                                                     <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: COLORS[dep.type]?.bg || '#6366f1' }} />
                                                     <Typography variant="caption" fontWeight={600}>{dep.name}</Typography>
-                                                    <Chip label={dep.status} size="small" sx={{ ml: 'auto', height: 16, fontSize: '0.55rem', fontWeight: 700, bgcolor: STATUS_CONFIG[dep.status]?.bg, color: STATUS_CONFIG[dep.status]?.color }} />
+                                                    <Chip label={STATUS_CONFIG[dep.status]?.label || dep.status} size="small" sx={{ ml: 'auto', height: 16, fontSize: '0.55rem', fontWeight: 700, bgcolor: STATUS_CONFIG[dep.status]?.bg, color: STATUS_CONFIG[dep.status]?.color }} />
                                                 </Box>
                                             ))}
                                         </Box>
@@ -763,7 +835,7 @@ const IterationTimeline = ({ sprints, currentDate, expanded, onToggle, onDateCha
                             </DialogContent>
                             <DialogActions sx={{ px: 3, pb: 2 }}>
                                 <Button onClick={() => setSelectedSprint(null)} variant="contained" sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}>
-                                    Close
+                                    {t('close') as string}
                                 </Button>
                             </DialogActions>
                         </>
