@@ -1,67 +1,64 @@
-import {
-    collection, addDoc, getDocs, updateDoc, deleteDoc,
-    doc, query, where, orderBy, Timestamp, onSnapshot,
-} from 'firebase/firestore';
-import { db } from '../FBase';
-import { proxyIfMock } from './serviceProxy';
+// src/services/wikiService.ts
+// Django REST API version
+import { apiGet, apiPost, apiPatch, apiDelete, type PaginatedResponse } from './apiClient';
 import type { WikiDocument } from '../types';
 
-const COLLECTION = 'wikiDocuments';
-
-const _fetchWikiDocuments = async (workspaceId: string): Promise<WikiDocument[]> => {
-    const q = query(
-        collection(db, COLLECTION),
-        where('workspaceId', '==', workspaceId),
-        orderBy('createdAt', 'desc'),
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as WikiDocument));
+export const fetchWikiDocuments = async (workspaceId: string, projectId?: string): Promise<WikiDocument[]> => {
+    const params: Record<string, string> = { workspace_id: workspaceId };
+    if (projectId) params.project_id = projectId;
+    const res = await apiGet<PaginatedResponse<WikiDocument>>('wiki-documents/', params);
+    return res.results;
 };
 
-const _createWikiDocument = async (
-    data: Omit<WikiDocument, 'id' | 'createdAt'>
+export const createWikiDocument = async (
+    data: Omit<WikiDocument, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<WikiDocument> => {
-    const now = Timestamp.now().toDate().toISOString();
-    const cleanData = Object.fromEntries(
-        Object.entries(data).filter(([, v]) => v !== undefined)
-    );
-    const docRef = await addDoc(collection(db, COLLECTION), {
-        ...cleanData,
-        createdAt: now,
-    });
-    return { id: docRef.id, ...data, createdAt: now } as WikiDocument;
-};
-
-const _updateWikiDocument = async (
-    id: string,
-    data: Partial<Omit<WikiDocument, 'id' | 'createdAt' | 'workspaceId' | 'createdBy'>>
-): Promise<void> => {
-    await updateDoc(doc(db, COLLECTION, id), {
-        ...data,
-        updatedAt: Timestamp.now().toDate().toISOString(),
+    return apiPost<WikiDocument>('wiki-documents/', {
+        title: data.title,
+        content: data.content || '',
+        icon: data.icon || '',
+        is_folder: data.isFolder || false,
+        parent: data.parentId,
+        visibility: data.visibility || 'workspace',
+        workspace: data.workspaceId,
+        project: data.projectId,
+        pinned: data.pinned || false,
+        tags: data.tags || [],
     });
 };
 
-const _deleteWikiDocument = async (id: string): Promise<void> => {
-    await deleteDoc(doc(db, COLLECTION, id));
+export const updateWikiDocument = async (id: string, updates: Partial<WikiDocument>): Promise<void> => {
+    await apiPatch(`wiki-documents/${id}/`, updates);
 };
 
-export const fetchWikiDocuments = proxyIfMock('fetchWikiDocuments', _fetchWikiDocuments);
-export const createWikiDocument = proxyIfMock('createWikiDocument', _createWikiDocument);
-export const updateWikiDocument = proxyIfMock('updateWikiDocument', _updateWikiDocument);
-export const deleteWikiDocument = proxyIfMock('deleteWikiDocument', _deleteWikiDocument);
+export const deleteWikiDocument = async (id: string): Promise<void> => {
+    await apiDelete(`wiki-documents/${id}/`);
+};
 
+export const fetchWikiDocument = async (id: string): Promise<WikiDocument> => {
+    return apiGet<WikiDocument>(`wiki-documents/${id}/`);
+};
+
+/**
+ * Polling-based subscription to wiki documents (replaces Firestore onSnapshot).
+ * Returns an unsubscribe function.
+ */
 export const subscribeToWikiDocuments = (
     workspaceId: string,
-    onUpdate: (docs: WikiDocument[]) => void
-) => {
-    const q = query(
-        collection(db, COLLECTION),
-        where('workspaceId', '==', workspaceId),
-        orderBy('createdAt', 'desc')
-    );
-    return onSnapshot(q, (snap) => {
-        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as WikiDocument));
-        onUpdate(docs);
-    });
+    onUpdate: (docs: WikiDocument[]) => void,
+    intervalMs = 10000,
+): (() => void) => {
+    let active = true;
+    const poll = async () => {
+        if (!active) return;
+        try {
+            const docs = await fetchWikiDocuments(workspaceId);
+            if (active) onUpdate(docs);
+        } catch (e) {
+            console.error('[Wiki] Polling error:', e);
+        }
+    };
+    poll(); // initial fetch
+    const id = setInterval(poll, intervalMs);
+    return () => { active = false; clearInterval(id); };
 };

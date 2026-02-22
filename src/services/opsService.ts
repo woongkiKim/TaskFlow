@@ -1,250 +1,162 @@
 // src/services/opsService.ts
-import {
-    collection, addDoc, getDocs, updateDoc, deleteDoc,
-    doc, query, where, orderBy,
-} from 'firebase/firestore';
-import { db } from '../FBase';
-import { format } from 'date-fns';
-import type { Decision, Handoff, Issue, Task } from '../types';
-import { normalizePriority } from '../types';
+// Django REST API version
+import { apiGet, apiPost, apiPatch, apiDelete, type PaginatedResponse } from './apiClient';
+import type { Decision, Handoff, Issue } from '../types';
 
-const DECISIONS = 'decisions';
-const HANDOFFS = 'handoffs';
-const ISSUES = 'issues';
-const reportTextByLang = (lang: 'ko' | 'en', en: string, ko: string) => (lang === 'ko' ? ko : en);
-
-const ISSUE_CATEGORY_REPORT_LABELS: Record<Issue['category'], { en: string; ko: string }> = {
-    internet: { en: 'Internet', ko: '인터넷' },
-    power: { en: 'Power', ko: '전원' },
-    hardware: { en: 'Hardware', ko: '하드웨어' },
-    software: { en: 'Software', ko: '소프트웨어' },
-    ai_proficiency: { en: 'AI Proficiency', ko: 'AI 숙련도' },
-    communication: { en: 'Communication', ko: '커뮤니케이션' },
-    environment: { en: 'Environment', ko: '업무 환경' },
-    access: { en: 'Access/Auth', ko: '접근/인증' },
-    meeting: { en: 'Meeting', ko: '회의' },
-    other: { en: 'Other', ko: '기타' },
-};
-
-const TASK_STATUS_REPORT_LABELS: Record<string, { en: string; ko: string }> = {
-    todo: { en: 'To Do', ko: '할 일' },
-    inprogress: { en: 'In Progress', ko: '진행 중' },
-    'in-review': { en: 'In Review', ko: '리뷰 중' },
-    done: { en: 'Done', ko: '완료' },
-    completed: { en: 'Completed', ko: '완료' },
-    blocked: { en: 'Blocked', ko: '차단됨' },
-};
-
-const getTaskStatusReportLabel = (status: string | undefined, lang: 'ko' | 'en') => {
-    const key = status || 'todo';
-    return TASK_STATUS_REPORT_LABELS[key]?.[lang] || key;
-};
-
-// ─── Decision Log ────────────────────────────────────────
-
+// --- Decisions ---
 export const fetchDecisions = async (workspaceId: string): Promise<Decision[]> => {
-    const snap = await getDocs(query(
-        collection(db, DECISIONS),
-        where('workspaceId', '==', workspaceId),
-        orderBy('date', 'desc'),
-    ));
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as Decision));
+    const res = await apiGet<PaginatedResponse<Decision>>('decisions/', { workspace_id: workspaceId });
+    return res.results;
 };
 
-export const addDecision = async (data: Omit<Decision, 'id' | 'createdAt'>): Promise<Decision> => {
-    const now = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
-    const docRef = await addDoc(collection(db, DECISIONS), { ...data, createdAt: now });
-    return { id: docRef.id, ...data, createdAt: now };
+export const createDecision = async (data: Omit<Decision, 'id' | 'createdAt'>): Promise<Decision> => {
+    return apiPost<Decision>('decisions/', {
+        decision_code: data.decisionCode,
+        date: data.date,
+        summary: data.summary,
+        context: data.context,
+        decider_name: data.deciderName,
+        affected_task_ids: data.affectedTaskIds,
+        follow_up_action: data.followUpAction,
+        reference_link: data.referenceLink || '',
+        mentions: data.mentions || [],
+        workspace: data.workspaceId,
+        project: data.projectId,
+        notes: data.notes || '',
+    });
 };
 
-export const updateDecision = async (id: string, updates: Partial<Decision>): Promise<void> => {
-    const clean: Record<string, unknown> = {};
-    Object.entries(updates).forEach(([k, v]) => { if (v !== undefined) clean[k] = v; });
-    await updateDoc(doc(db, DECISIONS, id), clean);
+export const updateDecision = async (id: string, data: Partial<Decision>): Promise<void> => {
+    await apiPatch(`decisions/${id}/`, data);
 };
 
 export const deleteDecision = async (id: string): Promise<void> => {
-    await deleteDoc(doc(db, DECISIONS, id));
+    await apiDelete(`decisions/${id}/`);
 };
 
-// ─── Handoff Tracker ─────────────────────────────────────
-
+// --- Handoffs ---
 export const fetchHandoffs = async (workspaceId: string): Promise<Handoff[]> => {
-    const snap = await getDocs(query(
-        collection(db, HANDOFFS),
-        where('workspaceId', '==', workspaceId),
-        orderBy('createdAt', 'desc'),
-    ));
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as Handoff));
+    const res = await apiGet<PaginatedResponse<Handoff>>('handoffs/', { workspace_id: workspaceId });
+    return res.results;
 };
 
-export const addHandoff = async (data: Omit<Handoff, 'id' | 'createdAt'>): Promise<Handoff> => {
-    const now = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
-    const docRef = await addDoc(collection(db, HANDOFFS), { ...data, createdAt: now });
-    return { id: docRef.id, ...data, createdAt: now };
+export const createHandoff = async (data: Omit<Handoff, 'id' | 'createdAt'>): Promise<Handoff> => {
+    return apiPost<Handoff>('handoffs/', {
+        handoff_code: data.handoffCode,
+        from_team: data.fromTeam,
+        to_team: data.toTeam,
+        type: data.type,
+        ready: data.ready,
+        sender: data.senderUid,
+        sender_name: data.senderName,
+        receiver: data.receiverUid,
+        receiver_name: data.receiverName,
+        checklist: data.checklist,
+        blocking_question: data.blockingQuestion || '',
+        next_action: data.nextAction || '',
+        related_task: data.relatedTaskId,
+        notes: data.notes || '',
+        workspace: data.workspaceId,
+        project: data.projectId,
+        status: data.status,
+    });
 };
 
-export const updateHandoff = async (id: string, updates: Partial<Handoff>): Promise<void> => {
-    const clean: Record<string, unknown> = {};
-    Object.entries(updates).forEach(([k, v]) => { if (v !== undefined) clean[k] = v; });
-    await updateDoc(doc(db, HANDOFFS, id), clean);
+export const updateHandoff = async (id: string, data: Partial<Handoff>): Promise<void> => {
+    await apiPatch(`handoffs/${id}/`, data);
 };
 
 export const deleteHandoff = async (id: string): Promise<void> => {
-    await deleteDoc(doc(db, HANDOFFS, id));
+    await apiDelete(`handoffs/${id}/`);
 };
 
-// ─── Issue / Incident Log ────────────────────────────────
-
+// --- Issues ---
 export const fetchIssues = async (workspaceId: string): Promise<Issue[]> => {
-    const snap = await getDocs(query(
-        collection(db, ISSUES),
-        where('workspaceId', '==', workspaceId),
-        orderBy('date', 'desc'),
-    ));
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as Issue));
+    const res = await apiGet<PaginatedResponse<Issue>>('issues/', { workspace_id: workspaceId });
+    return res.results;
 };
 
-export const addIssue = async (data: Omit<Issue, 'id' | 'createdAt'>): Promise<Issue> => {
-    const now = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
-    const docRef = await addDoc(collection(db, ISSUES), { ...data, createdAt: now });
-    return { id: docRef.id, ...data, createdAt: now };
+export const createIssue = async (data: Omit<Issue, 'id' | 'createdAt'>): Promise<Issue> => {
+    return apiPost<Issue>('issues/', {
+        date: data.date,
+        time: data.time,
+        member_name: data.memberName,
+        category: data.category,
+        description: data.description,
+        scope: data.scope,
+        time_lost: data.timeLost,
+        workaround: data.workaround || '',
+        status: data.status,
+        tagged_members: data.taggedMembers || [],
+        workspace: data.workspaceId,
+    });
 };
 
-export const updateIssue = async (id: string, updates: Partial<Issue>): Promise<void> => {
-    const clean: Record<string, unknown> = {};
-    Object.entries(updates).forEach(([k, v]) => { if (v !== undefined) clean[k] = v; });
-    await updateDoc(doc(db, ISSUES, id), clean);
+export const updateIssue = async (id: string, data: Partial<Issue>): Promise<void> => {
+    await apiPatch(`issues/${id}/`, data);
 };
 
 export const deleteIssue = async (id: string): Promise<void> => {
-    await deleteDoc(doc(db, ISSUES, id));
+    await apiDelete(`issues/${id}/`);
 };
 
-// ─── Daily Ops Report Generator ──────────────────────────
+// --- Legacy aliases used by existing components ---
+export const addDecision = createDecision;
+export const addHandoff = createHandoff;
+export const addIssue = createIssue;
 
+/** Client-side daily ops report generator */
 export const generateDailyOpsReport = (
-    tasks: Task[],
+    tasks: { text: string; status?: string; priority?: string; dueDate?: string; blockerStatus?: string; completed?: boolean }[],
     decisions: Decision[],
     handoffs: Handoff[],
     issues: Issue[],
     lang: 'ko' | 'en' = 'en',
 ): string => {
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const todayDisplay = format(new Date(), 'yyyy-MM-dd (EEE)');
-    const tr = (en: string, ko: string) => reportTextByLang(lang, en, ko);
+    const isKo = lang === 'ko';
+    const today = new Date().toISOString().split('T')[0];
+    const lines: string[] = [];
 
-    // --- Metrics ---
-    const openP0 = tasks.filter(t => !t.completed && normalizePriority(t.priority) === 'P0');
-    const blockedP0P1 = tasks.filter(t =>
-        !t.completed && t.blockerStatus === 'blocked' &&
-        ['P0', 'P1'].includes(normalizePriority(t.priority) || '')
-    );
+    lines.push(isKo ? `📋 일일 Ops 리포트 — ${today}` : `📋 Daily Ops Report — ${today}`);
+    lines.push('');
 
-    const in48h = (() => {
-        const now = new Date();
-        const cutoff = new Date(now.getTime() + 48 * 60 * 60 * 1000);
-        const cutoffStr = format(cutoff, 'yyyy-MM-dd');
-        return tasks.filter(t => !t.completed && t.dueDate && t.dueDate <= cutoffStr && t.dueDate >= today);
-    })();
+    const open = tasks.filter(t => !t.completed);
+    const p0 = open.filter(t => t.priority === 'P0' || t.priority === 'p0');
+    const blocked = open.filter(t => t.blockerStatus === 'blocked');
+    const overdue = open.filter(t => t.dueDate && t.dueDate < today);
 
-    // Top 3 = first 3 P0/P1 non-completed tasks
-    const top3 = tasks
-        .filter(t => !t.completed && ['P0', 'P1'].includes(normalizePriority(t.priority) || ''))
-        .sort((a, b) => {
-            const pa = normalizePriority(a.priority) || 'P3';
-            const pb = normalizePriority(b.priority) || 'P3';
-            return pa.localeCompare(pb);
-        })
-        .slice(0, 3);
+    lines.push(isKo ? '📊 요약' : '📊 Summary');
+    lines.push(`  ${isKo ? '전체 작업' : 'Total tasks'}: ${tasks.length}`);
+    lines.push(`  ${isKo ? '미완료' : 'Open'}: ${open.length}  |  P0: ${p0.length}  |  ${isKo ? '차단' : 'Blocked'}: ${blocked.length}  |  ${isKo ? '지연' : 'Overdue'}: ${overdue.length}`);
+    lines.push('');
 
-    const blocked = tasks.filter(t => !t.completed && t.blockerStatus === 'blocked');
-
-    const pendingHandoffs = handoffs.filter(h => h.status === 'pending');
-
-    const recentDecisions = decisions.filter(d => d.date === today);
-
-    const activeIssues = issues.filter(i => i.status === 'monitoring');
-
-    // --- Format ---
-    let report = `[${tr('DAILY OPS UPDATE', '일일 OPS 업데이트')} | ${todayDisplay}]\n`;
-    report += `${tr('Tracker', '트래커')}: TaskFlow (SSOT)\n\n`;
-
-    // 1) Top 3
-    report += `1) ${tr("Today's Top 3", '오늘의 Top 3')}\n`;
-    if (top3.length === 0) {
-        report += `   (${tr('No P0/P1 items', 'P0/P1 항목 없음')})\n`;
-    } else {
-        top3.forEach(t => {
-            const p = normalizePriority(t.priority) || '?';
-            const owner = t.owners?.[0]?.name || t.assigneeName || reportTextByLang(lang, 'Unassigned', '미배정');
-            const due = t.dueDate || reportTextByLang(lang, 'No due date', '마감일 없음');
-            const status = getTaskStatusReportLabel(t.status, lang);
-            report += `   - [${t.taskCode || t.id.slice(0, 6)}] (${p}) ${t.text} / ${tr('Owner', '담당')}: ${owner} / ${tr('Due', '마감')}: ${due} / ${tr('Status', '상태')}: ${status}\n`;
-        });
+    if (p0.length > 0) {
+        lines.push(isKo ? '🔴 P0 작업' : '🔴 P0 Tasks');
+        p0.forEach(t => lines.push(`  • ${t.text}`));
+        lines.push('');
+    }
+    if (blocked.length > 0) {
+        lines.push(isKo ? '🚫 차단된 작업' : '🚫 Blocked Tasks');
+        blocked.forEach(t => lines.push(`  • ${t.text}`));
+        lines.push('');
+    }
+    if (decisions.length > 0) {
+        lines.push(isKo ? `📋 의사결정 (${decisions.length})` : `📋 Decisions (${decisions.length})`);
+        decisions.slice(0, 5).forEach(d => lines.push(`  • [${d.decisionCode}] ${d.summary}`));
+        lines.push('');
+    }
+    if (handoffs.filter(h => h.status === 'pending').length > 0) {
+        const pending = handoffs.filter(h => h.status === 'pending');
+        lines.push(isKo ? `🤝 대기 핸드오프 (${pending.length})` : `🤝 Pending Handoffs (${pending.length})`);
+        pending.forEach(h => lines.push(`  • [${h.handoffCode}] ${h.fromTeam} → ${h.toTeam}`));
+        lines.push('');
+    }
+    if (issues.filter(i => i.status === 'monitoring').length > 0) {
+        const active = issues.filter(i => i.status === 'monitoring');
+        lines.push(isKo ? `⚠️ 활성 이슈 (${active.length})` : `⚠️ Active Issues (${active.length})`);
+        active.forEach(i => lines.push(`  • ${i.description} (${i.memberName})`));
+        lines.push('');
     }
 
-    // 2) Blocked
-    report += `\n2) ${tr('Blocked', '차단됨')}\n`;
-    if (blocked.length === 0) {
-        report += `   ${tr('None', '없음')}\n`;
-    } else {
-        blocked.forEach(t => {
-            const owner = t.owners?.[0]?.name || t.assigneeName || reportTextByLang(lang, 'Unassigned', '미배정');
-            report += `   - [${t.taskCode || t.id.slice(0, 6)}] ${t.text} / ${tr('Owner', '담당')}: ${owner}\n`;
-            if (t.blockerDetail) report += `     ${tr('Need', '필요 사항')}: ${t.blockerDetail}\n`;
-            if (t.nextAction) report += `     ${tr('Next action', '다음 액션')}: ${t.nextAction}\n`;
-        });
-    }
-
-    // 3) Due Soon (48h)
-    report += `\n3) ${tr('Due Soon (within 48h)', '마감 임박 (48시간 이내)')}\n`;
-    if (in48h.length === 0) {
-        report += `   ${tr('None', '없음')}\n`;
-    } else {
-        in48h.forEach(t => {
-            const owner = t.owners?.[0]?.name || t.assigneeName || reportTextByLang(lang, 'Unassigned', '미배정');
-            report += `   - [${t.taskCode || t.id.slice(0, 6)}] ${t.text} / ${tr('Owner', '담당')}: ${owner} / ${tr('Due', '마감')}: ${t.dueDate}\n`;
-        });
-    }
-
-    // 4) Handoff Alerts
-    report += `\n4) ${tr('Handoff Alerts', '핸드오프 알림')}\n`;
-    if (pendingHandoffs.length === 0) {
-        report += `   ${tr('None', '없음')}\n`;
-    } else {
-        pendingHandoffs.forEach(h => {
-            const missing = Object.entries(h.checklist).filter(([, v]) => !v).map(([k]) => k);
-            report += `   - [${h.handoffCode}] ${h.fromTeam} → ${h.toTeam} ${tr('Ready?', '준비?')} ${h.ready ? 'Y' : 'N'}`;
-            if (missing.length > 0) report += ` / ${tr('Missing', '누락')}: ${missing.join(', ')}`;
-            report += `\n`;
-        });
-    }
-
-    // 5) Active Issues
-    if (activeIssues.length > 0) {
-        report += `\n5) ${tr('Active Issues', '활성 이슈')}\n`;
-        activeIssues.forEach(i => {
-            const category = ISSUE_CATEGORY_REPORT_LABELS[i.category]?.[lang] || i.category;
-            report += `   - ${i.memberName} (${category}): ${i.description} / ${tr('Time lost', '손실 시간')}: ${i.timeLost || '-'}\n`;
-        });
-    }
-
-    // 6) Metrics summary
-    report += `\n--- ${tr('Metrics', '지표')} ---\n`;
-    report += `🚨 ${tr('Open P0', '미해결 P0')}: ${openP0.length}\n`;
-    report += `🛑 ${tr('Blocked P0/P1', '차단된 P0/P1')}: ${blockedP0P1.length}\n`;
-    report += `⚠️ ${tr('Due in 48h', '48시간 내 마감')}: ${in48h.length}\n`;
-    if (activeIssues.length > 0) report += `🔴 ${tr('Active Issues', '활성 이슈')}: ${activeIssues.length}\n`;
-
-    if (recentDecisions.length > 0) {
-        report += `\n--- ${tr("Today's Decisions", '오늘의 의사결정')} ---\n`;
-        recentDecisions.forEach(d => {
-            report += `   ${d.decisionCode}: ${d.summary}\n`;
-        });
-    }
-
-    report += `\n${tr('End.', '끝.')}`;
-
-    return report;
+    return lines.join('\n');
 };

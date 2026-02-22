@@ -1,54 +1,41 @@
 // src/services/customViewService.ts
-import {
-    collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, orderBy,
-} from "firebase/firestore";
-import type { CustomView, ViewFilter } from '../types';
-import { db } from '../FBase';
+// Django REST API version
+import { apiGet, apiPost, apiPatch, apiDelete, type PaginatedResponse } from './apiClient';
+import type { CustomView } from '../types';
 
-const COLLECTION = "customViews";
-
-/** Fetch all custom views for a project */
-export const fetchCustomViews = async (projectId: string): Promise<CustomView[]> => {
-    const q = query(
-        collection(db, COLLECTION),
-        where("projectId", "==", projectId),
-        orderBy("createdAt", "asc"),
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomView));
+/**
+ * Fetch custom views. Can be called with:
+ * - fetchCustomViews(projectId) — from useCustomViews hook
+ * - fetchCustomViews(workspaceId, projectId) — original signature
+ */
+export const fetchCustomViews = async (workspaceOrProjectId: string, projectId?: string): Promise<CustomView[]> => {
+    const params: Record<string, string> = {};
+    if (projectId) {
+        params.workspace_id = workspaceOrProjectId;
+        params.project_id = projectId;
+    } else {
+        params.project_id = workspaceOrProjectId;
+    }
+    const res = await apiGet<PaginatedResponse<CustomView>>('custom-views/', params);
+    return res.results;
 };
 
-/** Create a new custom view */
-export const createCustomView = async (opts: {
-    name: string;
-    icon: string;
-    color: string;
-    filters: ViewFilter;
-    viewMode?: string;
-    projectId: string;
-    workspaceId: string;
-    createdBy: string;
-}): Promise<CustomView> => {
-    const data = {
-        ...opts,
-        createdAt: new Date().toISOString(),
-    };
-    const docRef = await addDoc(collection(db, COLLECTION), data);
-    return { id: docRef.id, ...data } as CustomView;
-};
-
-/** Update an existing custom view */
-export const updateCustomView = async (
-    viewId: string,
-    updates: Partial<Pick<CustomView, 'name' | 'icon' | 'color' | 'filters' | 'viewMode'>>,
-): Promise<void> => {
-    await updateDoc(doc(db, COLLECTION, viewId), {
-        ...updates,
-        updatedAt: new Date().toISOString(),
+export const createCustomView = async (data: Omit<CustomView, 'id' | 'createdAt'>): Promise<CustomView> => {
+    return apiPost<CustomView>('custom-views/', {
+        name: data.name,
+        icon: data.icon,
+        color: data.color,
+        filters: data.filters,
+        view_mode: data.viewMode,
+        project: data.projectId,
+        workspace: data.workspaceId,
     });
 };
 
-/** Delete a custom view */
+export const updateCustomView = async (viewId: string, updates: Partial<CustomView>): Promise<void> => {
+    await apiPatch(`custom-views/${viewId}/`, updates);
+};
+
 export const deleteCustomView = async (viewId: string): Promise<void> => {
-    await deleteDoc(doc(db, COLLECTION, viewId));
+    await apiDelete(`custom-views/${viewId}/`);
 };

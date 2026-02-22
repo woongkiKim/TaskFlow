@@ -1,141 +1,96 @@
-import {
-    collection, addDoc, getDocs, updateDoc, deleteDoc,
-    doc, query, where, arrayUnion, arrayRemove, getDoc,
-} from 'firebase/firestore';
-import { db } from '../FBase';
+// src/services/workspaceService.ts
+// Django REST API version — replaces Firestore SDK calls
+import { apiGet, apiPost, apiPatch, apiDelete, type PaginatedResponse } from './apiClient';
 import type { Workspace, TeamMember, TeamGroup, MemberRole } from '../types';
-import { format } from 'date-fns';
-
-const WS_COLLECTION = 'workspaces';
-const TG_COLLECTION = 'teamGroups';
-
-const generateInviteCode = (): string => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    const randomValues = crypto.getRandomValues(new Uint8Array(6));
-    return Array.from(randomValues, v => chars.charAt(v % chars.length)).join('');
-};
 
 // --- Workspace ---
 
 export const createWorkspace = async (
     name: string, color: string, type: Workspace['type'],
-    user: { uid: string; displayName: string | null; email: string | null; photoURL: string | null }
+    _user: { uid: string; displayName: string | null; email: string | null; photoURL: string | null }
 ): Promise<Workspace> => {
-    const now = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
-    const member: TeamMember = {
-        uid: user.uid, displayName: user.displayName || 'User',
-        email: user.email || '', photoURL: user.photoURL || undefined,
-        role: 'owner', joinedAt: now,
-    };
-    const data = { name, color, type, members: [member], memberUids: [user.uid], createdBy: user.uid, inviteCode: generateInviteCode(), createdAt: now };
-    const docRef = await addDoc(collection(db, WS_COLLECTION), data);
-    return { id: docRef.id, ...data };
+    return apiPost<Workspace>('workspaces/', { name, color, type });
 };
 
-export const fetchUserWorkspaces = async (userId: string): Promise<Workspace[]> => {
-    const snap = await getDocs(query(collection(db, WS_COLLECTION), where('memberUids', 'array-contains', userId)));
-    const list: Workspace[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as Workspace));
-    return list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+export const fetchUserWorkspaces = async (_userId: string): Promise<Workspace[]> => {
+    const res = await apiGet<PaginatedResponse<Workspace>>('workspaces/');
+    return res.results;
 };
 
 export const joinWorkspaceByCode = async (
     inviteCode: string,
-    user: { uid: string; displayName: string | null; email: string | null; photoURL: string | null }
+    _user: { uid: string; displayName: string | null; email: string | null; photoURL: string | null }
 ): Promise<Workspace | null> => {
-    const snap = await getDocs(query(collection(db, WS_COLLECTION), where('inviteCode', '==', inviteCode.toUpperCase())));
-    if (snap.empty) return null;
-    const wsDoc = snap.docs[0];
-    const wsData = wsDoc.data() as Omit<Workspace, 'id'>;
-    if (wsData.members.some(m => m.uid === user.uid)) return { id: wsDoc.id, ...wsData };
-
-    const newMember: TeamMember = {
-        uid: user.uid, displayName: user.displayName || 'User',
-        email: user.email || '', photoURL: user.photoURL || undefined,
-        role: 'member', joinedAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
-    };
-    await updateDoc(doc(db, WS_COLLECTION, wsDoc.id), { members: arrayUnion(newMember), memberUids: arrayUnion(user.uid) });
-    return { id: wsDoc.id, ...wsData, members: [...wsData.members, newMember] };
+    try {
+        return await apiPost<Workspace>('workspaces/join/', { invite_code: inviteCode });
+    } catch {
+        return null;
+    }
 };
 
 export const joinWorkspaceByInvite = async (
     workspaceId: string,
-    user: { uid: string; displayName: string | null; email: string | null; photoURL: string | null }
+    _user: { uid: string; displayName: string | null; email: string | null; photoURL: string | null }
 ): Promise<Workspace | null> => {
-    const wsDocRef = doc(db, WS_COLLECTION, workspaceId);
-    const wsSnap = await getDoc(wsDocRef);
-    if (!wsSnap.exists()) return null;
-    const wsData = wsSnap.data() as Omit<Workspace, 'id'>;
-    if (wsData.members.some(m => m.uid === user.uid)) return { id: wsSnap.id, ...wsData };
-
-    const newMember: TeamMember = {
-        uid: user.uid, displayName: user.displayName || 'User',
-        email: user.email || '', photoURL: user.photoURL || undefined,
-        role: 'member', joinedAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
-    };
-    await updateDoc(wsDocRef, { members: arrayUnion(newMember), memberUids: arrayUnion(user.uid) });
-    return { id: wsSnap.id, ...wsData, members: [...wsData.members, newMember] };
+    try {
+        // Use the workspace invite code approach or a dedicated endpoint
+        return await apiPost<Workspace>(`workspaces/${workspaceId}/join/`, {});
+    } catch {
+        return null;
+    }
 };
 
 export const fetchWorkspaceMembers = async (wsId: string): Promise<TeamMember[]> => {
-    const d = await getDoc(doc(db, WS_COLLECTION, wsId));
-    return d.exists() ? (d.data().members || []) : [];
+    const res = await apiGet<PaginatedResponse<TeamMember>>('workspace-members/', { workspace_id: wsId });
+    return res.results;
 };
 
 export const regenerateInviteCode = async (wsId: string): Promise<string> => {
-    const newCode = generateInviteCode();
-    await updateDoc(doc(db, WS_COLLECTION, wsId), { inviteCode: newCode });
-    return newCode;
+    const res = await apiPost<{ invite_code: string }>(`workspaces/${wsId}/regenerate_invite_code/`, {});
+    return res.invite_code;
 };
 
 export const updateWorkspace = async (wsId: string, updates: Partial<Workspace>): Promise<void> => {
-    const clean: Record<string, unknown> = {};
-    Object.entries(updates).forEach(([k, v]) => { if (v !== undefined) clean[k] = v; });
-    await updateDoc(doc(db, WS_COLLECTION, wsId), clean);
+    await apiPatch(`workspaces/${wsId}/`, updates);
 };
 
 // --- Team Groups ---
 
 export const createTeamGroup = async (workspaceId: string, name: string, color: string): Promise<TeamGroup> => {
-    const data = { workspaceId, name, color, memberIds: [], createdAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss') };
-    const docRef = await addDoc(collection(db, TG_COLLECTION), data);
-    return { id: docRef.id, ...data };
+    return apiPost<TeamGroup>('team-groups/', { workspace: workspaceId, name, color });
 };
 
 export const fetchTeamGroups = async (workspaceId: string): Promise<TeamGroup[]> => {
-    const snap = await getDocs(query(collection(db, TG_COLLECTION), where('workspaceId', '==', workspaceId)));
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as TeamGroup)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const res = await apiGet<PaginatedResponse<TeamGroup>>('team-groups/', { workspace_id: workspaceId });
+    return res.results;
 };
 
 export const deleteTeamGroup = async (id: string): Promise<void> => {
-    await deleteDoc(doc(db, TG_COLLECTION, id));
+    await apiDelete(`team-groups/${id}/`);
 };
 
 export const updateTeamGroup = async (id: string, updates: Partial<TeamGroup>): Promise<void> => {
-    const clean: Record<string, unknown> = {};
-    Object.entries(updates).forEach(([k, v]) => { if (v !== undefined) clean[k] = v; });
-    await updateDoc(doc(db, TG_COLLECTION, id), clean);
+    await apiPatch(`team-groups/${id}/`, updates);
 };
 
 export const assignMemberToTeam = async (teamGroupId: string, memberUid: string): Promise<void> => {
-    await updateDoc(doc(db, TG_COLLECTION, teamGroupId), { memberIds: arrayUnion(memberUid) });
+    // Backend should handle adding member to M2M
+    const group = await apiGet<TeamGroup>(`team-groups/${teamGroupId}/`);
+    const memberIds = [...(group.memberIds || []), memberUid];
+    await apiPatch(`team-groups/${teamGroupId}/`, { members: memberIds });
 };
 
 export const removeMemberFromTeam = async (teamGroupId: string, memberUid: string): Promise<void> => {
-    await updateDoc(doc(db, TG_COLLECTION, teamGroupId), { memberIds: arrayRemove(memberUid) });
+    const group = await apiGet<TeamGroup>(`team-groups/${teamGroupId}/`);
+    const memberIds = (group.memberIds || []).filter((id: string) => id !== memberUid);
+    await apiPatch(`team-groups/${teamGroupId}/`, { members: memberIds });
 };
 
 export const updateMemberRole = async (workspaceId: string, memberUid: string, newRole: MemberRole): Promise<void> => {
-    try {
-        const wsRef = doc(db, WS_COLLECTION, workspaceId);
-        const snap = await getDoc(wsRef);
-        if (!snap.exists()) throw new Error("Workspace not found");
-
-        const data = snap.data() as Workspace;
-        const updatedMembers = data.members.map(m => m.uid === memberUid ? { ...m, role: newRole } : m);
-
-        await updateDoc(wsRef, { members: updatedMembers });
-    } catch (e) {
-        console.error("Error updating member role:", e);
-        throw e;
+    // Find the membership record and update role
+    const members = await apiGet<PaginatedResponse<{ id: number; user: string; role: string }>>('workspace-members/', { workspace_id: workspaceId });
+    const member = members.results.find(m => String(m.user) === memberUid);
+    if (member) {
+        await apiPatch(`workspace-members/${member.id}/`, { role: newRole });
     }
 };

@@ -1,32 +1,32 @@
 // src/services/commentService.ts
-// In-memory comment store for now; plug into Firestore / mock as needed.
-
+// Django REST API version
+import { apiGet, apiPost, apiDelete, type PaginatedResponse } from './apiClient';
 import type { TaskComment } from '../types';
 
-const comments: TaskComment[] = [];
+export const fetchTaskComments = async (taskId: string): Promise<TaskComment[]> => {
+    const res = await apiGet<PaginatedResponse<TaskComment>>('task-comments/', { task_id: taskId });
+    return res.results;
+};
 
-/** Add a comment (returns the created comment) */
-export async function addComment(comment: Omit<TaskComment, 'id' | 'createdAt'>): Promise<TaskComment> {
-  const entry: TaskComment = {
-    ...comment,
-    id: `cmt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-    createdAt: new Date().toISOString(),
-  };
-  comments.unshift(entry); // newest first
-  return entry;
-}
+export const addTaskComment = async (
+    data: Omit<TaskComment, 'id' | 'createdAt'>
+): Promise<TaskComment> => {
+    return apiPost<TaskComment>('task-comments/', {
+        task: data.taskId,
+        author_name: data.authorName,
+        author_photo: data.authorPhoto || '',
+        body: data.body,
+    });
+};
 
-/** Fetch comments for a given task */
-export async function fetchCommentsByTaskId(taskId: string): Promise<TaskComment[]> {
-  return comments.filter(c => c.taskId === taskId);
-}
+export const deleteTaskComment = async (commentId: string): Promise<void> => {
+    await apiDelete(`task-comments/${commentId}/`);
+};
 
-/** Fetch comments for a given notification */
-export async function fetchCommentsByNotificationId(notificationId: string): Promise<TaskComment[]> {
-  return comments.filter(c => c.notificationId === notificationId);
-}
+// --- Legacy aliases used by existing components ---
+export const addComment = addTaskComment;
 
-/** Fetch all comments (for debugging) */
-export async function fetchAllComments(): Promise<TaskComment[]> {
-  return [...comments];
-}
+export const fetchCommentsByNotificationId = async (notificationId: string): Promise<TaskComment[]> => {
+    const res = await apiGet<PaginatedResponse<TaskComment>>('task-comments/', { notification_id: notificationId });
+    return res.results;
+};

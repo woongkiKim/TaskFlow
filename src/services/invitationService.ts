@@ -1,74 +1,63 @@
-import {
-    collection, addDoc, getDocs, updateDoc,
-    doc, query, where,
-} from 'firebase/firestore';
-import { db } from '../FBase';
+// src/services/invitationService.ts
+// Django REST API version
+import { apiGet, apiPost, apiPatch, apiDelete, type PaginatedResponse } from './apiClient';
 import type { Invitation } from '../types';
-import { format, addDays } from 'date-fns';
 
-const INV_COLLECTION = 'invitations';
-
-const generateToken = (): string => {
-    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    const randomValues = crypto.getRandomValues(new Uint8Array(32));
-    return Array.from(randomValues, v => chars.charAt(v % chars.length)).join('');
-};
-
-// 1. 이메일 초대 생성
-export const createEmailInvite = async (
-    workspaceId: string, email: string, invitedBy: string
+export const createEmailInvitation = async (
+    workspaceId: string, email: string, _invitedBy: string
 ): Promise<Invitation> => {
-    const now = new Date();
-    const data = {
-        workspaceId, type: 'email' as const, email, token: generateToken(),
-        status: 'pending' as const, invitedBy,
-        createdAt: format(now, 'yyyy-MM-dd HH:mm:ss'),
-        expiresAt: format(addDays(now, 7), 'yyyy-MM-dd HH:mm:ss'),
-    };
-    const docRef = await addDoc(collection(db, INV_COLLECTION), data);
-    return { id: docRef.id, ...data };
+    return apiPost<Invitation>('invitations/', {
+        workspace: workspaceId,
+        type: 'email',
+        email,
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    });
 };
 
-// 2. 링크 초대 생성
-export const createLinkInvite = async (
-    workspaceId: string, invitedBy: string
+export const createLinkInvitation = async (
+    workspaceId: string, _invitedBy: string
 ): Promise<Invitation> => {
-    const now = new Date();
-    const data = {
-        workspaceId, type: 'link' as const, token: generateToken(),
-        status: 'pending' as const, invitedBy,
-        createdAt: format(now, 'yyyy-MM-dd HH:mm:ss'),
-        expiresAt: format(addDays(now, 7), 'yyyy-MM-dd HH:mm:ss'),
-    };
-    const docRef = await addDoc(collection(db, INV_COLLECTION), data);
-    return { id: docRef.id, ...data };
+    return apiPost<Invitation>('invitations/', {
+        workspace: workspaceId,
+        type: 'link',
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    });
 };
 
-// 3. 토큰으로 초대 조회
-export const findInviteByToken = async (token: string): Promise<Invitation | null> => {
-    const snap = await getDocs(query(collection(db, INV_COLLECTION), where('token', '==', token), where('status', '==', 'pending')));
-    if (snap.empty) return null;
-    const d = snap.docs[0];
-    return { id: d.id, ...d.data() } as Invitation;
+export const findInvitationByToken = async (token: string): Promise<Invitation | null> => {
+    try {
+        const res = await apiGet<PaginatedResponse<Invitation>>('invitations/', { token });
+        const pending = res.results.find(i => i.status === 'pending');
+        return pending || null;
+    } catch {
+        return null;
+    }
 };
 
-// 4. 이메일로 pending 초대 확인 (로그인 시 호출)
-export const checkPendingInvites = async (email: string): Promise<Invitation[]> => {
-    const snap = await getDocs(query(
-        collection(db, INV_COLLECTION),
-        where('email', '==', email),
-        where('status', '==', 'pending')
-    ));
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as Invitation));
+/**
+ * Fetch pending invitations for a given email.
+ * Called as checkPendingInvites(email) from WorkspaceContext.
+ */
+export const fetchPendingInvitations = async (email: string): Promise<Invitation[]> => {
+    const res = await apiGet<PaginatedResponse<Invitation>>('invitations/', { email, status: 'pending' });
+    return res.results;
 };
 
-// 5. 초대 수락
-export const acceptInvite = async (inviteId: string): Promise<void> => {
-    await updateDoc(doc(db, INV_COLLECTION, inviteId), { status: 'accepted' });
+export const acceptInvitation = async (invitationId: string): Promise<void> => {
+    await apiPatch(`invitations/${invitationId}/`, { status: 'accepted' });
 };
 
-// 6. 워크스페이스의 초대 목록
-export const fetchWorkspaceInvites = async (workspaceId: string): Promise<Invitation[]> => {
-    const snap = await getDocs(query(collection(db, INV_COLLECTION), where('workspaceId', '==', workspaceId)));
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as Invitation)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+export const fetchWorkspaceInvitations = async (workspaceId: string): Promise<Invitation[]> => {
+    const res = await apiGet<PaginatedResponse<Invitation>>('invitations/', { workspace_id: workspaceId });
+    return res.results;
 };
+
+export const deleteInvitation = async (invitationId: string): Promise<void> => {
+    await apiDelete(`invitations/${invitationId}/`);
+};
+
+// --- Legacy aliases used by existing components ---
+export const createLinkInvite = createLinkInvitation;
+export const createEmailInvite = createEmailInvitation;
+export const checkPendingInvites = fetchPendingInvitations;
+export const acceptInvite = acceptInvitation;

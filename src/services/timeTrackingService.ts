@@ -1,90 +1,47 @@
-import {
-  collection, addDoc, getDocs, deleteDoc, doc, query, where, orderBy, Timestamp, updateDoc, increment,
-} from "firebase/firestore";
+// src/services/timeTrackingService.ts
+// Django REST API version
+import { apiGet, apiPost, apiDelete, type PaginatedResponse } from './apiClient';
 import type { TimeEntry } from '../types';
-import { db } from '../FBase';
 
-const COLLECTION_NAME = "timeEntries";
-
-/** Add a time entry and update the task's totalTimeSpent cache */
-export const addTimeEntry = async (entry: Omit<TimeEntry, 'id'>): Promise<TimeEntry> => {
-  const docRef = await addDoc(collection(db, COLLECTION_NAME), {
-    ...entry,
-    createdAt: Timestamp.now(),
-  });
-
-  // Update cached totalTimeSpent on the task document
-  try {
-    const taskRef = doc(db, "tasks", entry.taskId);
-    await updateDoc(taskRef, {
-      totalTimeSpent: increment(entry.durationMinutes),
+export const addTimeEntry = async (entry: Omit<TimeEntry, 'id' | 'createdAt'>): Promise<TimeEntry> => {
+    return apiPost<TimeEntry>('time-entries/', {
+        task: entry.taskId,
+        workspace: entry.workspaceId,
+        user_name: entry.userName,
+        type: entry.type,
+        start_time: entry.startTime,
+        end_time: entry.endTime,
+        duration_minutes: entry.durationMinutes,
+        note: entry.note || '',
     });
-  } catch {
-    // Task update is best-effort (cache)
-  }
-
-  return { ...entry, id: docRef.id };
 };
 
-/** Fetch time entries for a specific task */
-export const fetchTimeEntries = async (taskId: string): Promise<TimeEntry[]> => {
-  const q = query(
-    collection(db, COLLECTION_NAME),
-    where("taskId", "==", taskId),
-    orderBy("createdAt", "desc"),
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as TimeEntry));
+export const fetchTaskTimeEntries = async (taskId: string): Promise<TimeEntry[]> => {
+    const res = await apiGet<PaginatedResponse<TimeEntry>>('time-entries/', { task_id: taskId });
+    return res.results;
 };
 
-/** Fetch time entries for a user within a date range */
-export const fetchUserTimeEntries = async (
-  userId: string,
-  startDate: string,
-  endDate: string,
-): Promise<TimeEntry[]> => {
-  const q = query(
-    collection(db, COLLECTION_NAME),
-    where("userId", "==", userId),
-    where("startTime", ">=", startDate),
-    where("startTime", "<=", endDate),
-    orderBy("startTime", "desc"),
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as TimeEntry));
+export const fetchUserTimeEntries = async (_userId: string, workspaceId: string): Promise<TimeEntry[]> => {
+    const res = await apiGet<PaginatedResponse<TimeEntry>>('time-entries/', { workspace_id: workspaceId });
+    return res.results;
 };
 
-/** Delete a time entry and adjust the task's totalTimeSpent */
-export const deleteTimeEntry = async (entryId: string, taskId: string, durationMinutes: number): Promise<void> => {
-  await deleteDoc(doc(db, COLLECTION_NAME, entryId));
-
-  try {
-    const taskRef = doc(db, "tasks", taskId);
-    await updateDoc(taskRef, {
-      totalTimeSpent: increment(-durationMinutes),
-    });
-  } catch {
-    // Best-effort cache update
-  }
+export const deleteTimeEntry = async (entryId: string, _taskId?: string, _durationMinutes?: number): Promise<void> => {
+    await apiDelete(`time-entries/${entryId}/`);
 };
 
-/** Add a manual time entry */
+// --- Legacy aliases ---
+export const fetchTimeEntries = fetchTaskTimeEntries;
+
+/** Convenience: addManualTimeEntry(taskId, userId, userName, minutes, note) */
 export const addManualTimeEntry = async (
-  taskId: string,
-  userId: string,
-  userName: string,
-  durationMinutes: number,
-  note?: string,
+    taskId: string, _userId: string, userName: string, durationMinutes: number, note?: string
 ): Promise<TimeEntry> => {
-  const now = new Date().toISOString();
-  return addTimeEntry({
-    taskId,
-    userId,
-    userName,
-    type: 'manual',
-    startTime: now,
-    endTime: now,
-    durationMinutes,
-    note,
-  });
+    return apiPost<TimeEntry>('time-entries/', {
+        task: taskId,
+        user_name: userName,
+        type: 'manual',
+        duration_minutes: durationMinutes,
+        note: note || '',
+    });
 };

@@ -1,12 +1,7 @@
-import {
-  collection, addDoc, getDocs, updateDoc, deleteDoc,
-  doc, query, where,
-} from 'firebase/firestore';
-import { db } from '../FBase';
+// src/services/projectService.ts
+// Django REST API version
+import { apiGet, apiPost, apiPatch, apiDelete, type PaginatedResponse } from './apiClient';
 import type { Project, KanbanColumn } from '../types';
-import { format } from 'date-fns';
-
-const PROJECTS_COLLECTION = 'projects';
 
 export const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
   { id: 'todo', title: 'To Do', color: '#6366f1', order: 0 },
@@ -15,33 +10,32 @@ export const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
 ];
 
 export const createProject = async (
-  name: string, workspaceId: string, color: string, createdBy: string, teamGroupId?: string, initiativeId?: string
+  name: string, workspaceId: string, color: string, _createdBy: string,
+  teamGroupId?: string, initiativeId?: string
 ): Promise<Project> => {
-  const data = {
-    name, workspaceId, color, createdBy,
-    ...(teamGroupId ? { teamGroupId } : {}),
-    ...(initiativeId ? { initiativeId } : {}),
-
-    createdAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
-    kanbanColumns: DEFAULT_KANBAN_COLUMNS,
-  };
-  const docRef = await addDoc(collection(db, PROJECTS_COLLECTION), data);
-  return { id: docRef.id, ...data } as Project;
+  return apiPost<Project>('projects/', {
+    name,
+    workspace: workspaceId,
+    color,
+    kanban_columns: DEFAULT_KANBAN_COLUMNS,
+    ...(teamGroupId ? { team_group: teamGroupId } : {}),
+    ...(initiativeId ? { initiative: initiativeId } : {}),
+  });
 };
 
 export const fetchWorkspaceProjects = async (workspaceId: string): Promise<Project[]> => {
-  const snap = await getDocs(query(collection(db, PROJECTS_COLLECTION), where('workspaceId', '==', workspaceId)));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as Project)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const res = await apiGet<PaginatedResponse<Project>>('projects/', { workspace_id: workspaceId });
+  return res.results;
 };
 
 export const updateProject = async (id: string, updates: Partial<Project>): Promise<void> => {
-  await updateDoc(doc(db, PROJECTS_COLLECTION, id), updates);
+  await apiPatch(`projects/${id}/`, updates);
 };
 
 export const deleteProject = async (id: string): Promise<void> => {
-  await deleteDoc(doc(db, PROJECTS_COLLECTION, id));
+  await apiDelete(`projects/${id}/`);
 };
 
 export const updateProjectColumns = async (id: string, columns: KanbanColumn[]): Promise<void> => {
-  await updateDoc(doc(db, PROJECTS_COLLECTION, id), { kanbanColumns: columns });
+  await apiPatch(`projects/${id}/`, { kanban_columns: columns });
 };

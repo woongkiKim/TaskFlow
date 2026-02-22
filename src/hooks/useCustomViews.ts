@@ -91,6 +91,7 @@ export function useCustomViews(opts: UseCustomViewsOptions) {
         try {
           const view = await createCustomView({
             ...data,
+            viewMode: data.viewMode || 'list',
             projectId,
             workspaceId,
             createdBy: userId,
