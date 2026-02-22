@@ -1,54 +1,78 @@
 // src/services/customViewService.ts
-import {
-    collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, orderBy,
-} from "firebase/firestore";
-import type { CustomView, ViewFilter } from '../types';
-import { db } from '../FBase';
+// CustomViewService — now proxied through Django REST API
 
-const COLLECTION = "customViews";
+import api from './apiClient';
+import type { CustomView, ViewFilter } from '../types';
+
+interface ApiCustomView {
+  id: number;
+  name: string;
+  icon: string;
+  color: string;
+  viewMode: string;
+  filters: ViewFilter;
+  project: number;
+  projectId: string;
+  workspace: number;
+  workspaceId: string;
+  createdBy: number;
+  createdAt: string;
+}
+
+function mapView(v: ApiCustomView): CustomView {
+  return {
+    id: String(v.id),
+    name: v.name,
+    icon: v.icon || '📋',
+    color: v.color || '',
+    viewMode: (v.viewMode || 'list') as CustomView['viewMode'],
+    filters: v.filters || {},
+    projectId: v.projectId || String(v.project),
+    workspaceId: v.workspaceId || String(v.workspace),
+    createdBy: String(v.createdBy),
+    createdAt: v.createdAt,
+  };
+}
 
 /** Fetch all custom views for a project */
 export const fetchCustomViews = async (projectId: string): Promise<CustomView[]> => {
-    const q = query(
-        collection(db, COLLECTION),
-        where("projectId", "==", projectId),
-        orderBy("createdAt", "asc"),
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomView));
+  const data = await api.get<{ results: ApiCustomView[] }>('custom-views/', { project_id: projectId });
+  return (data.results || []).map(mapView);
 };
 
 /** Create a new custom view */
 export const createCustomView = async (opts: {
-    name: string;
-    icon: string;
-    color: string;
-    filters: ViewFilter;
-    viewMode?: string;
-    projectId: string;
-    workspaceId: string;
-    createdBy: string;
+  name: string;
+  icon: string;
+  color: string;
+  filters: ViewFilter;
+  viewMode?: string;
+  projectId: string;
+  workspaceId: string;
+  createdBy: string;
 }): Promise<CustomView> => {
-    const data = {
-        ...opts,
-        createdAt: new Date().toISOString(),
-    };
-    const docRef = await addDoc(collection(db, COLLECTION), data);
-    return { id: docRef.id, ...data } as CustomView;
+  const body: Record<string, unknown> = {
+    name: opts.name,
+    icon: opts.icon,
+    color: opts.color,
+    filters: opts.filters,
+    viewMode: opts.viewMode || 'list',
+    project: Number(opts.projectId),
+    workspace: Number(opts.workspaceId),
+  };
+  const result = await api.post<ApiCustomView>('custom-views/', body);
+  return mapView(result);
 };
 
 /** Update an existing custom view */
 export const updateCustomView = async (
-    viewId: string,
-    updates: Partial<Pick<CustomView, 'name' | 'icon' | 'color' | 'filters' | 'viewMode'>>,
+  viewId: string,
+  updates: Partial<Pick<CustomView, 'name' | 'icon' | 'color' | 'filters' | 'viewMode'>>,
 ): Promise<void> => {
-    await updateDoc(doc(db, COLLECTION, viewId), {
-        ...updates,
-        updatedAt: new Date().toISOString(),
-    });
+  await api.patch(`custom-views/${viewId}/`, updates);
 };
 
 /** Delete a custom view */
 export const deleteCustomView = async (viewId: string): Promise<void> => {
-    await deleteDoc(doc(db, COLLECTION, viewId));
+  await api.delete(`custom-views/${viewId}/`);
 };

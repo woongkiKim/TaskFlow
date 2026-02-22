@@ -1,20 +1,39 @@
-import {
-  collection, addDoc, getDocs, query, where, orderBy, deleteDoc, doc,
-} from "firebase/firestore";
-import { db } from '../FBase';
-import type { ProjectUpdate } from '../types';
+// src/services/projectUpdateService.ts
+// ProjectUpdateService — now proxied through Django REST API
 
-const COLLECTION_NAME = "projectUpdates";
+import api from './apiClient';
+import type { ProjectUpdate, ProjectHealth } from '../types';
+
+interface ApiProjectUpdate {
+  id: number;
+  project: number;
+  workspace: number;
+  health: string;
+  content: string;
+  createdBy: number;
+  createdByName: string;
+  createdByPhoto: string;
+  createdAt: string;
+}
+
+function mapUpdate(u: ApiProjectUpdate): ProjectUpdate {
+  return {
+    id: String(u.id),
+    projectId: String(u.project),
+    workspaceId: String(u.workspace),
+    health: (u.health as ProjectHealth) || 'on_track',
+    content: u.content || '',
+    createdBy: String(u.createdBy),
+    createdByName: u.createdByName || '',
+    createdByPhoto: u.createdByPhoto || '',
+    createdAt: u.createdAt,
+  };
+}
 
 export const fetchProjectUpdates = async (projectId: string): Promise<ProjectUpdate[]> => {
   try {
-    const q = query(
-      collection(db, COLLECTION_NAME),
-      where("projectId", "==", projectId),
-      orderBy("createdAt", "desc"),
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as ProjectUpdate));
+    const data = await api.get<{ results: ApiProjectUpdate[] }>('project-updates/', { project_id: projectId });
+    return (data.results || []).map(mapUpdate);
   } catch (e) {
     console.error("Error fetching project updates:", e);
     return [];
@@ -24,10 +43,18 @@ export const fetchProjectUpdates = async (projectId: string): Promise<ProjectUpd
 export const createProjectUpdate = async (
   data: Omit<ProjectUpdate, 'id'>
 ): Promise<ProjectUpdate> => {
-  const docRef = await addDoc(collection(db, COLLECTION_NAME), data);
-  return { id: docRef.id, ...data };
+  const body: Record<string, unknown> = {
+    project: Number(data.projectId),
+    workspace: Number(data.workspaceId),
+    health: data.health || 'on_track',
+    content: data.content || '',
+    createdByName: data.createdByName || '',
+    createdByPhoto: data.createdByPhoto || '',
+  };
+  const result = await api.post<ApiProjectUpdate>('project-updates/', body);
+  return mapUpdate(result);
 };
 
 export const deleteProjectUpdate = async (id: string): Promise<void> => {
-  await deleteDoc(doc(db, COLLECTION_NAME, id));
+  await api.delete(`project-updates/${id}/`);
 };

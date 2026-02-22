@@ -1,48 +1,72 @@
-import {
-    collection, addDoc, getDocs, updateDoc, deleteDoc,
-    doc, query, where, orderBy, Timestamp,
-} from 'firebase/firestore';
-import { db } from '../FBase';
+// src/services/initiativeService.ts
+// InitiativeService — now proxied through Django REST API
+
+import api from './apiClient';
 import type { Initiative } from '../types';
 
-const COLLECTION = 'initiatives';
+// ─── Response type ───────────────────────────────────────
+
+interface ApiInitiative {
+  id: number;
+  name: string;
+  description: string;
+  status: string;
+  startDate: string | null;
+  targetDate: string | null;
+  color: string;
+  workspace: number;
+  createdBy: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Mapper ──────────────────────────────────────────────
+
+function mapInitiative(i: ApiInitiative): Initiative {
+  return {
+    id: String(i.id),
+    name: i.name,
+    description: i.description || undefined,
+    status: i.status as Initiative['status'],
+    targetDate: i.targetDate || undefined,
+    color: i.color,
+    workspaceId: String(i.workspace),
+    createdBy: String(i.createdBy),
+    projectIds: [],  // resolved via backend relation
+    createdAt: i.createdAt,
+  };
+}
+
+// ─── API Functions ───────────────────────────────────────
 
 export const fetchInitiatives = async (workspaceId: string): Promise<Initiative[]> => {
-    const q = query(
-        collection(db, COLLECTION),
-        where("workspaceId", "==", workspaceId),
-        orderBy("status", "asc"), // Sort by status or createdAt
-        orderBy("createdAt", "desc")
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as Initiative));
+  const data = await api.get<{ results: ApiInitiative[] }>('initiatives/', { workspace_id: workspaceId });
+  return (data.results || []).map(mapInitiative);
 };
 
 export const createInitiative = async (
-    data: Omit<Initiative, 'id' | 'createdAt'>
+  data: Omit<Initiative, 'id' | 'createdAt'>
 ): Promise<Initiative> => {
-    const now = Timestamp.now().toDate().toISOString();
-    // Remove undefined fields
-    const cleanData = Object.fromEntries(
-        Object.entries(data).filter(([, v]) => v !== undefined)
-    );
-    const docRef = await addDoc(collection(db, COLLECTION), {
-        ...cleanData,
-        createdAt: now,
-    });
-    return { id: docRef.id, ...data, createdAt: now } as Initiative;
+  const body: Record<string, unknown> = {
+    name: data.name,
+    description: data.description || '',
+    status: data.status || 'planned',
+    color: data.color || '#3b82f6',
+    workspace: Number(data.workspaceId),
+  };
+  if (data.targetDate) body.targetDate = data.targetDate;
+
+  const result = await api.post<ApiInitiative>('initiatives/', body);
+  return mapInitiative(result);
 };
 
 export const updateInitiative = async (
-    id: string,
-    data: Partial<Omit<Initiative, 'id' | 'createdAt' | 'workspaceId' | 'createdBy'>>
+  id: string,
+  data: Partial<Omit<Initiative, 'id' | 'createdAt' | 'workspaceId' | 'createdBy'>>
 ): Promise<void> => {
-    await updateDoc(doc(db, COLLECTION, id), {
-        ...data,
-        updatedAt: Timestamp.now().toDate().toISOString(),
-    });
+  await api.patch(`initiatives/${id}/`, data);
 };
 
 export const deleteInitiative = async (id: string): Promise<void> => {
-    await deleteDoc(doc(db, COLLECTION, id));
+  await api.delete(`initiatives/${id}/`);
 };

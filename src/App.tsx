@@ -6,6 +6,7 @@ import './App.css';
 import { AppProviders } from './contexts/AppProviders';
 import PrivateRoute from './routes/PrivateRoute';
 import MainLayout from './layout/MainLayout';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Lazy load pages for performance (Code Splitting)
 const Login = lazy(() => import('./pages/Login'));
@@ -31,6 +32,7 @@ const CustomFieldsPage = lazy(() => import('./pages/CustomFieldsPage'));
 const GanttPage = lazy(() => import('./pages/GanttPage'));
 const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'));
 const TimeTrackingPage = lazy(() => import('./pages/TimeTrackingPage'));
+const SeedPage = lazy(() => import('./pages/SeedPage'));
 
 // Loading Fallback Component — Linear-style branded loader
 const FullPageLoader = () => (
@@ -62,39 +64,42 @@ const FullPageLoader = () => (
 function App() {
   return (
     <AppProviders>
-      <Suspense fallback={<FullPageLoader />}>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route element={<PrivateRoute />}>
-            <Route path="/" element={<MainLayout />}>
-              <Route index element={<HomePage />} />
-              <Route path="tasks" element={<TasksPage />} />
-              <Route path="inbox" element={<InboxPage />} />
-              <Route path="dashboard" element={<Navigate to="/" replace />} />
-              <Route path="calendar" element={<Calendar />} />
-              <Route path="planner" element={<WeeklyPlanner />} />
-              <Route path="reports" element={<WeeklyReports />} />
-              <Route path="settings" element={<Settings />} />
-              <Route path="team-settings" element={<TeamSettings />} />
-              <Route path="ops" element={<OpsCenter />} />
-              <Route path="initiative/:id" element={<InitiativePage />} />
-              <Route path="roadmap" element={<RoadmapPage />} />
-              <Route path="analytics" element={<AnalyticsPage />} />
-              <Route path="okr" element={<OKRPage />} />
-              <Route path="wiki" element={<WikiPage />} />
-              <Route path="gantt" element={<GanttPage />} />
-              <Route path="discussions" element={<DiscussionPage />} />
-              <Route path="productivity" element={<ProductivityPage />} />
-              <Route path="automations" element={<AutomationsPage />} />
-              <Route path="integrations" element={<IntegrationsPage />} />
-              <Route path="custom-fields" element={<CustomFieldsPage />} />
-              <Route path="time-tracking" element={<TimeTrackingPage />} />
-              <Route path="github" element={<GitHubPanel />} />
+      <ErrorBoundary>
+        <Suspense fallback={<FullPageLoader />}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route element={<PrivateRoute />}>
+              <Route path="/" element={<MainLayout />}>
+                <Route index element={<HomePage />} />
+                <Route path="tasks" element={<TasksPage />} />
+                <Route path="inbox" element={<InboxPage />} />
+                <Route path="dashboard" element={<Navigate to="/" replace />} />
+                <Route path="calendar" element={<Calendar />} />
+                <Route path="planner" element={<WeeklyPlanner />} />
+                <Route path="reports" element={<WeeklyReports />} />
+                <Route path="settings" element={<Settings />} />
+                <Route path="team-settings" element={<TeamSettings />} />
+                <Route path="ops" element={<OpsCenter />} />
+                <Route path="initiative/:id" element={<InitiativePage />} />
+                <Route path="roadmap" element={<RoadmapPage />} />
+                <Route path="analytics" element={<AnalyticsPage />} />
+                <Route path="okr" element={<OKRPage />} />
+                <Route path="wiki" element={<WikiPage />} />
+                <Route path="gantt" element={<GanttPage />} />
+                <Route path="discussions" element={<DiscussionPage />} />
+                <Route path="productivity" element={<ProductivityPage />} />
+                <Route path="automations" element={<AutomationsPage />} />
+                <Route path="integrations" element={<IntegrationsPage />} />
+                <Route path="custom-fields" element={<CustomFieldsPage />} />
+                <Route path="time-tracking" element={<TimeTrackingPage />} />
+                <Route path="github" element={<GitHubPanel />} />
+                <Route path="dev/seed" element={<SeedPage />} />
+              </Route>
             </Route>
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </AppProviders>
   );
 }

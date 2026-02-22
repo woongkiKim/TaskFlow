@@ -1,17 +1,48 @@
 // src/services/activityService.ts
-import {
-  collection, addDoc, query, where, orderBy, limit as fbLimit,
-  getDocs, Timestamp, type QueryConstraint,
-} from 'firebase/firestore';
-import { db } from '../FBase';
+// ActivityService — now proxied through Django REST API
+
+import api from './apiClient';
 import type { ActivityEntry, ActivityEntityType, ActivityAction, FieldChange } from '../types';
-import { proxyIfMock } from './serviceProxy';
 
-const COLLECTION = 'activities';
+// ─── Response type ───────────────────────────────────────
 
-// ─── Firestore Implementations ───────────────────────
+interface ApiActivity {
+  id: number;
+  entityType: string;
+  entityId: string;
+  entityTitle: string;
+  action: string;
+  workspace: number;
+  userId: string;
+  userName: string;
+  userPhoto: string;
+  changes: FieldChange[];
+  description: string;
+  timestamp: string;
+}
 
-const _fetchActivities = async (
+// ─── Mapper ──────────────────────────────────────────────
+
+function mapActivity(a: ApiActivity): ActivityEntry {
+  return {
+    id: String(a.id),
+    entityType: a.entityType as ActivityEntityType,
+    entityId: a.entityId,
+    entityTitle: a.entityTitle,
+    action: a.action as ActivityAction,
+    workspaceId: String(a.workspace),
+    userId: a.userId,
+    userName: a.userName,
+    userPhoto: a.userPhoto || undefined,
+    changes: a.changes || [],
+    description: a.description || undefined,
+    timestamp: a.timestamp,
+  };
+}
+
+// ─── API Functions ───────────────────────────────────────
+
+export const fetchActivities = async (
   workspaceId: string,
   opts?: {
     entityType?: ActivityEntityType;
@@ -19,36 +50,35 @@ const _fetchActivities = async (
     limit?: number;
   },
 ): Promise<ActivityEntry[]> => {
-  // Build constraints: equality filters (where) MUST come before orderBy in Firestore
-  // QueryConstraint[] allows mixing where/orderBy/limit in one array
-  const constraints: QueryConstraint[] = [
-    where('workspaceId', '==', workspaceId),
-  ];
-  // Optional narrowing filters (must be before orderBy/limit)
-  if (opts?.entityType) constraints.push(where('entityType', '==', opts.entityType));
-  if (opts?.entityId) constraints.push(where('entityId', '==', opts.entityId));
-  // orderBy + limit after all where clauses (Firestore index requirement)
-  constraints.push(orderBy('timestamp', 'desc'));
-  constraints.push(fbLimit(opts?.limit ?? 50));
+  const params: Record<string, string | number> = { workspace_id: workspaceId };
+  if (opts?.entityType) params.entity_type = opts.entityType;
+  if (opts?.entityId) params.entity_id = opts.entityId;
+  if (opts?.limit) params.page_size = opts.limit;
 
-  const snap = await getDocs(query(collection(db, COLLECTION), ...constraints));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as ActivityEntry));
+  const data = await api.get<{ results: ApiActivity[] }>('activities/', params);
+  return (data.results || []).map(mapActivity);
 };
 
-const _logActivity = async (entry: Omit<ActivityEntry, 'id'>): Promise<string> => {
-  const ref = await addDoc(collection(db, COLLECTION), {
-    ...entry,
-    timestamp: entry.timestamp || Timestamp.now().toDate().toISOString(),
-  });
-  return ref.id;
+export const logActivity = async (entry: Omit<ActivityEntry, 'id'>): Promise<string> => {
+  const body: Record<string, unknown> = {
+    entityType: entry.entityType,
+    entityId: entry.entityId,
+    entityTitle: entry.entityTitle,
+    action: entry.action,
+    workspace: Number(entry.workspaceId),
+    userId: entry.userId,
+    userName: entry.userName,
+    userPhoto: entry.userPhoto || '',
+    changes: entry.changes || [],
+    description: entry.description || '',
+    timestamp: entry.timestamp || new Date().toISOString(),
+  };
+
+  const data = await api.post<ApiActivity>('activities/', body);
+  return String(data.id);
 };
 
-// ─── Exported (Proxy-Routed) ─────────────────────────
-
-export const fetchActivities = proxyIfMock('fetchActivities', _fetchActivities);
-export const logActivity = proxyIfMock('logActivity', _logActivity);
-
-// ─── Helper: Auto-diff changes ───────────────────────
+// ─── Helper: Auto-diff changes ───────────────────────────
 
 export const diffChanges = (
   before: Record<string, unknown>,
@@ -76,7 +106,7 @@ export const diffChanges = (
   return changes;
 };
 
-// ─── Helper: Build activity entry ────────────────────
+// ─── Helper: Build activity entry ────────────────────────
 
 export const buildActivityEntry = (params: {
   entityType: ActivityEntityType;

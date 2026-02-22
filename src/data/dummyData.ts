@@ -6,7 +6,7 @@ import type {
   Decision, Handoff, Issue, Notification, Initiative,
   CustomView, IssueTemplate, AutomationRule, KanbanColumn,
   WikiDocument,
-} from '../../types';
+} from '../types';
 
 export const MOCK_USER_ID = 'mock_user_001';
 const MOCK_WS_ID = 'mock_ws_001';
@@ -991,7 +991,7 @@ export const mockAutomationRules: AutomationRule[] = [
 ];
 
 // ─── OKR Objectives ──────────────────────────────────────
-export const mockObjectives: import('../../types').Objective[] = [
+export const mockObjectives: import('../types').Objective[] = [
   {
     id: 'mock_okr_001',
     title: '제품 품질 60% 향상',
@@ -1397,7 +1397,7 @@ firebase hosting:clone <previous-version> live
 ];
 
 // ─── Activity Log ──────────────────────────────────────
-import type { ActivityEntry } from '../../types';
+import type { ActivityEntry } from '../types';
 
 export const mockActivities: ActivityEntry[] = [
   {

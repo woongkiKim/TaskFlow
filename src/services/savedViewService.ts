@@ -1,45 +1,61 @@
 // src/services/savedViewService.ts
-import { 
-    collection, addDoc, getDocs, updateDoc, deleteDoc, 
-    doc, query, where, 
-} from 'firebase/firestore';
-import { db } from '../FBase';
+// SavedViewService — now proxied through Django REST API
+
+import api from './apiClient';
 import type { CustomView } from '../types';
 
-const COLLECTION_NAME = 'custom_views';
+interface ApiCustomView {
+  id: number;
+  name: string;
+  icon: string;
+  workspace: number;
+  project: number | null;
+  viewType: string;
+  filters: Record<string, unknown>;
+  createdBy: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapView(v: ApiCustomView): CustomView {
+  return {
+    id: String(v.id),
+    name: v.name,
+    icon: v.icon || '📋',
+    workspaceId: String(v.workspace),
+    projectId: v.project ? String(v.project) : undefined,
+    viewType: v.viewType as CustomView['viewType'],
+    filters: v.filters || {},
+    createdBy: String(v.createdBy),
+    createdAt: v.createdAt,
+  };
+}
 
 export const fetchCustomViews = async (workspaceId: string, projectId?: string): Promise<CustomView[]> => {
-    let q = query(
-        collection(db, COLLECTION_NAME),
-        where('workspaceId', '==', workspaceId)
-    );
-
-    if (projectId) {
-        q = query(q, where('projectId', '==', projectId));
-    }
-
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomView));
+  const params: Record<string, string> = { workspace_id: workspaceId };
+  if (projectId) params.project_id = projectId;
+  const data = await api.get<{ results: ApiCustomView[] }>('custom-views/', params);
+  return (data.results || []).map(mapView);
 };
 
 export const saveCustomView = async (data: Omit<CustomView, 'id' | 'createdAt'>): Promise<CustomView> => {
-    const now = new Date().toISOString();
-    const docRef = await addDoc(collection(db, COLLECTION_NAME), {
-        ...data,
-        createdAt: now,
-        updatedAt: now,
-    });
-    return { id: docRef.id, ...data, createdAt: now } as CustomView;
+  const body: Record<string, unknown> = {
+    name: data.name,
+    icon: data.icon || '📋',
+    workspace: Number(data.workspaceId),
+    viewType: data.viewType,
+    filters: data.filters || {},
+  };
+  if (data.projectId) body.project = Number(data.projectId);
+
+  const result = await api.post<ApiCustomView>('custom-views/', body);
+  return mapView(result);
 };
 
 export const updateCustomView = async (id: string, updates: Partial<CustomView>): Promise<void> => {
-    const taskRef = doc(db, COLLECTION_NAME, id);
-    await updateDoc(taskRef, {
-        ...updates,
-        updatedAt: new Date().toISOString(),
-    });
+  await api.patch(`custom-views/${id}/`, updates);
 };
 
 export const deleteCustomView = async (id: string): Promise<void> => {
-    await deleteDoc(doc(db, COLLECTION_NAME, id));
+  await api.delete(`custom-views/${id}/`);
 };

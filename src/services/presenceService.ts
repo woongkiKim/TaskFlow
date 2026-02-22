@@ -1,62 +1,38 @@
-import {
-    collection, setDoc, doc, onSnapshot, query, where, deleteDoc, Timestamp
-} from 'firebase/firestore';
-import { db } from '../FBase';
-import type { DocumentPresence } from '../types';
+// src/services/presenceService.ts
+// PresenceService — stub implementation
+// Real-time presence requires WebSocket support (e.g., Django Channels).
+// For now, this is a no-op stub to prevent build errors.
 
-const COLLECTION = 'documentPresence';
+import type { DocumentPresence } from '../types';
 
 /**
  * Updates the user's presence for a specific document.
+ * TODO: Implement via Django Channels WebSocket
  */
 export const updatePresence = async (
-    docId: string, 
-    userId: string, 
-    userName: string, 
-    userPhoto?: string
-) => {
-    const presenceRef = doc(db, COLLECTION, `${docId}_${userId}`);
-    await setDoc(presenceRef, {
-        docId,
-        userId,
-        userName,
-        userPhoto: userPhoto || null,
-        lastSeen: new Date().toISOString(),
-    }, { merge: true });
+  _docId: string,
+  _userId: string,
+  _userName: string,
+  _userPhoto?: string
+): Promise<void> => {
+  // No-op: WebSocket-based presence not yet implemented
 };
 
 /**
- * Removes the user's presence for a document (e.g., when leaving the page).
+ * Removes the user's presence for a document.
  */
-export const removePresence = async (docId: string, userId: string) => {
-    try {
-        await deleteDoc(doc(db, COLLECTION, `${docId}_${userId}`));
-    } catch (err) {
-        console.error('Failed to remove presence', err);
-    }
+export const removePresence = async (_docId: string, _userId: string): Promise<void> => {
+  // No-op
 };
 
 /**
  * Subscribes to the list of active users for a document.
- * Filters out users who haven't been seen in the last 2 minutes.
+ * Returns an unsubscribe function.
  */
 export const subscribeToPresence = (
-    docId: string, 
-    onUpdate: (presence: DocumentPresence[]) => void
-) => {
-    const q = query(
-        collection(db, COLLECTION),
-        where('docId', '==', docId)
-    );
-
-    return onSnapshot(q, (snap) => {
-        const now = Date.now();
-        const twoMinutesAgo = now - 2 * 60 * 1000;
-        
-        const presence = snap.docs
-            .map(d => d.data() as DocumentPresence & { lastSeen: string })
-            .filter(p => new Date(p.lastSeen).getTime() > twoMinutesAgo);
-            
-        onUpdate(presence);
-    });
+  _docId: string,
+  _onUpdate: (presence: DocumentPresence[]) => void
+): (() => void) => {
+  // No-op: returns empty unsubscribe
+  return () => {};
 };
