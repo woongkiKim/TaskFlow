@@ -1,63 +1,95 @@
 // src/services/invitationService.ts
-// Django REST API version
-import { apiGet, apiPost, apiPatch, apiDelete, type PaginatedResponse } from './apiClient';
+// InvitationService — now proxied through Django REST API
+
+import api from './apiClient';
 import type { Invitation } from '../types';
+import { addDays } from 'date-fns';
 
-export const createEmailInvitation = async (
-    workspaceId: string, email: string, _invitedBy: string
+// ─── Response type ───────────────────────────────────────
+
+interface ApiInvitation {
+  id: number;
+  workspace: number;
+  type: 'email' | 'link';
+  email: string;
+  token: string;
+  status: 'pending' | 'accepted' | 'expired';
+  invitedBy: number;
+  createdAt: string;
+  expiresAt: string;
+}
+
+// ─── Mapper ──────────────────────────────────────────────
+
+function mapInvitation(inv: ApiInvitation): Invitation {
+  return {
+    id: String(inv.id),
+    workspaceId: String(inv.workspace),
+    type: inv.type,
+    email: inv.email || undefined,
+    token: inv.token,
+    status: inv.status,
+    invitedBy: String(inv.invitedBy),
+    createdAt: inv.createdAt,
+    expiresAt: inv.expiresAt,
+  };
+}
+
+// ─── API Functions ───────────────────────────────────────
+
+// 1. 이메일 초대 생성
+export const createEmailInvite = async (
+  workspaceId: string, email: string, _invitedBy: string
 ): Promise<Invitation> => {
-    return apiPost<Invitation>('invitations/', {
-        workspace: workspaceId,
-        type: 'email',
-        email,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    });
+  const data = await api.post<ApiInvitation>('invitations/', {
+    workspace: Number(workspaceId),
+    type: 'email',
+    email,
+    expiresAt: addDays(new Date(), 7).toISOString(),
+  });
+  return mapInvitation(data);
 };
 
-export const createLinkInvitation = async (
-    workspaceId: string, _invitedBy: string
+// 2. 링크 초대 생성
+export const createLinkInvite = async (
+  workspaceId: string, _invitedBy: string
 ): Promise<Invitation> => {
-    return apiPost<Invitation>('invitations/', {
-        workspace: workspaceId,
-        type: 'link',
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    });
+  const data = await api.post<ApiInvitation>('invitations/', {
+    workspace: Number(workspaceId),
+    type: 'link',
+    expiresAt: addDays(new Date(), 7).toISOString(),
+  });
+  return mapInvitation(data);
 };
 
-export const findInvitationByToken = async (token: string): Promise<Invitation | null> => {
-    try {
-        const res = await apiGet<PaginatedResponse<Invitation>>('invitations/', { token });
-        const pending = res.results.find(i => i.status === 'pending');
-        return pending || null;
-    } catch {
-        return null;
-    }
+// 3. 토큰으로 초대 조회
+export const findInviteByToken = async (token: string): Promise<Invitation | null> => {
+  try {
+    const data = await api.get<{ results: ApiInvitation[] }>('invitations/', { token, status: 'pending' });
+    const results = data.results || [];
+    return results.length > 0 ? mapInvitation(results[0]) : null;
+  } catch {
+    return null;
+  }
 };
 
-/**
- * Fetch pending invitations for a given email.
- * Called as checkPendingInvites(email) from WorkspaceContext.
- */
-export const fetchPendingInvitations = async (email: string): Promise<Invitation[]> => {
-    const res = await apiGet<PaginatedResponse<Invitation>>('invitations/', { email, status: 'pending' });
-    return res.results;
+// 4. 이메일로 pending 초대 확인 (로그인 시 호출)
+export const checkPendingInvites = async (email: string): Promise<Invitation[]> => {
+  try {
+    const data = await api.get<{ results: ApiInvitation[] }>('invitations/', { email, status: 'pending' });
+    return (data.results || []).map(mapInvitation);
+  } catch {
+    return [];
+  }
 };
 
-export const acceptInvitation = async (invitationId: string): Promise<void> => {
-    await apiPatch(`invitations/${invitationId}/`, { status: 'accepted' });
+// 5. 초대 수락
+export const acceptInvite = async (inviteId: string): Promise<void> => {
+  await api.patch(`invitations/${inviteId}/`, { status: 'accepted' });
 };
 
-export const fetchWorkspaceInvitations = async (workspaceId: string): Promise<Invitation[]> => {
-    const res = await apiGet<PaginatedResponse<Invitation>>('invitations/', { workspace_id: workspaceId });
-    return res.results;
+// 6. 워크스페이스의 초대 목록
+export const fetchWorkspaceInvites = async (workspaceId: string): Promise<Invitation[]> => {
+  const data = await api.get<{ results: ApiInvitation[] }>('invitations/', { workspace_id: workspaceId });
+  return (data.results || []).map(mapInvitation).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 };
-
-export const deleteInvitation = async (invitationId: string): Promise<void> => {
-    await apiDelete(`invitations/${invitationId}/`);
-};
-
-// --- Legacy aliases used by existing components ---
-export const createLinkInvite = createLinkInvitation;
-export const createEmailInvite = createEmailInvitation;
-export const checkPendingInvites = fetchPendingInvitations;
-export const acceptInvite = acceptInvitation;

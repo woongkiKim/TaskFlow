@@ -1,37 +1,61 @@
 // src/services/savedViewService.ts
-// Django REST API version
-import { apiGet, apiPost, apiPatch, apiDelete, type PaginatedResponse } from './apiClient';
+// SavedViewService — now proxied through Django REST API
+
+import api from './apiClient';
 import type { CustomView } from '../types';
 
-export const fetchSavedViews = async (workspaceId: string, projectId: string): Promise<CustomView[]> => {
-    const res = await apiGet<PaginatedResponse<CustomView>>('saved-views/', {
-        workspace_id: workspaceId,
-        project_id: projectId,
-    });
-    return res.results;
+interface ApiCustomView {
+  id: number;
+  name: string;
+  icon: string;
+  workspace: number;
+  project: number | null;
+  viewType: string;
+  filters: Record<string, unknown>;
+  createdBy: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapView(v: ApiCustomView): CustomView {
+  return {
+    id: String(v.id),
+    name: v.name,
+    icon: v.icon || '📋',
+    workspaceId: String(v.workspace),
+    projectId: v.project ? String(v.project) : undefined,
+    viewType: v.viewType as CustomView['viewType'],
+    filters: v.filters || {},
+    createdBy: String(v.createdBy),
+    createdAt: v.createdAt,
+  };
+}
+
+export const fetchCustomViews = async (workspaceId: string, projectId?: string): Promise<CustomView[]> => {
+  const params: Record<string, string> = { workspace_id: workspaceId };
+  if (projectId) params.project_id = projectId;
+  const data = await api.get<{ results: ApiCustomView[] }>('custom-views/', params);
+  return (data.results || []).map(mapView);
 };
 
-export const createSavedView = async (data: Omit<CustomView, 'id' | 'createdAt'>): Promise<CustomView> => {
-    return apiPost<CustomView>('saved-views/', {
-        name: data.name,
-        icon: data.icon,
-        color: data.color,
-        filters: data.filters,
-        view_mode: data.viewMode,
-        project: data.projectId,
-        workspace: data.workspaceId,
-    });
+export const saveCustomView = async (data: Omit<CustomView, 'id' | 'createdAt'>): Promise<CustomView> => {
+  const body: Record<string, unknown> = {
+    name: data.name,
+    icon: data.icon || '📋',
+    workspace: Number(data.workspaceId),
+    viewType: data.viewType,
+    filters: data.filters || {},
+  };
+  if (data.projectId) body.project = Number(data.projectId);
+
+  const result = await api.post<ApiCustomView>('custom-views/', body);
+  return mapView(result);
 };
 
-export const updateSavedView = async (id: string, updates: Partial<CustomView>): Promise<void> => {
-    await apiPatch(`saved-views/${id}/`, updates);
+export const updateCustomView = async (id: string, updates: Partial<CustomView>): Promise<void> => {
+  await api.patch(`custom-views/${id}/`, updates);
 };
 
-export const deleteSavedView = async (id: string): Promise<void> => {
-    await apiDelete(`saved-views/${id}/`);
+export const deleteCustomView = async (id: string): Promise<void> => {
+  await api.delete(`custom-views/${id}/`);
 };
-
-// --- Legacy aliases used by TasksPage ---
-export const fetchCustomViews = fetchSavedViews;
-export const saveCustomView = createSavedView;
-export const deleteCustomView = deleteSavedView;

@@ -1,65 +1,38 @@
 // src/services/presenceService.ts
-// Note: Real-time presence requires WebSocket/SSE support.
-// This REST API version provides basic polling-based presence.
-// For full real-time functionality, consider django-channels.
+// PresenceService — stub implementation
+// Real-time presence requires WebSocket support (e.g., Django Channels).
+// For now, this is a no-op stub to prevent build errors.
+
+import type { DocumentPresence } from '../types';
 
 /**
  * Updates the user's presence for a specific document.
- * In a REST API context, this creates/updates a presence record.
+ * TODO: Implement via Django Channels WebSocket
  */
 export const updatePresence = async (
-    docId: string,
-    userId: string,
-    userName: string,
-    userPhoto?: string
-) => {
-    // Presence can be implemented via a dedicated endpoint or polling
-    // For now, store in localStorage as a lightweight solution
-    const key = `presence_${docId}_${userId}`;
-    localStorage.setItem(key, JSON.stringify({
-        docId, userId, userName,
-        userPhoto: userPhoto || null,
-        lastSeen: new Date().toISOString(),
-    }));
+  _docId: string,
+  _userId: string,
+  _userName: string,
+  _userPhoto?: string
+): Promise<void> => {
+  // No-op: WebSocket-based presence not yet implemented
 };
 
 /**
  * Removes the user's presence for a document.
  */
-export const removePresence = async (docId: string, userId: string) => {
-    const key = `presence_${docId}_${userId}`;
-    localStorage.removeItem(key);
+export const removePresence = async (_docId: string, _userId: string): Promise<void> => {
+  // No-op
 };
 
 /**
  * Subscribes to the list of active users for a document.
- * In REST mode, this uses polling instead of real-time snapshots.
- * Returns an unsubscribe function matching the Firestore API.
+ * Returns an unsubscribe function.
  */
 export const subscribeToPresence = (
-    docId: string,
-    onUpdate: (presence: Array<{ docId: string; userId: string; userName: string; userPhoto?: string; lastSeen: string }>) => void
-) => {
-    // Lightweight polling fallback — in production, replace with WebSocket (django-channels)
-    const interval = setInterval(() => {
-        const now = Date.now();
-        const twoMinutesAgo = now - 2 * 60 * 1000;
-        const presence: Array<{ docId: string; userId: string; userName: string; userPhoto?: string; lastSeen: string }> = [];
-
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key?.startsWith(`presence_${docId}_`)) {
-                try {
-                    const data = JSON.parse(localStorage.getItem(key) || '{}');
-                    if (new Date(data.lastSeen).getTime() > twoMinutesAgo) {
-                        presence.push(data);
-                    }
-                } catch { /* skip invalid */ }
-            }
-        }
-        onUpdate(presence);
-    }, 10000); // poll every 10s
-
-    // Return unsubscribe function
-    return () => clearInterval(interval);
+  _docId: string,
+  _onUpdate: (presence: DocumentPresence[]) => void
+): (() => void) => {
+  // No-op: returns empty unsubscribe
+  return () => {};
 };

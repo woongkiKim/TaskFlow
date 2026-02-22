@@ -1,41 +1,78 @@
 // src/services/customViewService.ts
-// Django REST API version
-import { apiGet, apiPost, apiPatch, apiDelete, type PaginatedResponse } from './apiClient';
-import type { CustomView } from '../types';
+// CustomViewService — now proxied through Django REST API
 
-/**
- * Fetch custom views. Can be called with:
- * - fetchCustomViews(projectId) — from useCustomViews hook
- * - fetchCustomViews(workspaceId, projectId) — original signature
- */
-export const fetchCustomViews = async (workspaceOrProjectId: string, projectId?: string): Promise<CustomView[]> => {
-    const params: Record<string, string> = {};
-    if (projectId) {
-        params.workspace_id = workspaceOrProjectId;
-        params.project_id = projectId;
-    } else {
-        params.project_id = workspaceOrProjectId;
-    }
-    const res = await apiGet<PaginatedResponse<CustomView>>('custom-views/', params);
-    return res.results;
+import api from './apiClient';
+import type { CustomView, ViewFilter } from '../types';
+
+interface ApiCustomView {
+  id: number;
+  name: string;
+  icon: string;
+  color: string;
+  viewMode: string;
+  filters: ViewFilter;
+  project: number;
+  projectId: string;
+  workspace: number;
+  workspaceId: string;
+  createdBy: number;
+  createdAt: string;
+}
+
+function mapView(v: ApiCustomView): CustomView {
+  return {
+    id: String(v.id),
+    name: v.name,
+    icon: v.icon || '📋',
+    color: v.color || '',
+    viewMode: (v.viewMode || 'list') as CustomView['viewMode'],
+    filters: v.filters || {},
+    projectId: v.projectId || String(v.project),
+    workspaceId: v.workspaceId || String(v.workspace),
+    createdBy: String(v.createdBy),
+    createdAt: v.createdAt,
+  };
+}
+
+/** Fetch all custom views for a project */
+export const fetchCustomViews = async (projectId: string): Promise<CustomView[]> => {
+  const data = await api.get<{ results: ApiCustomView[] }>('custom-views/', { project_id: projectId });
+  return (data.results || []).map(mapView);
 };
 
-export const createCustomView = async (data: Omit<CustomView, 'id' | 'createdAt'>): Promise<CustomView> => {
-    return apiPost<CustomView>('custom-views/', {
-        name: data.name,
-        icon: data.icon,
-        color: data.color,
-        filters: data.filters,
-        view_mode: data.viewMode,
-        project: data.projectId,
-        workspace: data.workspaceId,
-    });
+/** Create a new custom view */
+export const createCustomView = async (opts: {
+  name: string;
+  icon: string;
+  color: string;
+  filters: ViewFilter;
+  viewMode?: string;
+  projectId: string;
+  workspaceId: string;
+  createdBy: string;
+}): Promise<CustomView> => {
+  const body: Record<string, unknown> = {
+    name: opts.name,
+    icon: opts.icon,
+    color: opts.color,
+    filters: opts.filters,
+    viewMode: opts.viewMode || 'list',
+    project: Number(opts.projectId),
+    workspace: Number(opts.workspaceId),
+  };
+  const result = await api.post<ApiCustomView>('custom-views/', body);
+  return mapView(result);
 };
 
-export const updateCustomView = async (viewId: string, updates: Partial<CustomView>): Promise<void> => {
-    await apiPatch(`custom-views/${viewId}/`, updates);
+/** Update an existing custom view */
+export const updateCustomView = async (
+  viewId: string,
+  updates: Partial<Pick<CustomView, 'name' | 'icon' | 'color' | 'filters' | 'viewMode'>>,
+): Promise<void> => {
+  await api.patch(`custom-views/${viewId}/`, updates);
 };
 
+/** Delete a custom view */
 export const deleteCustomView = async (viewId: string): Promise<void> => {
-    await apiDelete(`custom-views/${viewId}/`);
+  await api.delete(`custom-views/${viewId}/`);
 };

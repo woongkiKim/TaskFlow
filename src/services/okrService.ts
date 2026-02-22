@@ -1,44 +1,99 @@
 // src/services/okrService.ts
-// Django REST API version
-import { apiGet, apiPost, apiPatch, apiDelete, type PaginatedResponse } from './apiClient';
-import { proxyIfMock } from './serviceProxy';
+// OKR Service — now proxied through Django REST API
+
+import api from './apiClient';
 import type { Objective } from '../types';
 
-const _fetchObjectives = async (workspaceId: string, period?: string): Promise<Objective[]> => {
-    const params: Record<string, string> = { workspace_id: workspaceId };
-    if (period) params.period = period;
-    const res = await apiGet<PaginatedResponse<Objective>>('objectives/', params);
-    return res.results;
+// ─── Response types ──────────────────────────────────────
+
+interface ApiKeyResult {
+  id: number;
+  objective: number;
+  title: string;
+  targetValue: number;
+  currentValue: number;
+  unit: string;
+  linkedTasks: number[];
+}
+
+interface ApiObjective {
+  id: number;
+  title: string;
+  description: string;
+  period: string;
+  startDate: string | null;
+  endDate: string | null;
+  status: string;
+  owner: number;
+  ownerName: string;
+  workspace: number;
+  createdBy: number;
+  createdAt: string;
+  updatedAt: string;
+  keyResults: ApiKeyResult[];
+}
+
+// ─── Mapper ──────────────────────────────────────────────
+
+function mapObjective(o: ApiObjective): Objective {
+  return {
+    id: String(o.id),
+    title: o.title,
+    description: o.description || '',
+    period: o.period,
+    startDate: o.startDate || undefined,
+    endDate: o.endDate || undefined,
+    status: o.status as Objective['status'],
+    ownerUid: String(o.owner),
+    ownerName: o.ownerName || '',
+    workspaceId: String(o.workspace),
+    createdBy: String(o.createdBy),
+    createdAt: o.createdAt,
+    keyResults: (o.keyResults || []).map(kr => ({
+      id: String(kr.id),
+      title: kr.title,
+      targetValue: kr.targetValue,
+      currentValue: kr.currentValue,
+      unit: kr.unit,
+      linkedTaskIds: (kr.linkedTasks || []).map(String),
+    })),
+  };
+}
+
+// ─── API Functions ───────────────────────────────────────
+
+export const fetchObjectives = async (workspaceId: string, period?: string): Promise<Objective[]> => {
+  const params: Record<string, string> = { workspace_id: workspaceId };
+  if (period) params.period = period;
+  const data = await api.get<{ results: ApiObjective[] }>('objectives/', params);
+  return (data.results || []).map(mapObjective);
 };
 
-const _createObjective = async (
-    data: Omit<Objective, 'id' | 'createdAt'>
+export const createObjective = async (
+  data: Omit<Objective, 'id' | 'createdAt'>
 ): Promise<Objective> => {
-    return apiPost<Objective>('objectives/', {
-        title: data.title,
-        description: data.description || '',
-        period: data.period,
-        start_date: data.startDate,
-        end_date: data.endDate,
-        status: data.status,
-        owner: data.ownerId,
-        owner_name: data.ownerName,
-        workspace: data.workspaceId,
-    });
+  const body: Record<string, unknown> = {
+    title: data.title,
+    description: data.description || '',
+    period: data.period,
+    status: data.status || 'draft',
+    ownerName: data.ownerName || '',
+    workspace: Number(data.workspaceId),
+  };
+  if (data.startDate) body.startDate = data.startDate;
+  if (data.endDate) body.endDate = data.endDate;
+
+  const result = await api.post<ApiObjective>('objectives/', body);
+  return mapObjective(result);
 };
 
-const _updateObjective = async (
-    id: string,
-    data: Partial<Omit<Objective, 'id' | 'createdAt' | 'workspaceId' | 'createdBy'>>
+export const updateObjective = async (
+  id: string,
+  data: Partial<Omit<Objective, 'id' | 'createdAt' | 'workspaceId' | 'createdBy'>>
 ): Promise<void> => {
-    await apiPatch(`objectives/${id}/`, data);
+  await api.patch(`objectives/${id}/`, data);
 };
 
-const _deleteObjective = async (id: string): Promise<void> => {
-    await apiDelete(`objectives/${id}/`);
+export const deleteObjective = async (id: string): Promise<void> => {
+  await api.delete(`objectives/${id}/`);
 };
-
-export const fetchObjectives = proxyIfMock('fetchObjectives', _fetchObjectives);
-export const createObjective = proxyIfMock('createObjective', _createObjective);
-export const updateObjective = proxyIfMock('updateObjective', _updateObjective);
-export const deleteObjective = proxyIfMock('deleteObjective', _deleteObjective);
