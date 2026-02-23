@@ -384,6 +384,9 @@ const SortableProjectColumn = ({ column, children, count, totalPoints, isEmpty, 
                         <Typography variant="caption" color="text.secondary" align="center" fontWeight={600}>
                             {t('noTasks') as string}
                         </Typography>
+                        <Typography variant="caption" color="text.disabled" align="center" sx={{ mt: 0.5, fontSize: '0.65rem' }}>
+                            💡 {t('boardDesc') as string}
+                        </Typography>
                     </Box>
                 )}
                 {children}

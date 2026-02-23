@@ -238,6 +238,7 @@ const MainLayout = () => {
         steps={tourSteps}
         isActive={isTourActive}
         currentStep={tourStep}
+        lang={lang}
         onNext={() => tourNextStep(tourSteps.length)}
         onPrev={tourPrevStep}
         onSkip={() => endTour(false)}

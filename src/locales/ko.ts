@@ -181,6 +181,8 @@ const ko = {
   loginDesc: 'To Do List 기반 주간/월간 업무 리포트 생성',
   loginButton: 'Google로 계속하기',
   loginFailed: '로그인에 실패했습니다. 다시 시도해주세요.',
+  signInGoogle: 'Google로 로그인',
+  signInApple: 'Apple로 로그인',
 
   // Pomodoro
   focusMode: '집중 모드',

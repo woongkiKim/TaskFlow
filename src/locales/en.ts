@@ -181,6 +181,8 @@ const en = {
   loginDesc: 'Weekly/Monthly work report generation based on To Do List',
   loginButton: 'Continue with Google',
   loginFailed: 'Login failed. Please try again.',
+  signInGoogle: 'Sign in with Google',
+  signInApple: 'Sign in with Apple',
 
   // Pomodoro
   focusMode: 'Focus Mode',

@@ -151,7 +151,7 @@ const Login = () => {
                   '&:hover': { background: '#ffffff', transform: 'translateY(-1px)' },
                 }}
               >
-                Sign in with Google
+                {t('signInGoogle') as string || 'Sign in with Google'}
               </Button>
               <Button
                 fullWidth
@@ -171,7 +171,7 @@ const Login = () => {
                   '&:hover': { background: '#1a1a1a', transform: 'translateY(-1px)' },
                 }}
               >
-                Sign in with Apple
+                {t('signInApple') as string || 'Sign in with Apple'}
               </Button>
             </Box>
           </Paper>
