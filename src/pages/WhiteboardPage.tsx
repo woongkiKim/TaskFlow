@@ -43,7 +43,7 @@ import WebIcon from '@mui/icons-material/Web';
 import CloudQueueIcon from '@mui/icons-material/CloudQueue';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+import api from '../services/apiClient';
 
 /* ──────────────────────────────────────── */
 /*  Custom Node Components for ReactFlow    */
@@ -308,17 +308,10 @@ export default function WhiteboardPage() {
     if (!currentProject?.id) return;
     setSyncStatus('syncing');
     try {
-      const res = await fetch(`${API_BASE_URL}/projects/${currentProject.id}/`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ whiteboard_data: payload })
-      });
-      if (res.ok) setSyncStatus('saved');
+      await api.patch(`projects/${currentProject.id}/`, { whiteboardData: payload });
+      setSyncStatus('saved');
     } catch (err) {
-      console.error(err);
+      console.error('Failed to save whiteboard to cloud:', err);
     }
   }, [currentProject?.id]);
 
@@ -328,30 +321,26 @@ export default function WhiteboardPage() {
     const loadData = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE_URL}/projects/${currentProject.id}/`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const wb = data.whiteboard_data;
-          if (wb && Object.keys(wb).length > 0) {
-            // Diagram data
-            if (wb.diagram) {
-              setNodes(wb.diagram.nodes || []);
-              setEdges(wb.diagram.edges || []);
-            }
-            // Tldraw data
-            if (wb.freeform && editor) {
-              loadSnapshot(editor.store, wb.freeform);
-            }
-          } else {
-            setNodes([]);
-            setEdges([]);
+        const data = await api.get<{ whiteboardData?: Record<string, unknown> }>(`projects/${currentProject.id}/`);
+        const wb = data.whiteboardData as Record<string, unknown> | undefined;
+
+        if (wb && Object.keys(wb).length > 0) {
+          // Diagram data
+          if (wb.diagram) {
+            setNodes(wb.diagram.nodes || []);
+            setEdges(wb.diagram.edges || []);
           }
-          setSyncStatus('saved');
+          // Tldraw data
+          if (wb.freeform && editor) {
+            loadSnapshot(editor.store, wb.freeform);
+          }
+        } else {
+          setNodes([]);
+          setEdges([]);
         }
+        setSyncStatus('saved');
       } catch (err) {
-        console.error(err);
+        console.error('Failed to load whiteboard data:', err);
         toast.error('Failed to load whiteboard data.');
       } finally {
         setLoading(false);
