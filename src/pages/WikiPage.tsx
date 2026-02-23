@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Box, Typography, Paper, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions,
   IconButton, Chip, Select, MenuItem, InputAdornment, Tooltip, ListItemIcon, ListItemText,
-  CircularProgress, Menu, Divider, Autocomplete, alpha, Popover, Avatar, Fade,
+  CircularProgress, Menu, Divider, Autocomplete, alpha, Popover, Avatar,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
@@ -22,9 +22,6 @@ import NoteAddOutlinedIcon from '@mui/icons-material/NoteAddOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
-import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
-import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
-import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import ShareIcon from '@mui/icons-material/Share';
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
 import SortIcon from '@mui/icons-material/Sort';
@@ -37,25 +34,21 @@ import ViewModuleIcon from '@mui/icons-material/ViewModule';
 import ViewListIcon from '@mui/icons-material/ViewList';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import AccountTreeOutlinedIcon from '@mui/icons-material/AccountTreeOutlined';
-import CloseIcon from '@mui/icons-material/Close';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import SyncIcon from '@mui/icons-material/Sync';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { createNotification } from '../services/notificationService';
-
 import { useLanguage } from '../contexts/LanguageContext';
-
 import { useWorkspace } from '../contexts/WorkspaceContext';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  createWikiDocument, updateWikiDocument, deleteWikiDocument,
-  subscribeToWikiDocuments,
-} from '../services/wikiService';
+import { subscribeToWikiDocuments } from '../services/wikiService';
 import { updatePresence, removePresence, subscribeToPresence } from '../services/presenceService';
 import type { DocumentPresence } from '../types';
 import BlockEditor from '../components/BlockEditor';
 import ActivityFeed from '../components/ActivityFeed';
+import HelpTooltip from '../components/HelpTooltip';
+import AuthorProfileCard from '../components/wiki/AuthorProfileCard';
+import TemplatePicker from '../components/wiki/TemplatePicker';
 import { WIKI_VISIBILITY_CONFIG, type WikiVisibility } from '../types';
 import type { WikiDocument, WikiComment, WikiVersion, TeamGroup } from '../types';
 import {
@@ -64,6 +57,7 @@ import {
 } from '../utils/wikiUtils';
 import { useWikiActions } from '../hooks/useWikiActions';
 import { handleError } from '../utils/errorHandler';
+import type { DocTemplate } from '../data/wikiTemplates';
 
 const WikiPage = () => {
   const { lang, t } = useLanguage();
@@ -273,20 +267,7 @@ const WikiPage = () => {
     setMessageText('');
   };
 
-  const authorMember = useMemo(() => {
-    if (!authorUid || !currentMembers) return null;
-    return currentMembers.find(m => m.uid === authorUid) || null;
-  }, [authorUid, currentMembers]);
 
-  const authorTeamGroup = useMemo(() => {
-    if (!authorUid || !teamGroups) return null;
-    return teamGroups.find(tg => tg.memberIds?.includes(authorUid)) || null;
-  }, [authorUid, teamGroups]);
-
-  const authorDocs = useMemo(() => {
-    if (!authorUid) return [];
-    return docs.filter(d => d.createdBy === authorUid && !d.isFolder).slice(0, 5);
-  }, [authorUid, docs]);
 
   const handleSendMessage = async () => {
     if (!messageText.trim() || !authorUid || !user?.uid || !workspace?.id) return;
@@ -1178,192 +1159,22 @@ const WikiPage = () => {
       </Popover>
 
       {/* ─── Author Profile Popover ──────── */}
-      <Popover
-        open={!!authorAnchor}
+      <AuthorProfileCard
+        lang={lang}
         anchorEl={authorAnchor}
         onClose={closeAuthorCard}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-        TransitionComponent={Fade}
-        PaperProps={{
-          sx: {
-            borderRadius: 4, width: 360, overflow: 'hidden',
-            boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
-          },
-        }}
-      >
-        {authorMember && (
-          <Box>
-            {/* Profile Header */}
-            <Box sx={{
-              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-              p: 2.5, pb: 4, position: 'relative',
-            }}>
-              <Avatar
-                src={authorMember.photoURL || ''}
-                sx={{
-                  width: 56, height: 56, border: '3px solid white',
-                  fontSize: '1.3rem', fontWeight: 700,
-                  bgcolor: alpha('#fff', 0.25), color: '#fff',
-                }}
-              >
-                {(authorMember.displayName || '?')[0]}
-              </Avatar>
-              <Typography variant="h6" fontWeight={800} sx={{ color: 'white', mt: 1, lineHeight: 1.2 }}>
-                {authorMember.displayName}
-              </Typography>
-              <Typography variant="caption" sx={{ color: alpha('#fff', 0.8) }}>
-                {authorMember.email}
-              </Typography>
-            </Box>
-
-            {/* Badges Row */}
-            <Box sx={{ display: 'flex', gap: 0.8, px: 2.5, mt: -1.5, flexWrap: 'wrap' }}>
-              <Chip
-                label={authorMember.role === 'admin' || authorMember.role === 'owner' ? '👑 Admin' : authorMember.role === 'maintainer' ? '🔧 Maintainer' : authorMember.role === 'member' ? '👤 Member' : '👀 Viewer'}
-                size="small"
-                sx={{
-                  fontWeight: 700, fontSize: '0.7rem', height: 24,
-                  bgcolor: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                  border: '1px solid',
-                  borderColor: authorMember.role === 'admin' ? '#f59e0b' : '#e2e8f0',
-                  color: authorMember.role === 'admin' ? '#d97706' : 'text.primary',
-                }}
-              />
-              {authorTeamGroup && (
-                <Chip
-                  label={`🏢 ${authorTeamGroup.name}`}
-                  size="small"
-                  sx={{
-                    fontWeight: 600, fontSize: '0.7rem', height: 24,
-                    bgcolor: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                    border: '1px solid',
-                    borderColor: authorTeamGroup.color || '#e2e8f0',
-                    color: authorTeamGroup.color || 'text.secondary',
-                  }}
-                />
-              )}
-            </Box>
-
-            {/* Quick Stats */}
-            <Box sx={{ px: 2.5, mt: 2, display: 'flex', gap: 2 }}>
-              <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="h6" fontWeight={800} color="primary">
-                  {docs.filter(d => d.createdBy === authorUid && !d.isFolder).length}
-                </Typography>
-                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem' }}>
-                  {lang === 'ko' ? '작성 문서' : 'Documents'}
-                </Typography>
-              </Box>
-              <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="h6" fontWeight={800} sx={{ color: '#10b981' }}>
-                  {docs.filter(d => d.updatedBy === authorUid && !d.isFolder).length}
-                </Typography>
-                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem' }}>
-                  {lang === 'ko' ? '수정 참여' : 'Edits'}
-                </Typography>
-              </Box>
-            </Box>
-
-            {/* Recent Documents */}
-            {authorDocs.length > 0 && (
-              <Box sx={{ px: 2.5, mt: 2 }}>
-                <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ mb: 0.8, display: 'block', letterSpacing: 0.5 }}>
-                  📄 {lang === 'ko' ? '최근 작성 문서' : 'Recent Documents'}
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                  {authorDocs.map(ad => (
-                    <Box
-                      key={ad.id}
-                      onClick={() => { closeAuthorCard(); setSelectedDoc(ad); }}
-                      sx={{
-                        display: 'flex', alignItems: 'center', gap: 1,
-                        py: 0.6, px: 1, borderRadius: 1.5, cursor: 'pointer',
-                        transition: 'all 0.15s',
-                        '&:hover': { bgcolor: alpha('#6366f1', 0.06) },
-                      }}
-                    >
-                      <Typography sx={{ fontSize: '0.9rem' }}>{ad.icon || '📄'}</Typography>
-                      <Typography variant="body2" fontWeight={600} noWrap sx={{ flex: 1, fontSize: '0.82rem' }}>
-                        {getDisplayTitle(ad.title, ad.icon)}
-                      </Typography>
-                      <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.6rem', flexShrink: 0 }}>
-                        {ad.createdAt?.slice(0, 10)}
-                      </Typography>
-                    </Box>
-                  ))}
-                </Box>
-              </Box>
-            )}
-
-            <Divider sx={{ mt: 2, mb: 0 }} />
-
-            {/* Quick Message */}
-            <Box sx={{ px: 2.5, py: 1.5 }}>
-              <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ mb: 0.8, display: 'block', letterSpacing: 0.5 }}>
-                💬 {lang === 'ko' ? '빠른 메시지' : 'Quick Message'}
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 0.8 }}>
-                <TextField
-                  size="small" fullWidth
-                  placeholder={lang === 'ko' ? '메시지를 입력하세요...' : 'Type a message...'}
-                  value={messageText}
-                  onChange={e => setMessageText(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: '0.85rem' } }}
-                />
-                <IconButton
-                  size="small"
-                  onClick={handleSendMessage}
-                  disabled={!messageText.trim() || sendingMessage}
-                  sx={{
-                    bgcolor: '#6366f1', color: 'white', borderRadius: 2,
-                    '&:hover': { bgcolor: '#4f46e5' },
-                    '&.Mui-disabled': { bgcolor: alpha('#6366f1', 0.3), color: alpha('#fff', 0.5) },
-                    width: 36, height: 36,
-                  }}
-                >
-                  {sendingMessage ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <ChatBubbleOutlineIcon sx={{ fontSize: 16 }} />}
-                </IconButton>
-              </Box>
-            </Box>
-
-            <Divider />
-
-            {/* Action Buttons */}
-            <Box sx={{ display: 'flex', gap: 0, px: 0.5, py: 0.5 }}>
-              <Button
-                size="small" fullWidth
-                startIcon={<ArticleOutlinedIcon sx={{ fontSize: 16 }} />}
-                onClick={() => handleFilterByAuthor(authorMember.uid)}
-                sx={{ borderRadius: 2, fontWeight: 600, fontSize: '0.78rem', py: 1, color: '#6366f1' }}
-              >
-                {lang === 'ko' ? '문서 보기' : 'View Docs'}
-              </Button>
-              <Button
-                size="small" fullWidth
-                startIcon={<EmailOutlinedIcon sx={{ fontSize: 16 }} />}
-                onClick={() => {
-                  if (authorMember.email) {
-                    window.open(`mailto:${authorMember.email}`, '_blank');
-                  }
-                }}
-                sx={{ borderRadius: 2, fontWeight: 600, fontSize: '0.78rem', py: 1, color: '#3b82f6' }}
-              >
-                {lang === 'ko' ? '이메일' : 'Email'}
-              </Button>
-              <Button
-                size="small" fullWidth
-                startIcon={<AssignmentOutlinedIcon sx={{ fontSize: 16 }} />}
-                onClick={() => { closeAuthorCard(); navigate('/tasks'); }}
-                sx={{ borderRadius: 2, fontWeight: 600, fontSize: '0.78rem', py: 1, color: '#10b981' }}
-              >
-                {lang === 'ko' ? '업무 할당' : 'Assign Task'}
-              </Button>
-            </Box>
-          </Box>
-        )}
-      </Popover>
+        authorUid={authorUid}
+        currentMembers={currentMembers || []}
+        teamGroups={teamGroups || []}
+        docs={docs}
+        messageText={messageText}
+        setMessageText={setMessageText}
+        sendingMessage={sendingMessage}
+        onSendMessage={handleSendMessage}
+        onFilterByAuthor={handleFilterByAuthor}
+        onNavigateToTasks={() => navigate('/tasks')}
+        onSelectDoc={setSelectedDoc}
+      />
 
       {/* ─── Folder Creation Dialog ────────────── */}
       <Dialog
@@ -1414,98 +1225,16 @@ const WikiPage = () => {
       </Dialog>
 
       {/* ─── Template Picker Dialog ─────── */}
-      <Dialog open={templateDialogOpen} onClose={() => { setTemplateDialogOpen(false); setPreviewTemplate(null); }} maxWidth="md" fullWidth
-        PaperProps={{ sx: { borderRadius: 4, overflow: 'hidden', height: '80vh' } }}>
-        <Box sx={{ display: 'flex', height: '100%' }}>
-          {/* Main List Sidebar */}
-          <Box sx={{ width: previewTemplate ? '40%' : '100%', borderRight: previewTemplate ? '1px solid' : 'none', borderColor: 'divider', display: 'flex', flexDirection: 'column', transition: 'width 0.3s' }}>
-            <DialogTitle sx={{ fontWeight: 800, fontSize: '1.3rem', pb: 1, pt: 3, px: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <AutoAwesomeIcon color="primary" />
-                {lang === 'ko' ? '문서 템플릿' : 'Document Templates'}
-              </Box>
-              <IconButton onClick={() => setTemplateDialogOpen(false)} size="small"><CloseIcon /></IconButton>
-            </DialogTitle>
-            <Box sx={{ px: 3, pb: 2 }}>
-              <TextField
-                fullWidth size="small"
-                placeholder={lang === 'ko' ? '템플릿 검색...' : 'Search templates...'}
-                value={templateSearchQuery}
-                onChange={e => setTemplateSearchQuery(e.target.value)}
-                InputProps={{ startAdornment: <SearchIcon sx={{ fontSize: 18, color: 'text.disabled', mr: 1 }} />, sx: { borderRadius: 2.5 } }}
-              />
-            </Box>
-            <DialogContent sx={{ p: 0, overflow: 'auto' }}>
-              {Object.entries(TEMPLATE_CATEGORY_LABELS).map(([catKey, catInfo]) => {
-                const filteredTemplates = DOC_TEMPLATES.filter(tp =>
-                  tp.category === catKey &&
-                  (tp.nameKo.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
-                    tp.nameEn.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
-                    tp.tags.some(t => t.toLowerCase().includes(templateSearchQuery.toLowerCase())))
-                );
-                if (filteredTemplates.length === 0) return null;
-                return (
-                  <Box key={catKey} sx={{ px: 3, mb: 3 }}>
-                    <Typography variant="caption" fontWeight={800} sx={{ color: catInfo.color, letterSpacing: 1, textTransform: 'uppercase', display: 'block', mb: 1, opacity: 0.8 }}>
-                      {lang === 'ko' ? catInfo.ko : catInfo.en}
-                    </Typography>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      {filteredTemplates.map(tpl => (
-                        <Paper key={tpl.id}
-                          onClick={() => setPreviewTemplate(tpl)}
-                          onDoubleClick={() => handleNewFromTemplate(tpl)}
-                          sx={{
-                            p: 1.5, borderRadius: 2.5, cursor: 'pointer', border: '1.5px solid',
-                            borderColor: previewTemplate?.id === tpl.id ? catInfo.color : 'divider',
-                            bgcolor: previewTemplate?.id === tpl.id ? alpha(catInfo.color, 0.04) : 'transparent',
-                            transition: 'all 0.2s',
-                            '&:hover': { bgcolor: alpha(catInfo.color, 0.02), transform: 'translateX(4px)' },
-                          }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                            <Typography sx={{ fontSize: '1.2rem' }}>{tpl.icon}</Typography>
-                            <Box sx={{ flex: 1 }}>
-                              <Typography variant="body2" fontWeight={700} sx={{ lineHeight: 1.2 }}>{lang === 'ko' ? tpl.nameKo : tpl.nameEn}</Typography>
-                              <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>{lang === 'ko' ? tpl.descKo : tpl.descEn}</Typography>
-                            </Box>
-                          </Box>
-                        </Paper>
-                      ))}
-                    </Box>
-                  </Box>
-                );
-              })}
-            </DialogContent>
-          </Box>
-
-          {/* Preview Panel */}
-          {previewTemplate && (
-            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', bgcolor: alpha('#f8fafc', 0.5), animation: 'fadeIn 0.3s' }}>
-              <Box sx={{ px: 3, py: 2.5, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: 'white' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <Typography sx={{ fontSize: '1.8rem' }}>{previewTemplate.icon}</Typography>
-                  <Box>
-                    <Typography variant="h6" fontWeight={800} sx={{ lineHeight: 1.2 }}>{lang === 'ko' ? previewTemplate.nameKo : previewTemplate.nameEn}</Typography>
-                    <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
-                      {previewTemplate.tags.map(t => <Chip key={t} label={t} size="small" sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700 }} />)}
-                    </Box>
-                  </Box>
-                </Box>
-                <Button variant="contained" onClick={() => handleNewFromTemplate(previewTemplate)}
-                  sx={{ borderRadius: 2, fontWeight: 700, px: 3, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
-                  {lang === 'ko' ? '이 템플릿 사용' : 'Use Template'}
-                </Button>
-              </Box>
-              <Box sx={{ flex: 1, p: 3, overflow: 'auto' }}>
-                <Typography variant="caption" color="text.disabled" fontWeight={700} sx={{ display: 'block', mb: 2, textTransform: 'uppercase' }}>Preview</Typography>
-                <Paper variant="outlined" sx={{ p: 3, borderRadius: 3, bgcolor: 'white', minHeight: '100%' }}>
-                  <Box sx={{ '& h1, & h2, & h3': { color: 'text.primary', mt: 2, mb: 1 }, '& table': { borderCollapse: 'collapse', my: 2 }, '& pre': { background: '#f8fafc', p: 2, borderRadius: 2, fontSize: '0.8rem' }, lineHeight: 1.6, fontSize: '0.85rem' }}
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(previewTemplate.content) }} />
-                </Paper>
-              </Box>
-            </Box>
-          )}
-        </Box>
-      </Dialog>
+      <TemplatePicker
+        lang={lang}
+        open={templateDialogOpen}
+        onClose={() => setTemplateDialogOpen(false)}
+        searchQuery={templateSearchQuery}
+        setSearchQuery={setTemplateSearchQuery}
+        previewTemplate={previewTemplate}
+        setPreviewTemplate={setPreviewTemplate}
+        onSelectTemplate={handleNewFromTemplate}
+      />
     </Box>
   );
 };
