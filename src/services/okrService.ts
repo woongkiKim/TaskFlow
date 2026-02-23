@@ -44,7 +44,7 @@ function mapObjective(o: ApiObjective): Objective {
     startDate: o.startDate || undefined,
     endDate: o.endDate || undefined,
     status: o.status as Objective['status'],
-    ownerUid: String(o.owner),
+    ownerId: String(o.owner),
     ownerName: o.ownerName || '',
     workspaceId: String(o.workspace),
     createdBy: String(o.createdBy),

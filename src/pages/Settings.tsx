@@ -275,7 +275,7 @@ const Settings = () => {
       {activeTab === 1 && (
         <Fade in={activeTab === 1}>
           <Box>
-             <TeamSettings /> 
+            <TeamSettings />
           </Box>
         </Fade>
       )}
@@ -284,7 +284,7 @@ const Settings = () => {
       {activeTab === 2 && (
         <Fade in={activeTab === 2}>
           <Box>
-             <IntegrationsPage hideHeader /> 
+            <IntegrationsPage hideHeader />
           </Box>
         </Fade>
       )}
@@ -350,7 +350,7 @@ const Settings = () => {
               {shortcutGroups.map((group, gi) => (
                 <Box key={group.title} sx={{ mb: gi < shortcutGroups.length - 1 ? 5 : 0 }}>
                   <Typography variant="caption" color="primary" fontWeight={800} sx={{ textTransform: 'uppercase', mb: 2, display: 'block', letterSpacing: 1.5 }}>{group.title}</Typography>
-                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: x => (gi === 0 ? 3 : 2) }}>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: () => (gi === 0 ? 3 : 2) }}>
                     {group.shortcuts.map((sc, si) => (
                       <Box key={si} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
                         <Typography variant="body2" color="text.secondary" fontWeight={500}>{sc.label}</Typography>

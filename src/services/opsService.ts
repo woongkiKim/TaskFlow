@@ -50,15 +50,15 @@ interface ApiIssue {
 // ─── Mappers ─────────────────────────────────────────────
 
 function mapDecision(d: ApiDecision): Decision {
-  return { id: String(d.id), workspaceId: String(d.workspace), decisionCode: d.decisionCode, summary: d.summary, context: d.context, decidedBy: d.decidedBy, status: d.status as Decision['status'], date: d.date, createdAt: d.createdAt };
+  return { id: String(d.id), workspaceId: String(d.workspace), decisionCode: d.decisionCode, summary: d.summary, context: d.context, decider: d.decidedBy || '', deciderName: '', affectedTaskIds: [], followUpAction: '', date: d.date, createdAt: d.createdAt };
 }
 
 function mapHandoff(h: ApiHandoff): Handoff {
-  return { id: String(h.id), workspaceId: String(h.workspace), handoffCode: h.handoffCode, fromTeam: h.fromTeam, toTeam: h.toTeam, description: h.description, status: h.status as Handoff['status'], ready: h.ready, checklist: h.checklist || {}, createdAt: h.createdAt };
+  return { id: String(h.id), workspaceId: String(h.workspace), handoffCode: h.handoffCode, fromTeam: h.fromTeam, toTeam: h.toTeam, notes: h.description, type: ((h as unknown) as Record<string, string>).type as Handoff['type'] || 'bug_fix', senderUid: '', senderName: '', receiverUid: '', receiverName: '', status: h.status as Handoff['status'], ready: h.ready, checklist: h.checklist || {}, createdAt: h.createdAt };
 }
 
 function mapIssue(i: ApiIssue): Issue {
-  return { id: String(i.id), workspaceId: String(i.workspace), memberName: i.memberName, category: i.category as Issue['category'], description: i.description, status: i.status as Issue['status'], reportedBy: i.reportedBy, timeLost: i.timeLost, date: i.date, createdAt: i.createdAt };
+  return { id: String(i.id), workspaceId: String(i.workspace), memberName: i.memberName, category: i.category as Issue['category'], scope: 'individual', description: i.description, status: i.status as Issue['status'], memberUid: i.reportedBy || '', timeLost: i.timeLost, workaround: '', date: i.date, time: '', createdAt: i.createdAt };
 }
 
 // ─── Decision Log ────────────────────────────────────────

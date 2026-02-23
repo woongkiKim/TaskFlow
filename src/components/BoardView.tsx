@@ -375,9 +375,16 @@ const SortableProjectColumn = ({ column, children, count, totalPoints, isEmpty, 
                 '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { backgroundColor: '#cbd5e1', borderRadius: 4 },
             }}>
                 {isEmpty && (
-                    <Typography variant="caption" color="text.disabled" align="center" sx={{ mt: 4, mb: 2 }}>
-                        {t('noTasks') as string}
-                    </Typography>
+                    <Box sx={{
+                        mt: 4, mb: 2, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                        opacity: 0.6, px: 2, py: 3, borderRadius: 2, border: '1px dashed', borderColor: 'divider',
+                        bgcolor: 'background.default'
+                    }}>
+                        <Typography fontSize="1.8rem" sx={{ mb: 1 }}>🍃</Typography>
+                        <Typography variant="caption" color="text.secondary" align="center" fontWeight={600}>
+                            {t('noTasks') as string}
+                        </Typography>
+                    </Box>
                 )}
                 {children}
             </Box>

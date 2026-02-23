@@ -1,6 +1,6 @@
 // src/contexts/AuthContext.tsx
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { type User, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { type User, onAuthStateChanged, GoogleAuthProvider, OAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { auth } from '../FBase';
 import { Box, CircularProgress } from '@mui/material';
 
@@ -10,6 +10,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
+  signInWithApple: () => Promise<void>;
   logout: () => Promise<void>;
   updateDisplayName: (newName: string) => Promise<void>;
 }
@@ -74,6 +75,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // 2-1. Apple 로그인
+  const signInWithApple = async () => {
+    if (IS_MOCK) {
+      setUser(MOCK_USER);
+      return;
+    }
+    const provider = new OAuthProvider('apple.com');
+    provider.addScope('email');
+    provider.addScope('name');
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error("Apple Login Failed", error);
+      throw error;
+    }
+  };
+
   // 3. 로그아웃 함수
   const logout = async () => {
     if (IS_MOCK) {
@@ -96,7 +114,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const value = { user, loading, signInWithGoogle, logout, updateDisplayName };
+  const value = {
+    user, loading,
+    signInWithGoogle, signInWithApple,
+    logout, updateDisplayName
+  };
 
   if (loading) {
     return (

@@ -3,6 +3,8 @@ import { Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { Box, Typography, Button, Paper } from '@mui/material';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import BugReportIcon from '@mui/icons-material/BugReport';
+import { ErrorReportDialog } from './ErrorReportDialog';
 
 interface Props {
   children: ReactNode;
@@ -13,6 +15,7 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
+  reportOpen: boolean;
 }
 
 /**
@@ -22,7 +25,7 @@ interface State {
 class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null, errorInfo: null };
+    this.state = { hasError: false, error: null, errorInfo: null, reportOpen: false };
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
@@ -36,11 +39,19 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, error: null, errorInfo: null });
+    this.setState({ hasError: false, error: null, errorInfo: null, reportOpen: false });
   };
 
   handleReload = () => {
     window.location.reload();
+  };
+
+  handleOpenReport = () => {
+    this.setState({ reportOpen: true });
+  };
+
+  handleCloseReport = () => {
+    this.setState({ reportOpen: false });
   };
 
   render() {
@@ -86,6 +97,14 @@ class ErrorBoundary extends Component<Props, State> {
               <Button variant="contained" onClick={this.handleReload}>
                 새로고침
               </Button>
+              <Button
+                variant="text"
+                color="secondary"
+                startIcon={<BugReportIcon />}
+                onClick={this.handleOpenReport}
+              >
+                버그 보고
+              </Button>
             </Box>
 
             {import.meta.env.DEV && this.state.errorInfo && (
@@ -110,7 +129,17 @@ class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    return this.props.children;
+    return (
+      <>
+        {this.props.children}
+        <ErrorReportDialog
+          open={this.state.reportOpen}
+          onClose={this.handleCloseReport}
+          errorInfo={this.state.error?.message || undefined}
+          context={this.state.errorInfo?.componentStack || undefined}
+        />
+      </>
+    );
   }
 }
 

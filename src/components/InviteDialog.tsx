@@ -13,6 +13,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
 import { createLinkInvite, createEmailInvite } from '../services/invitationService';
 import { useAuth } from '../contexts/AuthContext';
+import { handleError } from '../utils/errorHandler';
 
 interface InviteDialogProps {
     open: boolean;
@@ -38,7 +39,7 @@ const InviteDialog = ({ open, onClose }: InviteDialogProps) => {
             setLinkCreated(true);
         } catch (e) {
             console.error(e);
-            toast.error(t('loadFailed') as string);
+            handleError(e, { fallbackMessage: t('loadFailed') as string });
         }
     };
 
@@ -55,7 +56,7 @@ const InviteDialog = ({ open, onClose }: InviteDialogProps) => {
             setEmail('');
         } catch (e) {
             console.error(e);
-            toast.error(t('loadFailed') as string);
+            handleError(e, { fallbackMessage: t('loadFailed') as string });
         }
     };
 

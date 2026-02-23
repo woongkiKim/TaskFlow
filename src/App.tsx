@@ -33,6 +33,8 @@ const GanttPage = lazy(() => import('./pages/GanttPage'));
 const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'));
 const TimeTrackingPage = lazy(() => import('./pages/TimeTrackingPage'));
 const SeedPage = lazy(() => import('./pages/SeedPage'));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const ServerErrorPage = lazy(() => import('./pages/ServerErrorPage'));
 
 // Loading Fallback Component — Linear-style branded loader
 const FullPageLoader = () => (
@@ -94,9 +96,10 @@ function App() {
                 <Route path="time-tracking" element={<TimeTrackingPage />} />
                 <Route path="github" element={<GitHubPanel />} />
                 <Route path="dev/seed" element={<SeedPage />} />
+                <Route path="*" element={<NotFoundPage />} />
               </Route>
             </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="/500" element={<ServerErrorPage />} />
           </Routes>
         </Suspense>
       </ErrorBoundary>

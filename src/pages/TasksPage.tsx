@@ -41,6 +41,8 @@ import ArticleIcon from '@mui/icons-material/Article';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { toast } from 'sonner';
+import confetti from 'canvas-confetti';
+import { handleError } from '../utils/errorHandler';
 
 
 type LocalViewMode = GlobalViewMode;
@@ -284,7 +286,7 @@ const TasksPage = () => {
                 status: statusOverride || 'todo',
             });
             setTasks(prev => [savedTask, ...prev]);
-        } catch { toast.error(t('quickAddFailed') as string); }
+        } catch (e) { handleError(e, { fallbackMessage: t('quickAddFailed') as string }); }
     }, [user, currentProject, currentWorkspace, currentSprint, t]);
 
     const handleQuickAddSubmit = () => {
@@ -318,7 +320,7 @@ const TasksPage = () => {
                 status,
             });
             setTasks(prev => [savedTask, ...prev]);
-        } catch { toast.error(t('quickAddFailed') as string); }
+        } catch (e) { handleError(e, { fallbackMessage: t('quickAddFailed') as string }); }
     }, [user, currentProject, currentWorkspace, currentSprint, t]);
 
     // --- Handlers ---
@@ -334,7 +336,7 @@ const TasksPage = () => {
                 assigneePhoto: user.photoURL || '',
             });
             setTasks(prev => [savedTask, ...prev]);
-        } catch { toast.error(t('addFailed') as string); }
+        } catch (e) { handleError(e, { fallbackMessage: t('addFailed') as string }); }
     };
 
     const handleAddDialog = async (data: {
@@ -360,15 +362,28 @@ const TasksPage = () => {
                 nextAction: data.nextAction, links: data.links,
             });
             setTasks(prev => [savedTask, ...prev]);
-        } catch { toast.error(t('addFailed') as string); }
+        } catch (e) { handleError(e, { fallbackMessage: t('addFailed') as string }); }
     };
 
     const handleToggle = async (id: string) => {
         const task = tasks.find(t => t.id === id);
         if (!task) return;
         const prev = [...tasks];
-        setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed, status: t.completed ? 'todo' as const : 'done' as const } : t));
-        try { await toggleTaskStatusInDB(id, task.completed); } catch { setTasks(prev); }
+        const isCompleting = !task.completed;
+
+        setTasks(tasks.map(t => t.id === id ? { ...t, completed: isCompleting, status: isCompleting ? 'done' as const : 'todo' as const } : t));
+
+        if (isCompleting) {
+            confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 },
+                colors: ['#6366f1', '#3b82f6', '#10b981', '#f59e0b']
+            });
+            toast.success(t('taskCompleted') as string || 'Task completed! \ud83c\udf89');
+        }
+
+        try { await toggleTaskStatusInDB(id, task.completed); } catch (e) { setTasks(prev); handleError(e); }
     };
 
     const handleEdit = async (id: string, newText: string) => {
@@ -505,8 +520,7 @@ const TasksPage = () => {
             setNewViewName('');
             toast.success('View saved successfully');
         } catch (e) {
-            console.error('Failed to save view:', e);
-            toast.error('Failed to save view');
+            handleError(e, { fallbackMessage: 'Failed to save view' });
         } finally {
             setIsSavingView(false);
         }
@@ -521,8 +535,7 @@ const TasksPage = () => {
             }
             toast.success('View deleted');
         } catch (e) {
-            console.error('Failed to delete view:', e);
-            toast.error('Failed to delete view');
+            handleError(e, { fallbackMessage: 'Failed to delete view' });
         }
     };
 
@@ -541,8 +554,7 @@ const TasksPage = () => {
             const data = currentProject ? await fetchProjectTasks(currentProject.id) : [];
             setTasks(data);
         } catch (e) {
-            console.error('Rollover failed:', e);
-            toast.error('Rollover failed');
+            handleError(e, { fallbackMessage: 'Rollover failed' });
         } finally {
             setIsRollingOver(false);
         }
@@ -566,7 +578,7 @@ const TasksPage = () => {
             });
             setTasks(prev => [savedTask, ...prev]);
             toast.success('Sub-issue created: ' + subIssueText);
-        } catch { toast.error('Failed to create sub-issue'); }
+        } catch (e) { handleError(e, { fallbackMessage: 'Failed to create sub-issue' }); }
     };
 
     const applyOrderUpdates = useCallback(async (orderedIds: string[]) => {
@@ -778,8 +790,8 @@ const TasksPage = () => {
                                 >
                                     {view.icon || '📋'} {view.name}
                                 </Button>
-                                <IconButton 
-                                    size="small" 
+                                <IconButton
+                                    size="small"
                                     onClick={(e) => {
                                         setViewAnchorEl(e.currentTarget);
                                         setSelectedViewForMenu(view);
@@ -791,8 +803,8 @@ const TasksPage = () => {
                             </Box>
                         ))}
                         <Tooltip title="Save Current View as Custom">
-                            <IconButton 
-                                size="small" 
+                            <IconButton
+                                size="small"
                                 onClick={() => setSaveViewDialogOpen(true)}
                                 sx={{ ml: 0.5, bgcolor: 'action.hover', border: '1px dashed', borderColor: 'divider' }}
                             >
@@ -958,7 +970,7 @@ const TasksPage = () => {
                 {viewMode === 'calendar' && <Calendar />}
                 {viewMode === 'table' && <TableView tasks={viewFilteredTasks} selectedTag={selectedTag} onToggle={handleToggle} onTaskClick={setDetailTask} />}
                 {viewMode === 'timeline' && (
-                    <GanttChart 
+                    <GanttChart
                         items={viewFilteredTasks.map(t => ({
                             id: t.id,
                             name: t.text,
@@ -994,9 +1006,9 @@ const TasksPage = () => {
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setSaveViewDialogOpen(false)}>{t('cancel')}</Button>
-                    <Button 
-                        onClick={handleSaveNewView} 
-                        variant="contained" 
+                    <Button
+                        onClick={handleSaveNewView}
+                        variant="contained"
                         disabled={!newViewName.trim() || isSavingView}
                         sx={{ borderRadius: 2 }}
                     >
@@ -1028,9 +1040,9 @@ const TasksPage = () => {
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setRolloverDialogOpen(false)}>{t('cancel')}</Button>
-                    <Button 
-                        onClick={handleRolloverTasks} 
-                        variant="contained" 
+                    <Button
+                        onClick={handleRolloverTasks}
+                        variant="contained"
                         disabled={!targetSprintId || isRollingOver}
                         sx={{ borderRadius: 2 }}
                     >

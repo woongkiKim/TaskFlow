@@ -68,6 +68,9 @@ interface WorkspaceContextType {
     // Custom View filter
     activeViewFilter: ViewFilter | null;
     setActiveViewFilter: (f: ViewFilter | null) => void;
+
+    // Loading state — true after initial workspace data is loaded
+    workspaceReady: boolean;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -75,8 +78,19 @@ const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefin
 export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     const { user } = useAuth();
 
-    const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-    const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
+    // ✅ localStorage에서 이전 데이터로 즉시 시작 (네트워크 X)
+    const [workspaces, setWorkspaces] = useState<Workspace[]>(() => {
+        try {
+            const cached = localStorage.getItem('tf_workspaces');
+            return cached ? JSON.parse(cached) : [];
+        } catch { return []; }
+    });
+    const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(() => {
+        try {
+            const cached = localStorage.getItem('tf_currentWorkspace');
+            return cached ? JSON.parse(cached) : null;
+        } catch { return null; }
+    });
     const [teamGroups, setTeamGroups] = useState<TeamGroup[]>([]);
     const [currentTeamGroup, setCurrentTeamGroup] = useState<TeamGroup | null>(null);
     const [projects, setProjects] = useState<Project[]>([]);
@@ -89,26 +103,27 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     const [currentViewMode, setCurrentViewMode] = useState<ViewMode>('list');
     const [activeViewFilter, setActiveViewFilter] = useState<ViewFilter | null>(null);
     const [initiatives, setInitiatives] = useState<Initiative[]>([]);
+    const [workspaceReady, setWorkspaceReady] = useState(false);
 
-    // 1. 워크스페이스 로드 + 자동 생성
+    // ✅ workspace가 바뀌면 localStorage에 저장
+    useEffect(() => {
+        if (workspaces.length > 0) {
+            localStorage.setItem('tf_workspaces', JSON.stringify(workspaces));
+        }
+    }, [workspaces]);
+    useEffect(() => {
+        if (currentWorkspace) {
+            localStorage.setItem('tf_currentWorkspace', JSON.stringify(currentWorkspace));
+        }
+    }, [currentWorkspace]);
+
+    // 1. 워크스페이스 로드 — 즉시 렌더링 우선, 초대 수락은 백그라운드로 지연
     useEffect(() => {
         if (!user) return;
         const init = async () => {
+            // ✅ Step 1: 워크스페이스 즉시 로드 (UI 블로킹 최소화)
             let wsList = await fetchUserWorkspaces(user.uid);
 
-            // 자동 이메일 초대 수락
-            if (user.email) {
-                const pendingInvites = await checkPendingInvites(user.email);
-                for (const invite of pendingInvites) {
-                    try {
-                        await joinWorkspaceByInvite(invite.workspaceId, { uid: user.uid, displayName: user.displayName, email: user.email, photoURL: user.photoURL });
-                        await acceptInvite(invite.id);
-                    } catch { /* 이미 참여 중이거나 실패 시 무시 */ }
-                }
-                if (pendingInvites.length > 0) wsList = await fetchUserWorkspaces(user.uid);
-            }
-
-            // 처음이면 기본 workspace 생성
             if (wsList.length === 0) {
                 const ws = await createWorkspace('My Workspace', '#6366f1', 'personal', {
                     uid: user.uid, displayName: user.displayName, email: user.email, photoURL: user.photoURL,
@@ -116,10 +131,27 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
                 wsList = [ws];
             }
 
+            // ✅ 즉시 화면에 반영 — 초대 확인을 기다리지 않음
             setWorkspaces(wsList);
             setCurrentWorkspace(wsList[0]);
 
-            // Backlog auto-cleanup (runs once per day)
+            // ✅ Step 2: 초대 수락 + 백로그 정리는 백그라운드 (fire-and-forget)
+            if (user.email) {
+                checkPendingInvites(user.email).then(async (pendingInvites) => {
+                    if (pendingInvites.length === 0) return;
+                    for (const invite of pendingInvites) {
+                        try {
+                            await joinWorkspaceByInvite(invite.workspaceId, { uid: user.uid, displayName: user.displayName, email: user.email, photoURL: user.photoURL });
+                            await acceptInvite(invite.id);
+                        } catch { /* 이미 참여 중이거나 실패 시 무시 */ }
+                    }
+                    // 초대 수락 후 워크스페이스 목록 갱신
+                    const updated = await fetchUserWorkspaces(user.uid);
+                    setWorkspaces(updated);
+                }).catch(() => { });
+            }
+
+            // 백로그 정리 (fire-and-forget, UI 차단 없음)
             const ws = wsList[0];
             if (ws) {
                 const lastCleanup = localStorage.getItem(`backlog_cleanup_${ws.id}`);
@@ -127,7 +159,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
                 if (lastCleanup !== today) {
                     const settings = getBacklogSettings(ws.id);
                     if (settings.autoArchiveEnabled) {
-                        autoArchiveStaleBacklog(ws.id, settings.archiveDaysThreshold).catch(() => {});
+                        autoArchiveStaleBacklog(ws.id, settings.archiveDaysThreshold).catch(() => { });
                     }
                     localStorage.setItem(`backlog_cleanup_${ws.id}`, today);
                 }
@@ -136,43 +168,44 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
         init();
     }, [user]);
 
-    // 2. workspace 선택 시 → 멤버 + teamGroups + 프로젝트 로드
+    // 2. workspace 선택 시 → 멤버 + teamGroups + 프로젝트 + initiatives 병렬 로드
     useEffect(() => {
         if (!currentWorkspace || !user) return;
         const load = async () => {
-            const members = await fetchWorkspaceMembers(currentWorkspace.id);
-            setCurrentMembers(members);
+            // ✅ 병렬 로드: 서로 독립적인 데이터를 동시에 가져옴
+            const [members, tgs, inits, projs] = await Promise.all([
+                fetchWorkspaceMembers(currentWorkspace.id),
+                fetchTeamGroups(currentWorkspace.id),
+                fetchInitiatives(currentWorkspace.id),
+                fetchWorkspaceProjects(currentWorkspace.id),
+            ]);
 
-            // Team groups (all workspace types)
-            const tgs = await fetchTeamGroups(currentWorkspace.id);
+            setCurrentMembers(members);
             setTeamGroups(tgs);
             setCurrentTeamGroup(tgs[0] || null);
-
-            // Initiatives
-            const inits = await fetchInitiatives(currentWorkspace.id);
             setInitiatives(inits);
 
-
-            // Projects
-            let projs = await fetchWorkspaceProjects(currentWorkspace.id);
-            if (projs.length === 0) {
+            // Projects: 없으면 기본 프로젝트 생성
+            let finalProjs = projs;
+            if (finalProjs.length === 0) {
                 const p = await createProject('General', currentWorkspace.id, '#6366f1', user.uid);
-                projs = [p];
+                finalProjs = [p];
             }
-            setProjects(projs);
-            setCurrentProject(projs[0]);
+            setProjects(finalProjs);
+            setCurrentProject(finalProjs[0]);
 
-            // All sprints for workspace
-            const allWsSprints = await fetchWorkspaceSprints(projs.map(p => p.id));
+            // Sprints: 프로젝트 ID에 의존하므로 프로젝트 이후 실행
+            const allWsSprints = await fetchWorkspaceSprints(finalProjs.map(p => p.id));
             setAllWorkspaceSprints(allWsSprints);
+            setWorkspaceReady(true);
         };
         load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentWorkspace?.id, user?.uid]);
 
     // 3. project 선택 시 → sprints 로드
     useEffect(() => {
-         
+
         if (!currentProject?.id) { setSprints([]); setCurrentSprint(null); return; }
         const projectId = currentProject.id;
         const load = async () => {
@@ -329,6 +362,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
         activeViewFilter, setActiveViewFilter, currentViewMode, setCurrentViewMode,
         getChildSprints, getLinkedSprints,
         initiatives, addInitiative, refreshInitiatives,
+        workspaceReady,
     };
 
     return (

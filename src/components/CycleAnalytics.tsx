@@ -408,7 +408,7 @@ function TeamWorkloadPanel({ tasks }: { tasks: Task[] }) {
         utilization: Math.round((d.assigned / DEFAULT_CAPACITY) * 100),
         status: d.assigned > DEFAULT_CAPACITY ? 'overloaded' as const
           : d.assigned >= DEFAULT_CAPACITY * 0.7 ? 'onTrack' as const
-          : 'underAllocated' as const,
+            : 'underAllocated' as const,
       }));
   }, [tasks, currentMembers]);
 
@@ -684,8 +684,8 @@ function WorkflowEfficiencyChart({ tasks }: { tasks: Task[] }) {
       stages.forEach(stage => {
         if (!statusCounts[stage]) statusCounts[stage] = [];
         // Weight 'inprogress' heavier than 'todo'
-        const weight = (stage === 'inprogress' || stage === 'in_progress') ? 0.5 : 
-                       stage === 'review' ? 0.3 : 0.1;
+        const weight = (stage === 'inprogress' || stage === 'in_progress') ? 0.5 :
+          stage === 'review' ? 0.3 : 0.1;
         statusCounts[stage].push(totalHours * weight / (numStages > 2 ? 1 : numStages));
       });
     });
@@ -799,7 +799,7 @@ function StatusDistributionChart({ tasks }: { tasks: Task[] }) {
             paddingAngle={3}
             dataKey="value"
             nameKey="name"
-            label={({ name, percent }) => `${name} ${Math.round(percent * 100)}%`}
+            label={({ name, percent }) => `${name} ${Math.round((percent || 0) * 100)}%`}
             labelLine={{ strokeWidth: 1, stroke: '#94a3b8' }}
           >
             {data.map((entry, i) => (
@@ -876,16 +876,16 @@ export default function CycleAnalytics() {
   const completedTasks = sprintTasks.filter(t => t.completed && t.updatedAt && t.createdAt);
   const avgCycleTime = completedTasks.length > 0
     ? Math.round(completedTasks.reduce((sum, t) => {
-        return sum + differenceInDays(new Date(t.updatedAt!), new Date(t.createdAt));
-      }, 0) / completedTasks.length * 10) / 10
+      return sum + differenceInDays(new Date(t.updatedAt!), new Date(t.createdAt));
+    }, 0) / completedTasks.length * 10) / 10
     : 0;
 
   // Velocity (avg completed points across completed sprints)
   const completedSprints = (sprints || []).filter(s => s.endDate && new Date(s.endDate) <= new Date());
   const avgVelocity = completedSprints.length > 0
     ? Math.round(completedSprints.reduce((sum, s) => {
-        return sum + allTasks.filter(t => t.sprintId === s.id && t.completed).reduce((ps, t) => ps + (t.estimate || 1), 0);
-      }, 0) / completedSprints.length)
+      return sum + allTasks.filter(t => t.sprintId === s.id && t.completed).reduce((ps, t) => ps + (t.estimate || 1), 0);
+    }, 0) / completedSprints.length)
     : 0;
 
   const remainingTasks = sprintTasks.filter(tk => !tk.completed);
@@ -1012,7 +1012,8 @@ export default function CycleAnalytics() {
                       </TableCell>
                       <TableCell>
                         <Chip label={task.completed ? (t('doneLabel') as string) : (task.status || 'todo')} size="small"
-                          sx={{ height: 20, fontSize: '0.65rem', fontWeight: 600,
+                          sx={{
+                            height: 20, fontSize: '0.65rem', fontWeight: 600,
                             bgcolor: task.completed ? `${COLORS.emerald}15` : task.status === 'inprogress' ? '#dbeafe' : '#f1f5f9',
                             color: task.completed ? COLORS.emerald : task.status === 'inprogress' ? '#2563eb' : '#64748b',
                           }} />

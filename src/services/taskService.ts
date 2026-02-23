@@ -2,7 +2,7 @@
 // TaskService — now proxied through Django REST API
 
 import api from './apiClient';
-import type { Task, Subtask, TaskOwner, TaskType, RelationType, TaskRelation } from '../types';
+import type { Task, Subtask, TaskOwner, TaskType, RelationType } from '../types';
 import { RELATION_TYPE_CONFIG } from '../types';
 
 // ─── Response type ───────────────────────────────────────
@@ -138,10 +138,15 @@ function buildTaskBody(fields: Record<string, unknown>): Record<string, unknown>
 
 // ─── API: Fetch ──────────────────────────────────────────
 
-// 1. 개인 tasks 조회
-export const fetchTasks = async (userId: string): Promise<Task[]> => {
+// 1. 개인 tasks 조회 (기본 200개 제한 — 무한 전량 조회 방지)
+export const fetchTasks = async (userId: string, options?: { limit?: number; offset?: number }): Promise<Task[]> => {
+  const { limit = 200, offset = 0 } = options || {};
   try {
-    const data = await api.get<{ results: ApiTask[] }>('tasks/', { assignee_id: userId });
+    const data = await api.get<{ results: ApiTask[] }>('tasks/', {
+      assignee_id: userId,
+      limit,
+      offset,
+    });
     return (data.results || []).map(mapTask).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   } catch (error) { console.error("Error fetching tasks:", error); throw error; }
 };

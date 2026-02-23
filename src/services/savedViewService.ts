@@ -22,9 +22,10 @@ function mapView(v: ApiCustomView): CustomView {
     id: String(v.id),
     name: v.name,
     icon: v.icon || '📋',
+    color: '#3b82f6',
     workspaceId: String(v.workspace),
-    projectId: v.project ? String(v.project) : undefined,
-    viewType: v.viewType as CustomView['viewType'],
+    projectId: v.project ? String(v.project) : '',
+    viewMode: v.viewType as CustomView['viewMode'],
     filters: v.filters || {},
     createdBy: String(v.createdBy),
     createdAt: v.createdAt,
@@ -43,7 +44,7 @@ export const saveCustomView = async (data: Omit<CustomView, 'id' | 'createdAt'>)
     name: data.name,
     icon: data.icon || '📋',
     workspace: Number(data.workspaceId),
-    viewType: data.viewType,
+    viewType: data.viewMode,
     filters: data.filters || {},
   };
   if (data.projectId) body.project = Number(data.projectId);

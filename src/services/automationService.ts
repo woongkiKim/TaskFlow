@@ -28,7 +28,7 @@ function mapRule(r: ApiAutomationRule): AutomationRule {
     id: String(r.id),
     name: r.name,
     workspaceId: String(r.workspace),
-    trigger: r.trigger,
+    trigger: r.trigger as unknown as AutomationRule['trigger'],
     actions: r.actions || [],
     isEnabled: r.isEnabled,
     createdBy: String(r.createdBy),

@@ -324,12 +324,24 @@ const ListView = ({
       <Box sx={{ mb: 4 }}>
         {todayIncompleteTasks.length === 0 && pastIncompleteTasks.length === 0 && !sprintGroupedTasks && (
           <Box sx={{
-            py: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5,
-            opacity: 0.7,
+            py: 10, px: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(59, 130, 246, 0.05) 100%)',
+            borderRadius: 4, border: '1px dashed', borderColor: 'divider',
+            backdropFilter: 'blur(10px)', mt: 4, mb: 4
           }}>
-            <Typography fontSize="2.5rem">🎯</Typography>
-            <Typography color="text.secondary" align="center" fontWeight={500}>
-              {t('noTasks') as string}
+            <Box sx={{
+              width: 80, height: 80, borderRadius: '50%',
+              background: 'linear-gradient(135deg, #6366f1 0%, #3b82f6 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 8px 32px rgba(99, 102, 241, 0.25)', mb: 1
+            }}>
+              <Typography fontSize="2.5rem">🎯</Typography>
+            </Box>
+            <Typography variant="h6" fontWeight={800} color="text.primary">
+              {lang === 'ko' ? '모든 작업이 완료되었습니다!' : "You're all caught up!"}
+            </Typography>
+            <Typography color="text.secondary" align="center" fontWeight={500} sx={{ maxWidth: 350, lh: 1.6 }}>
+              {t('noTasks') as string} {lang === 'ko' ? '새로운 목표를 추가하고 하루를 시작해보세요.' : 'Add a new goal to kickstart your day.'}
             </Typography>
           </Box>
         )}

@@ -1,5 +1,5 @@
 // src/pages/HomePage.tsx
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Box, Typography, Paper, Avatar, Chip, LinearProgress,
   Button, Skeleton, alpha, useTheme, Fade,
@@ -63,10 +63,10 @@ export default function HomePage() {
   const [objectives, setObjectives] = useState<Objective[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ─── Load data ───
+  // ─── Load data (no setLoading on re-visits — cached data appears instantly) ───
+  const hasLoaded = useRef(false);
   const loadData = useCallback(async () => {
     if (!user?.uid) return;
-    setLoading(true);
     try {
       const [personalTasks, workTasks, okrData] = await Promise.all([
         fetchTasks(user.uid).catch(() => [] as Task[]),
@@ -80,7 +80,9 @@ export default function HomePage() {
       setTasks(Array.from(taskMap.values()));
       setObjectives(okrData);
     } catch (e) { console.error('HomePage load error:', e); }
-    finally { setLoading(false); }
+    finally {
+      if (!hasLoaded.current) { hasLoaded.current = true; setLoading(false); }
+    }
   }, [user?.uid, workspace?.id]);
 
   useEffect(() => { loadData(); }, [loadData]);

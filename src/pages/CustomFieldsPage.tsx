@@ -41,7 +41,7 @@ const INITIAL_FIELDS: CustomField[] = [
   { id: 'cf_4', name: 'Approved', type: 'checkbox', description: 'Is this task approved by manager?', required: false },
 ];
 
-const TYPE_ICONS: Record<FieldType, React.ReactNode> = {
+const TYPE_ICONS: Record<FieldType, React.ReactElement> = {
   text: <TextFieldsIcon fontSize="small" />,
   number: <NumbersIcon fontSize="small" />,
   date: <CalendarMonthIcon fontSize="small" />,

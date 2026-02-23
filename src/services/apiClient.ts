@@ -167,8 +167,8 @@ import {
   deduplicateRequest, buildCacheKey,
 } from './apiCache';
 
-/** Default GET cache TTL in ms */
-const GET_CACHE_TTL = 30_000; // 30 seconds
+/** Default GET cache TTL in ms (2 minutes — optimized for low-bandwidth) */
+const GET_CACHE_TTL = 120_000;
 
 export const api = {
   /**

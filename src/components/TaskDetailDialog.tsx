@@ -112,7 +112,7 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
             setTags(task.tags || []);
             setNewTagText('');
             // Load time entries
-            fetchTimeEntries(task.id).then(setTimeEntries).catch(() => {});
+            fetchTimeEntries(task.id).then(setTimeEntries).catch(() => { });
         }
     }, [task]);
 
@@ -252,9 +252,25 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
     const owners = task.owners || (task.assigneeId ? [{ uid: task.assigneeId, name: task.assigneeName || '', photo: task.assigneePhoto }] : []);
 
     return (
-        <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3, maxHeight: '85vh' } }}>
-            <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Dialog
+            open={open}
+            onClose={handleClose}
+            maxWidth="md"
+            fullWidth
+            PaperProps={{
+                sx: {
+                    borderRadius: 4,
+                    maxHeight: '90vh',
+                    background: (theme) => theme.palette.mode === 'dark' ? 'rgba(30, 41, 59, 0.85)' : 'rgba(255, 255, 255, 0.85)',
+                    backdropFilter: 'blur(20px)',
+                    boxShadow: '0 24px 64px rgba(0,0,0,0.15)',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                }
+            }}
+        >
+            <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 2, pt: 3, px: 4, borderBottom: '1px solid', borderColor: 'divider' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
                     {/* Task Code */}
                     {task.taskCode && (
                         <Chip label={task.taskCode} size="small" sx={{ fontWeight: 700, bgcolor: 'action.hover', fontFamily: 'monospace', fontSize: '0.75rem' }} />
@@ -273,7 +289,7 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
                 <IconButton onClick={handleClose} size="small"><CloseIcon /></IconButton>
             </DialogTitle>
 
-            <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+            <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 4, px: 4, py: 4 }}>
                 {/* Overdue Warning */}
                 {isOverdue && (
                     <Box sx={{ bgcolor: '#fef2f2', border: '1px solid #fecaca', borderRadius: 2, px: 2, py: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -866,7 +882,7 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
 
                 {/* Activity Log */}
                 <ActivityFeed entityType="task" entityId={task.id} compact limit={20}
-                  title={lang === 'ko' ? '변경 이력' : 'Change History'} />
+                    title={lang === 'ko' ? '변경 이력' : 'Change History'} />
 
             </DialogContent>
             <DialogActions sx={{ px: 3, pb: 2 }}>

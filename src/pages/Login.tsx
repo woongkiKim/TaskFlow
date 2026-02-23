@@ -2,6 +2,7 @@
 import { useEffect } from 'react';
 import { Box, Button, Typography, Paper, Container } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
+import AppleIcon from '@mui/icons-material/Apple';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -9,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 const Login = () => {
-  const { signInWithGoogle, user } = useAuth();
+  const { signInWithGoogle, signInWithApple, user } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
 
@@ -17,9 +18,10 @@ const Login = () => {
     if (user) navigate('/', { replace: true });
   }, [user, navigate]);
 
-  const handleLogin = async () => {
+  const handleSocialLogin = async (provider: 'google' | 'apple') => {
     try {
-      await signInWithGoogle();
+      if (provider === 'google') await signInWithGoogle();
+      if (provider === 'apple') await signInWithApple();
       navigate('/');
     } catch {
       toast.error(t('loginFailed') as string || '로그인에 실패했습니다.');
@@ -131,29 +133,47 @@ const Login = () => {
               {t('loginDesc') as string}
             </Typography>
 
-            <Button
-              fullWidth
-              variant="contained"
-              startIcon={<GoogleIcon />}
-              onClick={handleLogin}
-              sx={{
-                py: 1.5,
-                borderRadius: 2.5,
-                fontSize: '0.95rem',
-                fontWeight: 600,
-                background: '#f1f5f9',
-                color: '#0f172a',
-                boxShadow: 'none',
-                transition: 'all 0.2s ease',
-                '&:hover': {
-                  background: '#ffffff',
-                  boxShadow: '0 4px 20px rgba(241, 245, 249, 0.2)',
-                  transform: 'translateY(-1px)',
-                },
-              }}
-            >
-              {t('loginButton') as string}
-            </Button>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, width: '100%' }}>
+              <Button
+                fullWidth
+                variant="contained"
+                startIcon={<GoogleIcon />}
+                onClick={() => handleSocialLogin('google')}
+                sx={{
+                  py: 1.5,
+                  borderRadius: 2.5,
+                  fontSize: '0.95rem',
+                  fontWeight: 600,
+                  background: '#f1f5f9',
+                  color: '#0f172a',
+                  boxShadow: 'none',
+                  transition: 'all 0.2s ease',
+                  '&:hover': { background: '#ffffff', transform: 'translateY(-1px)' },
+                }}
+              >
+                Sign in with Google
+              </Button>
+              <Button
+                fullWidth
+                variant="contained"
+                startIcon={<AppleIcon />}
+                onClick={() => handleSocialLogin('apple')}
+                sx={{
+                  py: 1.5,
+                  borderRadius: 2.5,
+                  fontSize: '0.95rem',
+                  fontWeight: 600,
+                  background: '#000000',
+                  color: '#ffffff',
+                  boxShadow: 'none',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  transition: 'all 0.2s ease',
+                  '&:hover': { background: '#1a1a1a', transform: 'translateY(-1px)' },
+                }}
+              >
+                Sign in with Apple
+              </Button>
+            </Box>
           </Paper>
 
           {/* Bottom branding */}

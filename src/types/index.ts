@@ -1,317 +1,39 @@
 // src/types/index.ts
+// Barrel re-export — all types are now organized by domain.
+// Existing imports like `from '../types'` continue to work unchanged.
 
-// --- Constants ---
-export const TASK_TYPES = ['task', 'bug', 'feature', 'design', 'content', 'handoff', 'devops', 'other'] as const;
-export type TaskType = typeof TASK_TYPES[number];
+// Domain modules
+export * from './task';
+export * from './workspace';
 
-export const PRIORITY_LEVELS = ['P0', 'P1', 'P2', 'P3'] as const;
-export type PriorityLevel = typeof PRIORITY_LEVELS[number];
+// Existing domain-specific modules
+export type { GitHubRepo, GitHubIssue } from './github';
+export type { WorkspaceIntegrations } from './integrations';
 
-export const STATUS_PRESETS = ['todo', 'inprogress', 'in-review', 'analysis-required', 'handed-off', 'done'] as const;
+// ──────────────────────────────────────────────
+// Types that don't fit neatly into task or workspace
+// are kept here to avoid creating too many tiny files.
+// ──────────────────────────────────────────────
 
-export const TASK_TYPE_CONFIG: Record<TaskType, { label: string; icon: string; color: string }> = {
-  task: { label: 'Task', icon: '📋', color: '#3b82f6' },
-  bug: { label: 'Bug', icon: '🐛', color: '#ef4444' },
-  feature: { label: 'Feature', icon: '✨', color: '#8b5cf6' },
-  design: { label: 'Design', icon: '🎨', color: '#ec4899' },
-  content: { label: 'Content', icon: '📝', color: '#f59e0b' },
-  handoff: { label: 'Handoff', icon: '🤝', color: '#06b6d4' },
-  devops: { label: 'DevOps', icon: '⚙️', color: '#6366f1' },
-  other: { label: 'Other', icon: '📌', color: '#64748b' },
-};
-
-export const PRIORITY_CONFIG: Record<PriorityLevel, { label: string; color: string; bgColor: string }> = {
-  P0: { label: 'P0 — Critical', color: '#dc2626', bgColor: '#fef2f2' },
-  P1: { label: 'P1 — High', color: '#ea580c', bgColor: '#fff7ed' },
-  P2: { label: 'P2 — Medium', color: '#ca8a04', bgColor: '#fefce8' },
-  P3: { label: 'P3 — Low', color: '#6b7280', bgColor: '#f9fafb' },
-};
-
-/** Normalize old priority values (high/medium/low) to P0-P3 */
-export const normalizePriority = (p?: string): PriorityLevel | undefined => {
-  if (!p) return undefined;
-  if (p === 'high') return 'P0';
-  if (p === 'medium') return 'P1';
-  if (p === 'low') return 'P2';
-  if (PRIORITY_LEVELS.includes(p as PriorityLevel)) return p as PriorityLevel;
-  return undefined;
-};
-
-// --- Issue Estimates ---
-export const ESTIMATE_POINTS = [0, 1, 2, 3, 5, 8, 13, 21] as const;
-export type EstimatePoint = typeof ESTIMATE_POINTS[number];
-
-export const ESTIMATE_CONFIG: Record<EstimatePoint, { label: string; color: string; bgColor: string }> = {
-  0: { label: 'None', color: '#94a3b8', bgColor: '#f1f5f9' },
-  1: { label: 'Trivial', color: '#22c55e', bgColor: '#f0fdf4' },
-  2: { label: 'Small', color: '#3b82f6', bgColor: '#eff6ff' },
-  3: { label: 'Medium', color: '#8b5cf6', bgColor: '#f5f3ff' },
-  5: { label: 'Large', color: '#f59e0b', bgColor: '#fffbeb' },
-  8: { label: 'XL', color: '#f97316', bgColor: '#fff7ed' },
-  13: { label: 'XXL', color: '#ef4444', bgColor: '#fef2f2' },
-  21: { label: 'Epic', color: '#dc2626', bgColor: '#fef2f2' },
-};
-
-export const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
-  'todo': { label: 'To Do', color: '#6b7280', bgColor: '#f3f4f6' },
-  'inprogress': { label: 'In Progress', color: '#2563eb', bgColor: '#eff6ff' },
-  'in-review': { label: 'In Review', color: '#d97706', bgColor: '#fffbeb' },
-  'analysis-required': { label: 'Analysis Required', color: '#7c3aed', bgColor: '#f5f3ff' },
-  'handed-off': { label: 'Handed Off', color: '#0891b2', bgColor: '#ecfeff' },
-  'done': { label: 'Complete', color: '#16a34a', bgColor: '#f0fdf4' },
-};
-
-// --- Workspace Roles (GitHub-style hierarchy) ---
-export const ROLE_HIERARCHY = ['viewer', 'triage', 'member', 'maintainer', 'admin', 'owner'] as const;
-export type MemberRole = typeof ROLE_HIERARCHY[number];
-
-export const ROLE_CONFIG: Record<MemberRole, { label: string; labelKo: string; color: string; bgColor: string; description: string; descriptionKo: string }> = {
-  owner: { label: 'Owner', labelKo: '소유자', color: '#dc2626', bgColor: '#fef2f2', description: 'Full access, can delete workspace', descriptionKo: '전체 접근, 워크스페이스 삭제 가능' },
-  admin: { label: 'Admin', labelKo: '관리자', color: '#ea580c', bgColor: '#fff7ed', description: 'Manage workspace settings and members', descriptionKo: '워크스페이스 설정 및 멤버 관리' },
-  maintainer: { label: 'Maintainer', labelKo: '메인테이너', color: '#ca8a04', bgColor: '#fefce8', description: 'Manage team, view team reports', descriptionKo: '팀 관리, 팀 리포트 열람' },
-  member: { label: 'Member', labelKo: '멤버', color: '#2563eb', bgColor: '#eff6ff', description: 'Create and edit tasks', descriptionKo: '작업 생성 및 편집' },
-  triage: { label: 'Triage', labelKo: '분류자', color: '#7c3aed', bgColor: '#f5f3ff', description: 'Label, assign, and close issues', descriptionKo: '이슈 라벨링, 할당, 종료' },
-  viewer: { label: 'Viewer', labelKo: '뷰어', color: '#6b7280', bgColor: '#f9fafb', description: 'Read-only access', descriptionKo: '읽기 전용' },
-};
-
-/** Check if roleA has at least the same level as roleB */
-export const hasRoleLevel = (roleA: MemberRole, minRole: MemberRole): boolean => {
-  return ROLE_HIERARCHY.indexOf(roleA) >= ROLE_HIERARCHY.indexOf(minRole);
-};
-
-// --- Workspace ---
-export interface TeamMember {
-  uid: string;
-  displayName: string;
-  email: string;
-  photoURL?: string;
-  role: MemberRole;
-  joinedAt: string;
-}
-
-export interface Workspace {
-  id: string;
-  name: string;
-  color: string;
-  type: 'personal' | 'team' | 'organization';
-  members: TeamMember[];
-  memberUids?: string[];
-  createdBy: string;
-  inviteCode: string;
-  githubConfig?: {
-    accessToken?: string;
-    lastSyncedAt?: string;
-  };
-  integrations?: import('./integrations').WorkspaceIntegrations;
-  createdAt: string;
-}
-
-/** Backward-compatible alias */
-export type Team = Workspace;
-
-// --- Team Group (organization 전용) ---
-export interface TeamGroup {
-  id: string;
-  workspaceId: string;
-  name: string;
-  color: string;
-  leaderId?: string;
-  memberIds: string[];
-  createdAt: string;
-}
-
-// --- Project ---
-import type { GitHubRepo } from './github';
-
-export interface Project {
-  id: string;
-  name: string;
-  workspaceId: string;
-  teamGroupId?: string;
-  color: string;
-  icon?: string;
-  createdBy: string;
-  createdAt: string;
-  kanbanColumns?: KanbanColumn[];
-  taskCounter?: number;
-  initiativeId?: string;
-  startDate?: string;
-  targetDate?: string;
-  status?: 'active' | 'completed' | 'paused' | 'planned';
-  description?: string;
-  githubRepo?: GitHubRepo;
-}
-
-export interface KanbanColumn {
-  id: string; // e.g. 'todo', 'inprogress', 'done', 'custom_123'
-  title: string;
-  color: string;
-  order: number;
-}
-
-// --- Sprint / Milestone ---
-export interface Sprint {
-  id: string;
-  projectId: string;
-  name: string;
-  type: 'sprint' | 'milestone' | 'phase';
-  status: 'planning' | 'active' | 'completed';
-  startDate?: string;
-  endDate?: string;
-  order: number;
-  parentId?: string;           // Sprint → Phase containment
-  linkedSprintIds?: string[];  // Milestone tracks these Sprint/Phase IDs
-  kanbanColumns?: KanbanColumn[];
-  createdAt: string;
-  scope?: 'team' | 'personal' | 'company';  // Who owns this iteration
-  dependsOn?: string[];                       // Sprint IDs that must complete before this starts
-}
-
-// --- Invitation ---
-export interface Invitation {
-  id: string;
-  workspaceId: string;
-  type: 'email' | 'link';
-  email?: string;
-  token: string;
-  status: 'pending' | 'accepted' | 'expired';
-  invitedBy: string;
-  createdAt: string;
-  expiresAt: string;
-}
-
-// --- Task Owner ---
-export interface TaskOwner {
-  uid: string;
-  name: string;
-  photo?: string;
-}
-
-// --- Task ---
-export interface Subtask {
-  id: string;
-  text: string;
-  completed: boolean;
-}
-
-// --- Issue Relations ---
-export const RELATION_TYPES = ['blocks', 'blocked_by', 'relates_to', 'duplicates', 'duplicate_of'] as const;
-export type RelationType = typeof RELATION_TYPES[number];
-
-export const RELATION_TYPE_CONFIG: Record<RelationType, { label: string; icon: string; color: string; inverse: RelationType }> = {
-  blocks: { label: 'Blocks', icon: '🚫', color: '#ef4444', inverse: 'blocked_by' },
-  blocked_by: { label: 'Blocked by', icon: '⛔', color: '#f97316', inverse: 'blocks' },
-  relates_to: { label: 'Relates to', icon: '🔗', color: '#6366f1', inverse: 'relates_to' },
-  duplicates: { label: 'Duplicates', icon: '📋', color: '#8b5cf6', inverse: 'duplicate_of' },
-  duplicate_of: { label: 'Duplicate of', icon: '📋', color: '#8b5cf6', inverse: 'duplicates' },
-};
-
-export interface TaskRelation {
-  type: RelationType;
-  targetTaskId: string;
-  targetTaskCode?: string;  // cached for display
-  targetTaskText?: string;  // cached for display
-}
-
-export interface Task {
-  id: string;
-  taskCode?: string;         // "T-017" human-readable ID
-  text: string;
-  completed: boolean;
-  status?: string;
-  priority?: string;         // P0 | P1 | P2 | P3 (or legacy high/medium/low)
-  type?: TaskType;
-  description?: string;
-  startDate?: string;
-  dueDate?: string;
-  subtasks?: Subtask[];
-  category?: string;
-  categoryColor?: string;
-  createdAt: string;
-  updatedAt?: string;
-  updatedBy?: string;
-  updatedByName?: string;
-  tags?: string[];
-
-  // Custom ordering (from feature/kim)
-  order?: number;
-
-  // Multi-user
-  projectId?: string;
-  workspaceId?: string;
-  teamGroupId?: string;
-  assigneeId?: string;       // legacy single assignee
-  assigneeName?: string;
-  assigneePhoto?: string;
-  owners?: TaskOwner[];      // multiple owners
-
-  // Sprint
-  sprintId?: string;
-  blockedBy?: string[];      // task IDs
-
-  // Scope: personal vs work (for To-Do tab filtering)
-  scope?: 'personal' | 'work';
-  ownerUids?: string[];      // flat UID array for Firestore array-contains queries
-
-  // Enterprise fields
-  blockerStatus?: 'none' | 'blocked';
-  blockerDetail?: string;    // "What is needed?"
-  nextAction?: string;       // "Who/What/When"
-  links?: string[];          // Doc/Figma URLs
-  delayPeriod?: string;      // e.g. "3 Days"
-  delayReason?: string;      // notes
-  aiUsage?: string;          // AI tool usage notes
-
-  // Issue Relations
-  relations?: TaskRelation[];
-
-  // Estimate (story points)
-  estimate?: number;
-
-  // Sub-issue hierarchy
-  parentTaskId?: string;     // parent task ID (makes this a sub-issue)
-  parentTaskText?: string;   // parent task title for display
-
-  // Triage
-  triageStatus?: 'pending' | 'accepted' | 'declined' | 'snoozed';
-
-  // Archive
-  archived?: boolean;
-
-  // Time Tracking
-  totalTimeSpent?: number;  // cached total in minutes
-}
-
-// --- Time Entry ---
-export interface TimeEntry {
-  id: string;
-  taskId: string;
-  workspaceId?: string;
-  userId: string;
-  userName: string;
-  type: 'pomodoro' | 'manual';
-  startTime: string;
-  endTime: string;
-  durationMinutes: number;
-  note?: string;
-  createdAt?: unknown;      // Firestore Timestamp or ISO string
-}
+import type { PriorityLevel } from './task';
 
 // --- Custom Views / Saved Filters ---
 export const VIEW_ICONS = ['📋', '🔥', '🎯', '🚀', '⭐', '🐛', '🔧', '📊', '🎨', '💡', '⚡', '🏷️'] as const;
 export const VIEW_COLORS = ['#6366f1', '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4'] as const;
 
+import type { TaskType } from './task';
+
 export interface ViewFilter {
-  statuses?: string[];         // e.g. ['todo', 'inprogress']
-  priorities?: PriorityLevel[];// e.g. ['P0', 'P1']
-  types?: TaskType[];          // e.g. ['bug', 'feature']
-  tags?: string[];             // e.g. ['frontend', 'urgent']
-  assigneeIds?: string[];      // filter by specific owners
-  hideCompleted?: boolean;     // hide done tasks
+  statuses?: string[];
+  priorities?: PriorityLevel[];
+  types?: TaskType[];
+  tags?: string[];
+  assigneeIds?: string[];
+  hideCompleted?: boolean;
   scope?: 'personal' | 'work';
-  hasBlocker?: boolean;        // only blocked tasks
+  hasBlocker?: boolean;
   hasDueDate?: 'overdue' | 'today' | 'thisWeek' | 'any';
-  initiativeId?: string;       // filter by strategic initiative
+  initiativeId?: string;
 }
 
 export type ViewMode = 'list' | 'board' | 'calendar' | 'table' | 'timeline';
@@ -319,66 +41,18 @@ export type ViewMode = 'list' | 'board' | 'calendar' | 'table' | 'timeline';
 export interface CustomView {
   id: string;
   name: string;
-  icon: string;                // emoji
-  color: string;               // hex
+  icon: string;
+  color: string;
   filters: ViewFilter;
   viewMode: ViewMode;
-
-  // Scope
-  projectId: string;           // which project this view belongs to
-  workspaceId: string;
-  createdBy: string;           // uid of creator
-  createdAt: string;
-  updatedAt?: string;
-}
-
-// --- Issue Templates ---
-export const TEMPLATE_ICONS = ['📋', '🐛', '✨', '🎨', '📝', '🤝', '⚙️', '🚀', '🔧', '💡', '📊', '🧪'] as const;
-
-export interface IssueTemplate {
-  id: string;
-  name: string;                // e.g. "Bug Report", "Feature Request"
-  icon: string;                // emoji
-  description?: string;        // Template description for users
-
-  // Pre-filled fields
-  titlePattern?: string;       // e.g. "[Bug] ", "[Feature] "
-  defaultDescription?: string; // Markdown body template
-  defaultType?: TaskType;
-  defaultPriority?: PriorityLevel;
-  defaultTags?: string[];
-  defaultCategory?: string;
-  defaultCategoryColor?: string;
-  defaultBlockerStatus?: 'none' | 'blocked';
-
-  // Scope
-  projectId?: string;
+  projectId: string;
   workspaceId: string;
   createdBy: string;
   createdAt: string;
   updatedAt?: string;
 }
 
-// --- Decision Log ---
-export interface Decision {
-  id: string;
-  decisionCode: string;        // "D-001"
-  date: string;
-  summary: string;             // The "verdict"
-  context: string;             // Background
-  decider: string;             // Who decided
-  deciderName: string;
-  affectedTaskIds: string[];   // ["T-005", "T-008"]
-  followUpAction: string;      // "Who/What/When"
-  referenceLink?: string;
-  mentions?: { uid: string; name: string; photo?: string }[];  // tagged members
-  workspaceId: string;
-  projectId?: string;
-  createdAt: string;
-  notes?: string;
-}
-
-// --- Handoff Tracker ---
+// --- Ops: Decision / Handoff / Issue ---
 export const HANDOFF_TYPES = ['bug_fix', 'feature', 'design_review', 'qa_review', 'deployment'] as const;
 export type HandoffType = typeof HANDOFF_TYPES[number];
 
@@ -390,7 +64,6 @@ export const HANDOFF_TYPE_CONFIG: Record<HandoffType, { label: string; icon: str
   deployment: { label: 'Deployment', icon: '🚀', color: '#10b981' },
 };
 
-/** Default checklist items per handoff direction */
 export const HANDOFF_CHECKLISTS: Record<string, string[]> = {
   'Design → Dev': ['Figma Link', 'Spec/Copy Confirmed', 'Assets Ready'],
   'QA → Dev': ['Repro Steps', 'Env/Device Info', 'Screenshot/Video'],
@@ -398,9 +71,27 @@ export const HANDOFF_CHECKLISTS: Record<string, string[]> = {
   'Dev → Design': ['Implemented per Spec', 'Screenshots Attached'],
 };
 
+export interface Decision {
+  id: string;
+  decisionCode: string;
+  date: string;
+  summary: string;
+  context: string;
+  decider: string;
+  deciderName: string;
+  affectedTaskIds: string[];
+  followUpAction: string;
+  referenceLink?: string;
+  mentions?: { uid: string; name: string; photo?: string }[];
+  workspaceId: string;
+  projectId?: string;
+  createdAt: string;
+  notes?: string;
+}
+
 export interface Handoff {
   id: string;
-  handoffCode: string;         // "H-001"
+  handoffCode: string;
   fromTeam: string;
   toTeam: string;
   type: HandoffType;
@@ -421,7 +112,6 @@ export interface Handoff {
   status: 'pending' | 'ready' | 'completed';
 }
 
-// --- Issue / Incident Log ---
 export const ISSUE_CATEGORIES = ['internet', 'power', 'hardware', 'software', 'ai_proficiency', 'communication', 'environment', 'access', 'meeting', 'other'] as const;
 export type IssueCategory = typeof ISSUE_CATEGORIES[number];
 
@@ -460,22 +150,15 @@ export interface Issue {
   timeLost: string;
   workaround: string;
   status: 'monitoring' | 'resolved' | 'escalated';
-  taggedMembers?: { uid: string; name: string; photo?: string }[];  // affected people
+  taggedMembers?: { uid: string; name: string; photo?: string }[];
   workspaceId: string;
   createdAt: string;
 }
 
-// --- Notification (Inbox) ---
+// --- Notifications ---
 export const NOTIFICATION_TYPES = [
-  'task_assigned',       // 태스크가 나에게 할당됨
-  'task_completed',      // 내가 할당된 태스크가 완료됨
-  'task_status_changed', // 내 태스크 상태 변경
-  'task_mentioned',      // 태스크에서 멘션됨
-  'sprint_started',      // 스프린트가 시작됨
-  'sprint_completed',    // 스프린트가 완료됨
-  'task_due_soon',       // 마감일 임박
-  'task_overdue',        // 마감일 초과
-  'comment_added',       // 새 댓글 달림
+  'task_assigned', 'task_completed', 'task_status_changed', 'task_mentioned',
+  'sprint_started', 'sprint_completed', 'task_due_soon', 'task_overdue', 'comment_added',
 ] as const;
 export type NotificationType = typeof NOTIFICATION_TYPES[number];
 
@@ -498,16 +181,10 @@ export interface Notification {
   body: string;
   read: boolean;
   archived: boolean;
-
-  // Who triggered
   actorUid: string;
   actorName: string;
   actorPhoto?: string;
-
-  // Target user
   recipientUid: string;
-
-  // Context
   workspaceId: string;
   projectId?: string;
   projectName?: string;
@@ -515,7 +192,6 @@ export interface Notification {
   taskText?: string;
   sprintId?: string;
   sprintName?: string;
-
   createdAt: string;
 }
 
@@ -528,11 +204,8 @@ export interface Initiative {
   startDate?: string;
   targetDate?: string;
   color: string;
-
-  // Relations
   workspaceId: string;
-  projectIds: string[]; // Projects belonging to this initiative
-
+  projectIds: string[];
   createdBy: string;
   createdAt: string;
   updatedAt?: string;
@@ -551,11 +224,10 @@ export interface KeyResult {
   title: string;
   targetValue: number;
   currentValue: number;
-  unit: string;              // '%', '건', '점', '$' etc.
+  unit: string;
   linkedTaskIds?: string[];
 }
 
-// OKR Period cadences — following industry patterns (Viva Goals, Quantive, Weekdone)
 export const OKR_CADENCES = ['quarterly', 'half', 'annual', 'custom'] as const;
 export type OkrCadence = typeof OKR_CADENCES[number];
 
@@ -567,36 +239,28 @@ export const OKR_CADENCE_CONFIG: Record<OkrCadence, { label: string; labelKo: st
 };
 
 export interface OkrPeriodOption {
-  value: string;         // 'Q1 2026', 'H1 2026', 'FY2026', etc.
-  label: string;         // same as value (display)
-  labelKo: string;       // '2026년 1분기', '2026년 상반기', '2026 회계연도'
+  value: string;
+  label: string;
+  labelKo: string;
   cadence: OkrCadence;
   year: number;
-  startMonth: number;    // 1-indexed
-  endMonth: number;      // 1-indexed
+  startMonth: number;
+  endMonth: number;
 }
 
-/**
- * Dynamically generate OKR period options.
- * Ranges from (currentYear - 1) to (currentYear + 2), covering 4 years.
- * This allows users to review past OKRs and plan 2+ years ahead.
- */
 export function generateOkrPeriods(currentYear?: number): OkrPeriodOption[] {
   const year = currentYear ?? new Date().getFullYear();
   const periods: OkrPeriodOption[] = [];
 
   for (let y = year - 1; y <= year + 2; y++) {
-    // Annual
     periods.push({
       value: `FY${y}`, label: `FY${y}`, labelKo: `${y} 회계연도`,
       cadence: 'annual', year: y, startMonth: 1, endMonth: 12,
     });
-    // Half-Year
     periods.push(
       { value: `H1 ${y}`, label: `H1 ${y}`, labelKo: `${y}년 상반기`, cadence: 'half', year: y, startMonth: 1, endMonth: 6 },
       { value: `H2 ${y}`, label: `H2 ${y}`, labelKo: `${y}년 하반기`, cadence: 'half', year: y, startMonth: 7, endMonth: 12 },
     );
-    // Quarterly
     periods.push(
       { value: `Q1 ${y}`, label: `Q1 ${y}`, labelKo: `${y}년 1분기`, cadence: 'quarterly', year: y, startMonth: 1, endMonth: 3 },
       { value: `Q2 ${y}`, label: `Q2 ${y}`, labelKo: `${y}년 2분기`, cadence: 'quarterly', year: y, startMonth: 4, endMonth: 6 },
@@ -608,11 +272,10 @@ export function generateOkrPeriods(currentYear?: number): OkrPeriodOption[] {
   return periods;
 }
 
-/** Get the "current" period value based on today's date */
 export function getCurrentPeriod(cadence: OkrCadence = 'quarterly'): string {
   const now = new Date();
   const y = now.getFullYear();
-  const m = now.getMonth() + 1; // 1-indexed
+  const m = now.getMonth() + 1;
   switch (cadence) {
     case 'annual': return `FY${y}`;
     case 'half': return m <= 6 ? `H1 ${y}` : `H2 ${y}`;
@@ -625,28 +288,26 @@ export function getCurrentPeriod(cadence: OkrCadence = 'quarterly'): string {
   }
 }
 
-/** Get the start/end ISO date strings for a given period value */
 export function getDateRangeForPeriod(periodValue: string): { startDate: string; endDate: string } | null {
   const p = ALL_PERIOD_OPTIONS.find(o => o.value === periodValue);
   if (!p) return null;
   const pad = (n: number) => String(n).padStart(2, '0');
-  const lastDay = new Date(p.year, p.endMonth, 0).getDate(); // last day of endMonth
+  const lastDay = new Date(p.year, p.endMonth, 0).getDate();
   return {
     startDate: `${p.year}-${pad(p.startMonth)}-01`,
     endDate: `${p.year}-${pad(p.endMonth)}-${pad(lastDay)}`,
   };
 }
 
-/** Pre-generated period options (module-level cache) */
 const ALL_PERIOD_OPTIONS = generateOkrPeriods();
 
 export interface Objective {
   id: string;
   title: string;
   description?: string;
-  period: string;            // 'Q1 2026', 'H1 2026', 'FY2026', 'Custom', etc.
-  startDate?: string;        // ISO date — auto-filled from preset, or user-overridden
-  endDate?: string;          // ISO date — auto-filled from preset, or user-overridden
+  period: string;
+  startDate?: string;
+  endDate?: string;
   status: 'draft' | 'active' | 'completed' | 'canceled';
   ownerId: string;
   ownerName: string;
@@ -664,7 +325,7 @@ export const OKR_STATUS_CONFIG: Record<Objective['status'], { label: string; lab
   canceled: { label: 'Canceled', labelKo: '취소', color: '#ef4444', bgColor: '#fef2f2' },
 };
 
-// --- Wiki / Documents ---
+// --- Wiki ---
 export type WikiVisibility = 'workspace' | 'private' | 'public' | 'team' | 'members';
 
 export const WIKI_VISIBILITY_CONFIG: Record<WikiVisibility, { label: string; labelKo: string; icon: string; color: string }> = {
@@ -678,28 +339,27 @@ export const WIKI_VISIBILITY_CONFIG: Record<WikiVisibility, { label: string; lab
 export interface WikiDocument {
   id: string;
   title: string;
-  content: string;          // Markdown body
-  icon?: string;            // emoji icon for the doc
-  isFolder?: boolean;       // true = folder, false/undefined = document
-  parentId?: string;        // parent doc/folder id for nesting
-  visibility?: WikiVisibility; // access control level
-  // Granular access control
-  allowedTeamIds?: string[];    // group IDs when visibility = 'team'
-  allowedTeamNames?: string[];  // group names for display
-  allowedMemberIds?: string[];  // user IDs when visibility = 'members'
-  allowedMemberNames?: string[];// user names for display
-  linkedDocIds?: string[];  // cross-referenced document IDs
+  content: string;
+  icon?: string;
+  isFolder?: boolean;
+  parentId?: string;
+  visibility?: WikiVisibility;
+  allowedTeamIds?: string[];
+  allowedTeamNames?: string[];
+  allowedMemberIds?: string[];
+  allowedMemberNames?: string[];
+  linkedDocIds?: string[];
   workspaceId: string;
-  projectId?: string;       // optional project association
+  projectId?: string;
   createdBy: string;
   createdByName?: string;
   updatedBy?: string;
   updatedByName?: string;
   pinned?: boolean;
-  favoritedBy?: string[];   // user IDs who favorited this doc
-  readBy?: string[];        // user IDs who have read this doc
-  comments?: WikiComment[]; // inline comments
-  versions?: WikiVersion[]; // version history snapshots
+  favoritedBy?: string[];
+  readBy?: string[];
+  comments?: WikiComment[];
+  versions?: WikiVersion[];
   tags?: string[];
   createdAt: string;
   updatedAt?: string;
@@ -733,8 +393,8 @@ export interface WikiVersion {
 // --- Automation Rules ---
 export interface AutomationTrigger {
   type: 'status_change';
-  from?: string;  // Optional: specific source status (null = any)
-  to: string;     // Required: target status
+  from?: string;
+  to: string;
 }
 
 export type AutomationAction =
@@ -758,10 +418,10 @@ export type ProjectHealth = 'on_track' | 'at_risk' | 'off_track';
 
 export interface ProjectUpdate {
   id: string;
-  projectId: string;     // or initiativeId
+  projectId: string;
   workspaceId: string;
   health: ProjectHealth;
-  content: string;       // markdown/text body
+  content: string;
   createdBy: string;
   createdByName?: string;
   createdByPhoto?: string;
@@ -773,18 +433,6 @@ export const PROJECT_HEALTH_CONFIG: Record<ProjectHealth, { label: string; color
   at_risk:  { label: 'At Risk',  color: '#f59e0b', emoji: '🟡' },
   off_track:{ label: 'Off Track',color: '#ef4444', emoji: '🔴' },
 };
-
-// --- Task Comments / Activity ---
-export interface TaskComment {
-  id: string;
-  taskId?: string;
-  notificationId?: string;
-  authorUid: string;
-  authorName: string;
-  authorPhoto?: string;
-  body: string;
-  createdAt: string;
-}
 
 // --- Activity Log ---
 export type ActivityEntityType = 'task' | 'wiki' | 'project' | 'sprint' | 'okr' | 'member';

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { toast } from 'sonner';
+import { handleError } from '../utils/errorHandler';
 import {
   Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText,
   Typography, Divider, Avatar, Chip, IconButton,
@@ -194,7 +194,7 @@ const Sidebar = ({
       setCreateWsOpen(false);
     } catch (e) {
       console.error(e);
-      toast.error(t('createWorkspaceFailed') as string);
+      handleError(e, { fallbackMessage: t('createWorkspaceFailed') as string });
     }
   };
 
@@ -205,7 +205,7 @@ const Sidebar = ({
       setCreateProjectOpen(false);
     } catch (e) {
       console.error(e);
-      toast.error(t('createProjectFailed') as string || 'Failed to create project');
+      handleError(e, { fallbackMessage: t('createProjectFailed') as string || 'Failed to create project' });
     }
   };
 
@@ -216,7 +216,7 @@ const Sidebar = ({
       setCreateSprintOpen(false);
     } catch (e) {
       console.error(e);
-      toast.error(t('createSprintFailed') as string);
+      handleError(e, { fallbackMessage: t('createSprintFailed') as string });
     }
   };
 
@@ -227,10 +227,10 @@ const Sidebar = ({
         uid: user.uid, displayName: user.displayName, email: user.email, photoURL: user.photoURL,
       });
       if (ws) { await refreshWorkspaces(); setCurrentWorkspace(ws); setJoinWsOpen(false); }
-      else toast.error(t('invalidInviteCode') as string);
+      else handleError(new Error('Invalid invite code'), { fallbackMessage: t('invalidInviteCode') as string });
     } catch (e) {
       console.error(e);
-      toast.error(t('joinWorkspaceFailed') as string);
+      handleError(e, { fallbackMessage: t('joinWorkspaceFailed') as string });
     }
   };
 
@@ -479,7 +479,7 @@ const Sidebar = ({
             {initiatives.map(init => (
               <ListItem key={init.id} disablePadding sx={{ mb: 0.2 }}>
                 <Tooltip title={collapsed ? init.name : ''} placement="right">
-                  <ListItemButton onClick={() => { navigate(`/initiative/${init.id}`); closeMobileDrawer(); }}
+                  <ListItemButton onClick={() => { navigate(`/ initiative / ${init.id} `); closeMobileDrawer(); }}
                     sx={{ borderRadius: 1.5, py: 0.5, justifyContent: collapsed ? 'center' : 'flex-start' }}>
                     <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: init.color || '#3b82f6', mr: collapsed ? 0 : 1.5 }} />
                     {!collapsed && <ListItemText primary={init.name} primaryTypographyProps={{ fontSize: '0.82rem' }} />}

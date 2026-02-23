@@ -818,22 +818,6 @@ const BlockEditor = ({ initialContent, onChange, minHeight = 300 }: BlockEditorP
     ));
   }, []);
 
-  // ─── Slash Menu ──────────────────────────────────
-  // openSlashMenu is available for programmatic slash menu opening
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const openSlashMenu = useCallback((blockId: string) => {
-    const el = blockRefs.current.get(blockId);
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    setSlashMenu({
-      open: true,
-      blockId,
-      search: '',
-      position: { top: rect.bottom + 4, left: rect.left },
-      selectedIndex: 0,
-    });
-  }, []);
-
   const closeSlashMenu = useCallback(() => {
     setSlashMenu(prev => ({ ...prev, open: false }));
   }, []);
@@ -843,7 +827,7 @@ const BlockEditor = ({ initialContent, onChange, minHeight = 300 }: BlockEditorP
     const block = blocks.find(b => b.id === blockId);
     if (block) {
       const newContent = block.content.replace(/\/\S*$/, '').replace(/\/$/, '').trim();
-      
+
       if (type === 'image') {
         const input = document.createElement('input');
         input.type = 'file';
@@ -1049,7 +1033,7 @@ const BlockEditor = ({ initialContent, onChange, minHeight = 300 }: BlockEditorP
     // Detect '/' for slash menu
     // We handle this in a setTimeout so the character is already typed
   }, [slashMenu, blocks, updateBlockContent, updateBlockType, deleteBlock, insertBlockAfter,
-      closeSlashMenu, selectSlashCommand, focusBlock]);
+    closeSlashMenu, selectSlashCommand, focusBlock]);
 
   // Track content changes for slash menu
   const handleContentChange = useCallback((id: string, content: string) => {

@@ -19,8 +19,8 @@ interface InFlightRequest<T> {
 const cache = new Map<string, CacheEntry<unknown>>();
 const inFlight = new Map<string, InFlightRequest<unknown>>();
 
-// Default TTL: 30 seconds
-const DEFAULT_TTL_MS = 30_000;
+// Default TTL: 2 minutes (optimized for low-bandwidth environments)
+const DEFAULT_TTL_MS = 120_000;
 
 /**
  * Get a cached response if it exists and hasn't expired.

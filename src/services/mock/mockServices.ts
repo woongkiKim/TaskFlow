@@ -2,7 +2,7 @@
 // Mock implementations of all service functions using the in-memory DB
 
 import * as db from './mockDb';
-import * as data from './mockData';
+import * as data from '../../data/dummyData';
 import { format } from 'date-fns';
 import type {
   Task, Project, Sprint, Workspace, TeamMember, TeamGroup,
@@ -101,7 +101,7 @@ interface AddTaskOptions {
 }
 
 export const addTaskToDB = async (
-  text: string, userId: string, date?: Date, tags?: string[],
+  text: string, _userId: string, date?: Date, tags?: string[],
   options?: AddTaskOptions,
 ): Promise<Task> => {
   seedAllData();

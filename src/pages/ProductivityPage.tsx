@@ -1,5 +1,5 @@
 // src/pages/ProductivityPage.tsx
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Box, Typography, Paper, Chip, LinearProgress,
   alpha, Fade, ToggleButton, ToggleButtonGroup,
@@ -18,6 +18,9 @@ import {
   isWithinInterval, parseISO, eachDayOfInterval,
 } from 'date-fns';
 import { ko as koLocale, enUS } from 'date-fns/locale';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, CartesianGrid
+} from 'recharts';
 
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -40,9 +43,9 @@ export default function ProductivityPage() {
 
   const dateFnsLocale = lang === 'ko' ? koLocale : enUS;
 
+  const hasLoaded = useRef(false);
   const loadData = useCallback(async () => {
     if (!user?.uid) return;
-    setLoading(true);
     try {
       const [personal, work] = await Promise.all([
         fetchTasks(user.uid).catch(() => [] as Task[]),
@@ -53,7 +56,9 @@ export default function ProductivityPage() {
       work.forEach(t => map.set(t.id, t));
       setTasks(Array.from(map.values()));
     } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+    finally {
+      if (!hasLoaded.current) { hasLoaded.current = true; setLoading(false); }
+    }
   }, [user?.uid, workspace?.id]);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -135,8 +140,6 @@ export default function ProductivityPage() {
     };
   }, [periodTasks, range, now, period, dateFnsLocale, lang, tasks]);
 
-  const maxDaily = Math.max(...stats.dailyData.map(d => Math.max(d.total, d.completed)), 1);
-
   const cardSx = {
     p: 2.5, borderRadius: 3, border: '1px solid', borderColor: 'divider',
     transition: 'all 0.2s ease',
@@ -191,7 +194,7 @@ export default function ProductivityPage() {
 
         {/* ═══ DAILY CHART ═══ */}
         <Paper sx={{ ...cardSx, mb: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
             <BarChartIcon sx={{ fontSize: 20, color: '#6366f1' }} />
             <Typography variant="subtitle1" fontWeight={700}>
               {t(lang, 'Daily Activity', '일별 활동')}
@@ -203,37 +206,68 @@ export default function ProductivityPage() {
                 <Typography variant="caption" color="text.secondary">{t(lang, 'Completed', '완료')}</Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <Box sx={{ width: 10, height: 10, borderRadius: 1, bgcolor: alpha('#6366f1', 0.2) }} />
-                <Typography variant="caption" color="text.secondary">{t(lang, 'Total', '전체')}</Typography>
+                <Box sx={{ width: 10, height: 10, borderRadius: 1, bgcolor: '#cbd5e1' }} />
+                <Typography variant="caption" color="text.secondary">{t(lang, 'Remaining', '남은 작업')}</Typography>
               </Box>
             </Box>
           </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: period === '3months' ? 0.3 : 0.8, height: 180, overflow: 'hidden' }}>
-            {stats.dailyData.map((d, i) => (
-              <Box key={i} sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
-                <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: 150, position: 'relative' }}>
-                  {/* Total bar (background) */}
-                  <Box sx={{
-                    width: '70%', position: 'absolute', bottom: 0,
-                    height: `${(d.total / maxDaily) * 100}%`, minHeight: d.total > 0 ? 4 : 0,
-                    bgcolor: alpha('#6366f1', 0.12), borderRadius: 1,
-                  }} />
-                  {/* Completed bar (foreground) */}
-                  <Box sx={{
-                    width: '70%', position: 'absolute', bottom: 0,
-                    height: `${(d.completed / maxDaily) * 100}%`, minHeight: d.completed > 0 ? 4 : 0,
-                    bgcolor: '#6366f1', borderRadius: 1,
-                    transition: 'height 0.3s ease',
-                  }} />
-                </Box>
-                {period !== '3months' && (
-                  <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.6rem', fontWeight: 600 }}>
-                    {d.label}
-                  </Typography>
-                )}
-              </Box>
-            ))}
+          <Box sx={{ height: 260, width: '100%', mt: 2 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.dailyData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={alpha('#94a3b8', 0.2)} />
+                <XAxis
+                  dataKey="label"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: '#64748b', fontWeight: 600 }}
+                  dy={10}
+                  interval={period === '3months' ? 14 : 'preserveStartEnd'}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: '#64748b' }}
+                  allowDecimals={false}
+                />
+                <RechartsTooltip
+                  cursor={{ fill: alpha('#6366f1', 0.05) }}
+                  contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 8px 32px rgba(0,0,0,0.1)', padding: '12px' }}
+                  labelStyle={{ fontWeight: 700, color: '#1e293b', marginBottom: 8 }}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  formatter={(value: any, name: any) => [
+                    value,
+                    name === 'completed' ? t(lang, 'Completed', '완료') : t(lang, 'Total', '전체')
+                  ]}
+                  // @ts-expect-error recharts internal typings are overly strict here
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  labelFormatter={(label: any, payload: any[]) => {
+                    if (payload && payload.length > 0 && payload[0].payload) {
+                      return format(payload[0].payload.day, 'PPP', { locale: dateFnsLocale });
+                    }
+                    return label || '';
+                  }}
+                />
+                <Bar
+                  dataKey="completed"
+                  stackId="a"
+                  fill="#6366f1"
+                  radius={[0, 0, 4, 4]}
+                  barSize={period === '3months' ? 4 : 24}
+                >
+                  {stats.dailyData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.completed === stats.bestDay?.completed && entry.completed > 0 ? '#10b981' : '#6366f1'} />
+                  ))}
+                </Bar>
+                <Bar
+                  dataKey={(d) => Math.max(0, d.total - d.completed)}
+                  stackId="a"
+                  fill="#cbd5e1"
+                  radius={[4, 4, 0, 0]}
+                  opacity={0.5}
+                />
+              </BarChart>
+            </ResponsiveContainer>
           </Box>
         </Paper>
 

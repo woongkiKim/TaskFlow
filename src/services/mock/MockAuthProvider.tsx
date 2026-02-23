@@ -2,7 +2,7 @@
 // Provides a fake user for mock mode, bypassing Firebase Auth entirely
 
 import { createContext, useContext, useState, type ReactNode } from 'react';
-import { MOCK_USER_ID } from './mockData';
+import { MOCK_USER_ID } from '../../data/dummyData';
 
 // Minimal User interface matching Firebase User fields we actually use
 interface MockUser {

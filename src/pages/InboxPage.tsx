@@ -9,7 +9,6 @@ import {
 import DoneAllIcon from '@mui/icons-material/DoneAll';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import CheckIcon from '@mui/icons-material/Check';
-import InboxIcon from '@mui/icons-material/Inbox';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
@@ -30,6 +29,7 @@ import {
 import { fetchTriageTasks, updateTaskTriageStatus, unassignTask } from '../services/taskService';
 import type { Notification, Task } from '../types';
 import { NOTIFICATION_TYPE_CONFIG, PRIORITY_CONFIG, TASK_TYPE_CONFIG, STATUS_CONFIG, normalizePriority } from '../types';
+import { handleError } from '../utils/errorHandler';
 
 // ─── Notification Detail Dialog ──────────────────────────
 const NotificationDetailDialog = ({
@@ -597,8 +597,8 @@ const InboxPage = () => {
             try {
                 await updateTaskTriageStatus(task.id, 'accepted');
             } catch (error) {
-                console.error('Failed to accept task', error);
                 setTriageTasks(prev => [task, ...prev]);
+                handleError(error, { fallbackMessage: 'Failed to accept task' });
             }
             setUndoSnack(null);
         }, 5000);
@@ -670,7 +670,7 @@ const InboxPage = () => {
                 body: message,
             });
         } catch (err) {
-            console.error('Failed to save reply', err);
+            handleError(err, { fallbackMessage: 'Failed to save reply' });
         }
     };
 
@@ -780,10 +780,26 @@ const InboxPage = () => {
             {tab === 0 && (
                 <Box sx={{ flex: 1, overflowY: 'auto' }}>
                     {triageTasks.length === 0 && declinedTasks.length === 0 ? (
-                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 8, opacity: 0.6 }}>
-                            <CheckCircleIcon sx={{ fontSize: 48, color: 'success.light', mb: 2 }} />
-                            <Typography variant="h6" fontWeight={700}>{textByLang('All caught up!', '모두 확인했어요!')}</Typography>
-                            <Typography variant="body2" color="text.secondary">{textByLang('No new tasks to triage.', '트리아지할 새 작업이 없습니다.')}</Typography>
+                        <Box sx={{
+                            py: 10, px: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(5, 150, 105, 0.05) 100%)',
+                            borderRadius: 4, border: '1px dashed', borderColor: 'divider',
+                            backdropFilter: 'blur(10px)', mt: 2, mb: 4
+                        }}>
+                            <Box sx={{
+                                width: 80, height: 80, borderRadius: '50%',
+                                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                boxShadow: '0 8px 32px rgba(16, 185, 129, 0.25)', mb: 1
+                            }}>
+                                <Typography fontSize="2.5rem">☕</Typography>
+                            </Box>
+                            <Typography variant="h6" fontWeight={800} color="text.primary">
+                                {textByLang('All caught up!', '모두 확인했어요!')}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" align="center" fontWeight={500} sx={{ maxWidth: 350, lineHeight: 1.6 }}>
+                                {textByLang('No new tasks to triage.', '트리아지할 새 작업이 없습니다.')}
+                            </Typography>
                         </Box>
                     ) : (
                         <>
@@ -910,18 +926,25 @@ const InboxPage = () => {
                 <Box sx={{ flex: 1, overflowY: 'auto' }}>
                     {notifications.length === 0 && (
                         <Box sx={{
-                            flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
-                            gap: 2, opacity: 0.6, py: 8
+                            py: 10, px: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(59, 130, 246, 0.05) 100%)',
+                            borderRadius: 4, border: '1px dashed', borderColor: 'divider',
+                            backdropFilter: 'blur(10px)', mt: 2, mb: 4
                         }}>
                             <Box sx={{
                                 width: 80, height: 80, borderRadius: '50%',
-                                bgcolor: 'rgba(99,102,241,0.1)',
+                                background: 'linear-gradient(135deg, #6366f1 0%, #3b82f6 100%)',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                boxShadow: '0 8px 32px rgba(99, 102, 241, 0.25)', mb: 1
                             }}>
-                                <InboxIcon sx={{ fontSize: 40, color: '#6366f1' }} />
+                                <Typography fontSize="2.5rem">📭</Typography>
                             </Box>
-                            <Typography variant="h6" fontWeight={700}>{t('inboxEmpty') as string}</Typography>
-                            <Typography variant="body2" color="text.secondary">{t('inboxEmptyDesc') as string}</Typography>
+                            <Typography variant="h6" fontWeight={800} color="text.primary">
+                                {t('inboxEmpty') as string}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" align="center" fontWeight={500} sx={{ maxWidth: 350, lineHeight: 1.6 }}>
+                                {t('inboxEmptyDesc') as string}
+                            </Typography>
                         </Box>
                     )}
 

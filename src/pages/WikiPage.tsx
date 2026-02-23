@@ -60,6 +60,7 @@ import { WIKI_VISIBILITY_CONFIG, type WikiVisibility } from '../types';
 import type { WikiDocument, WikiComment, WikiVersion, TeamGroup } from '../types';
 import { DOC_TEMPLATES, TEMPLATE_CATEGORY_LABELS, type DocTemplate } from '../data/wikiTemplates';
 import HelpTooltip from '../components/HelpTooltip';
+import { handleError } from '../utils/errorHandler';
 
 // ─── TOC helper ──────────────────────────────────────
 const extractHeadings = (md: string) => {
@@ -329,8 +330,7 @@ const WikiPage = () => {
       setFolderDialogOpen(false);
       toast.success(lang === 'ko' ? '폴더가 생성되었습니다' : 'Folder created');
     } catch (err) {
-      console.error(err);
-      toast.error(lang === 'ko' ? '폴더 생성 실패' : 'Failed to create folder');
+      handleError(err, { fallbackMessage: lang === 'ko' ? '폴더 생성 실패' : 'Failed to create folder' });
     } finally {
       setCreatingFolder(false);
     }
@@ -350,8 +350,7 @@ const WikiPage = () => {
       if (selectedDoc?.id === id) setSelectedDoc(null);
       toast.success(lang === 'ko' ? '삭제되었습니다' : 'Deleted');
     } catch (err) {
-      console.error(err);
-      toast.error(lang === 'ko' ? '삭제에 실패했습니다' : 'Failed to delete document');
+      handleError(err, { fallbackMessage: lang === 'ko' ? '삭제에 실패했습니다' : 'Failed to delete document' });
     }
   };
 
@@ -362,8 +361,7 @@ const WikiPage = () => {
     try {
       await updateWikiDocument(doc.id, { favoritedBy: newFavs });
     } catch (err) {
-      console.error(err);
-      toast.error(lang === 'ko' ? '즐겨잡기 업데이트 실패' : 'Failed to update favorites');
+      handleError(err, { fallbackMessage: lang === 'ko' ? '즐겨잡기 업데이트 실패' : 'Failed to update favorites' });
     }
   };
 
@@ -371,8 +369,7 @@ const WikiPage = () => {
     try {
       await updateWikiDocument(doc.id, { pinned: !doc.pinned });
     } catch (err) {
-      console.error(err);
-      toast.error(lang === 'ko' ? '고정 업데이트 실패' : 'Failed to update pin');
+      handleError(err, { fallbackMessage: lang === 'ko' ? '고정 업데이트 실패' : 'Failed to update pin' });
     }
   };
 
@@ -422,8 +419,8 @@ const WikiPage = () => {
       toast.success(lang === 'ko' ? '메시지를 보냈습니다' : 'Message sent');
       setMessageText('');
       closeAuthorCard();
-    } catch {
-      toast.error(lang === 'ko' ? '메시지 전송 실패' : 'Failed to send message');
+    } catch (err) {
+      handleError(err, { fallbackMessage: lang === 'ko' ? '메시지 전송 실패' : 'Failed to send message' });
     }
     setSendingMessage(false);
   };
@@ -509,9 +506,7 @@ const WikiPage = () => {
       // await loadDocs(); // This is handled by the subscription
       toast.success(lang === 'ko' ? '저장되었습니다' : 'Saved');
     } catch (err) {
-      console.error(err);
-      const msg = err instanceof Error ? err.message : '';
-      toast.error(`${lang === 'ko' ? '저장에 실패했습니다' : 'Failed to save'}${msg ? ': ' + msg : ''}`);
+      handleError(err, { fallbackMessage: lang === 'ko' ? '저장에 실패했습니다' : 'Failed to save document' });
     }
     setSaving(false);
   };
