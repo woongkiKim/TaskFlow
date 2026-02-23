@@ -7,7 +7,7 @@ import { RELATION_TYPE_CONFIG } from '../types';
 
 // ─── Response type ───────────────────────────────────────
 
-interface ApiTask {
+export interface ApiTask {
   id: number;
   taskCode: string;
   text: string;
@@ -138,13 +138,39 @@ function buildTaskBody(fields: Record<string, unknown>): Record<string, unknown>
 
 // ─── API: Fetch ──────────────────────────────────────────
 
+// Helper to fetch all paginated tasks recursively
+export const fetchTasksAllPages = async (
+  path: string,
+  params: Record<string, string | number | boolean | undefined>
+): Promise<ApiTask[]> => {
+  let allResults: ApiTask[] = [];
+  let currentCursor: string | null = null;
+  while (true) {
+    const queryParams = { ...params };
+    if (currentCursor) queryParams.cursor = currentCursor;
+    const data = await api.get<{ next: string | null; results: ApiTask[] }>(path, queryParams);
+    allResults = allResults.concat(data.results || []);
+    if (data.next) {
+      try {
+        const urlObj = new URL(data.next);
+        currentCursor = urlObj.searchParams.get('cursor');
+      } catch {
+        const match = data.next.match(/[?&]cursor=([^&]+)/);
+        currentCursor = match ? match[1] : null;
+      }
+      if (!currentCursor) break;
+    } else { break; }
+  }
+  return allResults;
+};
+
 // 1. 개인 tasks 조회 — server already sorts by -created_at
 export const fetchTasks = async (userId: string): Promise<Task[]> => {
   try {
-    const data = await api.get<{ results: ApiTask[] }>('tasks/', {
+    const results = await fetchTasksAllPages('tasks/', {
       assignee_id: userId,
     });
-    return (data.results || []).map(mapTask);
+    return results.map(mapTask);
   } catch (error) { console.error("Error fetching tasks:", error); throw error; }
 };
 
@@ -180,30 +206,30 @@ export const fetchTasksCursor = async (
 // 2. 프로젝트별 tasks — server sorted, no client sort needed
 export const fetchProjectTasks = async (projectId: string): Promise<Task[]> => {
   try {
-    const data = await api.get<{ results: ApiTask[] }>('tasks/', { project_id: projectId });
-    return (data.results || []).map(mapTask);
+    const results = await fetchTasksAllPages('tasks/', { project_id: projectId });
+    return results.map(mapTask);
   } catch (error) { console.error("Error fetching project tasks:", error); throw error; }
 };
 
 // 2a. 개인 tasks — uses server-side scope filter (no client-side filtering)
 export const fetchPersonalTasks = async (userId: string): Promise<Task[]> => {
   try {
-    const data = await api.get<{ results: ApiTask[] }>('tasks/', {
+    const results = await fetchTasksAllPages('tasks/', {
       assignee_id: userId,
       scope: 'personal',
     });
-    return (data.results || []).map(mapTask);
+    return results.map(mapTask);
   } catch (error) { console.error("Error fetching personal tasks:", error); throw error; }
 };
 
 // 2b. 회사 tasks — server sorted
 export const fetchMyWorkTasks = async (userId: string, workspaceId: string): Promise<Task[]> => {
   try {
-    const data = await api.get<{ results: ApiTask[] }>('tasks/', {
+    const results = await fetchTasksAllPages('tasks/', {
       workspace_id: workspaceId,
       assignee_id: userId,
     });
-    return (data.results || []).map(mapTask);
+    return results.map(mapTask);
   } catch (error) { console.error("Error fetching work tasks:", error); throw error; }
 };
 
@@ -378,8 +404,7 @@ export const updateTaskOrdersInDB = async (updates: { id: string; order: number 
 // 16. Project Stats
 export const fetchProjectStats = async (projectId: string): Promise<{ total: number; completed: number }> => {
   try {
-    const data = await api.get<{ results: ApiTask[] }>('tasks/', { project_id: projectId });
-    const tasks = data.results || [];
+    const tasks = await fetchTasksAllPages('tasks/', { project_id: projectId });
     return {
       total: tasks.length,
       completed: tasks.filter(t => t.completed).length,
@@ -392,11 +417,11 @@ export const fetchProjectStats = async (projectId: string): Promise<{ total: num
 // 17. Triage
 export const fetchTriageTasks = async (userId: string): Promise<Task[]> => {
   try {
-    const data = await api.get<{ results: ApiTask[] }>('tasks/', {
+    const results = await fetchTasksAllPages('tasks/', {
       assignee_id: userId,
       triage_status: 'pending',
     });
-    return (data.results || []).map(mapTask).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return results.map(mapTask).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   } catch (e) { console.error("Error fetching triage tasks:", e); throw e; }
 };
 
@@ -468,8 +493,8 @@ export const rolloverSprintTasks = async (
     return taskIds.length;
   }
   // Move all incomplete tasks from old sprint
-  const data = await api.get<{ results: ApiTask[] }>('tasks/', { sprint_id: fromSprintId });
-  const incomplete = (data.results || []).filter(t => !t.completed);
+  const results = await fetchTasksAllPages('tasks/', { sprint_id: fromSprintId });
+  const incomplete = results.filter(t => !t.completed);
   await Promise.all(incomplete.map(t => api.patch(`tasks/${t.id}/`, { sprint: Number(toSprintId) })));
   return incomplete.length;
 };
