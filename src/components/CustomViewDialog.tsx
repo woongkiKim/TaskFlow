@@ -1,5 +1,5 @@
 // src/components/CustomViewDialog.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useReducer } from 'react';
 import {
     Dialog, DialogTitle, DialogContent, DialogActions, Box, Typography, TextField,
     Button, Chip, ToggleButtonGroup, ToggleButton, Switch, FormControlLabel,
@@ -20,47 +20,72 @@ interface CustomViewDialogProps {
     allTags?: string[];
 }
 
+// ── Form state managed by useReducer (avoids cascading setState in effects) ──
+interface FormState {
+    name: string;
+    icon: string;
+    color: string;
+    statuses: string[];
+    priorities: PriorityLevel[];
+    types: TaskType[];
+    tags: string[];
+    hideCompleted: boolean;
+    hasBlocker: boolean;
+    hasDueDate: string;
+    viewMode: string;
+}
+
+const DEFAULT_FORM: FormState = {
+    name: '', icon: '📋', color: '#6366f1',
+    statuses: [], priorities: [], types: [], tags: [],
+    hideCompleted: false, hasBlocker: false, hasDueDate: '', viewMode: '',
+};
+
+type FormAction =
+    | { type: 'RESET'; payload?: FormState }
+    | { type: 'SET_FIELD'; field: keyof FormState; value: FormState[keyof FormState] };
+
+function formReducer(state: FormState, action: FormAction): FormState {
+    switch (action.type) {
+        case 'RESET': return action.payload || DEFAULT_FORM;
+        case 'SET_FIELD': return { ...state, [action.field]: action.value };
+        default: return state;
+    }
+}
+
 const CustomViewDialog = ({ open, onClose, onSave, editView, allTags = [] }: CustomViewDialogProps) => {
     const { t } = useLanguage();
 
-    const [name, setName] = useState('');
+    const [form, dispatch] = useReducer(formReducer, DEFAULT_FORM);
+    const { name, icon, color, statuses, priorities, types, tags, hideCompleted, hasBlocker, hasDueDate, viewMode } = form;
     const [nameError, setNameError] = useState(false);
-    const [icon, setIcon] = useState('📋');
-    const [color, setColor] = useState('#6366f1');
 
-    // Filter state
-    const [statuses, setStatuses] = useState<string[]>([]);
-    const [priorities, setPriorities] = useState<PriorityLevel[]>([]);
-    const [types, setTypes] = useState<TaskType[]>([]);
-    const [tags, setTags] = useState<string[]>([]);
-    const [hideCompleted, setHideCompleted] = useState(false);
-    const [hasBlocker, setHasBlocker] = useState(false);
-    const [hasDueDate, setHasDueDate] = useState<string>('');
-    const [viewMode, setViewMode] = useState<string>('');
-
-    // Populate from editView
+    // Populate form from editView when dialog opens — single dispatch, no cascading renders
     useEffect(() => {
         if (editView) {
-            setName(editView.name);
-            setIcon(editView.icon);
-            setColor(editView.color);
-            setStatuses(editView.filters.statuses || []);
-            setPriorities(editView.filters.priorities || []);
-            setTypes(editView.filters.types || []);
-            setTags(editView.filters.tags || []);
-            setHideCompleted(editView.filters.hideCompleted || false);
-            setHasBlocker(editView.filters.hasBlocker || false);
-            setHasDueDate(editView.filters.hasDueDate || '');
-            setViewMode(editView.viewMode || '');
+            dispatch({
+                type: 'RESET',
+                payload: {
+                    name: editView.name,
+                    icon: editView.icon,
+                    color: editView.color,
+                    statuses: editView.filters.statuses || [],
+                    priorities: editView.filters.priorities || [],
+                    types: editView.filters.types || [],
+                    tags: editView.filters.tags || [],
+                    hideCompleted: editView.filters.hideCompleted || false,
+                    hasBlocker: editView.filters.hasBlocker || false,
+                    hasDueDate: editView.filters.hasDueDate || '',
+                    viewMode: editView.viewMode || '',
+                },
+            });
         } else {
-            setName(''); setIcon('📋'); setColor('#6366f1');
-            setStatuses([]); setPriorities([]); setTypes([]);
-            setTags([]); setHideCompleted(false); setHasBlocker(false);
-            setHasDueDate(''); setViewMode('');
+            dispatch({ type: 'RESET' });
         }
     }, [editView, open]);
 
-
+    const setField = <K extends keyof FormState>(field: K, value: FormState[K]) =>
+        dispatch({ type: 'SET_FIELD', field, value });
 
     const handleSave = () => {
         if (!name.trim()) {
@@ -88,13 +113,13 @@ const CustomViewDialog = ({ open, onClose, onSave, editView, allTags = [] }: Cus
     };
 
     const toggleStatus = (s: string) =>
-        setStatuses(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
+        setField('statuses', statuses.includes(s) ? statuses.filter(x => x !== s) : [...statuses, s]);
     const togglePriority = (p: PriorityLevel) =>
-        setPriorities(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
+        setField('priorities', priorities.includes(p) ? priorities.filter(x => x !== p) : [...priorities, p]);
     const toggleType = (tt: TaskType) =>
-        setTypes(prev => prev.includes(tt) ? prev.filter(x => x !== tt) : [...prev, tt]);
+        setField('types', types.includes(tt) ? types.filter(x => x !== tt) : [...types, tt]);
     const toggleTag = (tag: string) =>
-        setTags(prev => prev.includes(tag) ? prev.filter(x => x !== tag) : [...prev, tag]);
+        setField('tags', tags.includes(tag) ? tags.filter(x => x !== tag) : [...tags, tag]);
 
     const filterCount = statuses.length + priorities.length + types.length
         + tags.length + (hideCompleted ? 1 : 0) + (hasBlocker ? 1 : 0) + (hasDueDate ? 1 : 0);
@@ -113,7 +138,7 @@ const CustomViewDialog = ({ open, onClose, onSave, editView, allTags = [] }: Cus
                     required
                     error={nameError}
                     helperText={nameError ? 'View name is required' : ''}
-                    value={name} onChange={e => { setName(e.target.value); if (e.target.value.trim()) setNameError(false); }}
+                    value={name} onChange={e => { setField('name', e.target.value); if (e.target.value.trim()) setNameError(false); }}
                     sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
 
                 {/* Icon & Color */}
@@ -124,7 +149,7 @@ const CustomViewDialog = ({ open, onClose, onSave, editView, allTags = [] }: Cus
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                             {VIEW_ICONS.map(ic => (
-                                <Box key={ic} role="button" tabIndex={0} onClick={() => setIcon(ic)}
+                                <Box key={ic} role="button" tabIndex={0} onClick={() => setField('icon', ic)}
                                     sx={{
                                         width: 32, height: 32, borderRadius: 1.5, display: 'flex', alignItems: 'center',
                                         justifyContent: 'center', cursor: 'pointer', fontSize: '1rem',
@@ -141,7 +166,7 @@ const CustomViewDialog = ({ open, onClose, onSave, editView, allTags = [] }: Cus
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                             {VIEW_COLORS.map(c => (
-                                <Box key={c} role="button" tabIndex={0} onClick={() => setColor(c)}
+                                <Box key={c} role="button" tabIndex={0} onClick={() => setField('color', c)}
                                     sx={{
                                         width: 24, height: 24, borderRadius: '50%', bgcolor: c, cursor: 'pointer',
                                         border: color === c ? '3px solid' : '2px solid transparent',
@@ -158,7 +183,7 @@ const CustomViewDialog = ({ open, onClose, onSave, editView, allTags = [] }: Cus
                         {t('defaultViewMode') as string || 'Default View Mode'}
                     </Typography>
                     <ToggleButtonGroup value={viewMode} exclusive
-                        onChange={(_, v) => setViewMode(v || '')} size="small">
+                        onChange={(_, v) => setField('viewMode', v || '')} size="small">
                         <ToggleButton value="">Auto</ToggleButton>
                         <ToggleButton value="list">List</ToggleButton>
                         <ToggleButton value="board">Board</ToggleButton>
@@ -277,7 +302,7 @@ const CustomViewDialog = ({ open, onClose, onSave, editView, allTags = [] }: Cus
                             Due Date
                         </Typography>
                         <FormControl size="small" sx={{ minWidth: 160 }}>
-                            <Select value={hasDueDate} onChange={e => setHasDueDate(e.target.value)}
+                            <Select value={hasDueDate} onChange={e => setField('hasDueDate', e.target.value)}
                                 displayEmpty sx={{ borderRadius: 2, fontSize: '0.78rem' }}>
                                 <MenuItem value=""><em>Any</em></MenuItem>
                                 <MenuItem value="overdue">⏰ Overdue</MenuItem>
@@ -290,11 +315,11 @@ const CustomViewDialog = ({ open, onClose, onSave, editView, allTags = [] }: Cus
                     {/* Toggles */}
                     <Box sx={{ display: 'flex', gap: 2 }}>
                         <FormControlLabel
-                            control={<Switch checked={hideCompleted} onChange={e => setHideCompleted(e.target.checked)} size="small" />}
+                            control={<Switch checked={hideCompleted} onChange={e => setField('hideCompleted', e.target.checked)} size="small" />}
                             label={<Typography variant="caption" fontWeight={500}>{t('hideCompleted') as string || 'Hide completed'}</Typography>}
                         />
                         <FormControlLabel
-                            control={<Switch checked={hasBlocker} onChange={e => setHasBlocker(e.target.checked)} size="small" color="error" />}
+                            control={<Switch checked={hasBlocker} onChange={e => setField('hasBlocker', e.target.checked)} size="small" color="error" />}
                             label={<Typography variant="caption" fontWeight={500}>Blocked only</Typography>}
                         />
                     </Box>

@@ -46,6 +46,12 @@ firestore-debug.log*
 *.sln
 *.sw?
 
+# Temp / debug artifacts
+*.txt
+!README.txt
+settings.json
+fix_imports.cjs
+
 # OS files
 .DS_Store
 Thumbs.db

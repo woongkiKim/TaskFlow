@@ -524,6 +524,8 @@ const en = {
   customFields: 'Custom Fields',
   gantt: 'Gantt Chart',
   timeTracking: 'Time Tracking',
+  whiteboard: 'Whiteboard Canvas',
+  publicForms: 'Public Forms',
 };
 
 export default en;

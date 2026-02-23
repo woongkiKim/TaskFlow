@@ -841,16 +841,18 @@ export default function CycleAnalytics() {
     open: false, title: '', tasks: [], color: COLORS.indigo,
   });
 
-  // Auto-select first active sprint
+  // Auto-select first active sprint — only when no sprint is selected
   useEffect(() => {
     if (selectedSprintId || !sprints?.length) return;
+    const now = new Date();
     const active = sprints.find(s => {
       if (!s.startDate || !s.endDate) return false;
-      const now = new Date();
       return isWithinInterval(now, { start: new Date(s.startDate), end: new Date(s.endDate) });
     });
-    setSelectedSprintId(active?.id || sprints[0]?.id || '');
-  }, [sprints, selectedSprintId]);
+    const nextId = active?.id || sprints[0]?.id || '';
+    if (nextId) setSelectedSprintId(nextId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sprints]);
 
   const selectedSprint = sprints?.find(s => s.id === selectedSprintId);
   const sprintTasks = useMemo(

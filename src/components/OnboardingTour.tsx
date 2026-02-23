@@ -9,6 +9,7 @@ interface OnboardingTourProps {
   steps: TourStep[];
   isActive: boolean;
   currentStep: number;
+  lang?: 'ko' | 'en';
   onNext: () => void;
   onPrev: () => void;
   onSkip: () => void;
@@ -29,6 +30,7 @@ const OnboardingTour = ({
   steps,
   isActive,
   currentStep,
+  lang = 'en',
   onNext,
   onPrev,
   onSkip,
@@ -261,7 +263,7 @@ const OnboardingTour = ({
             onClick={onSkip}
             sx={{ fontSize: '0.75rem', fontWeight: 600, color: '#9ca3af', textTransform: 'none' }}
           >
-            Skip Tour
+            {lang === 'ko' ? '건너뛰기' : 'Skip Tour'}
           </Button>
           <Box sx={{ display: 'flex', gap: 1 }}>
             {currentStep > 0 && (
@@ -298,7 +300,7 @@ const OnboardingTour = ({
                 transition: 'all 0.2s ease',
               }}
             >
-              {isLastStep ? '🎉 Done!' : 'Next'}
+              {isLastStep ? (lang === 'ko' ? '🎉 완료!' : '🎉 Done!') : (lang === 'ko' ? '다음' : 'Next')}
             </Button>
           </Box>
         </Box>

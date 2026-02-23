@@ -35,7 +35,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useWorkspace } from '../contexts/WorkspaceContext'; // Added
 import { fetchTasks, addTaskToDB, toggleTaskStatusInDB, updateTaskTextInDB, deleteTaskFromDB, updateTaskDateInDB, rolloverTasksToDate, updateTaskOrdersInDB } from '../services/taskService';
-import { fetchWorkspaceProjects } from '../services/projectService'; // Updated to HEAD service
+import { fetchWorkspaceProjects } from '../services/projectService';
+import useApiData from '../hooks/useApiData';
 import type { Task, Project } from '../types';
 import { getDaysInWeek, formatWeekHeader, getNextWeek, getPrevWeek, isSameDate } from '../utils/dateUtils';
 import { PomodoroStartButton } from '../components/PomodoroTimer';
@@ -239,8 +240,12 @@ const WeeklyPlanner = ({ initialDate, calendarView, onViewChange }: WeeklyPlanne
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Projects
-  const [projects, setProjects] = useState<Project[]>([]);
+  // Projects — SWR cached
+  const { data: projects = [] } = useApiData<Project[]>(
+    workspace?.id ? `projects:${workspace.id}` : null,
+    () => fetchWorkspaceProjects(workspace!.id),
+    { ttlMs: 5 * 60_000, persist: true },
+  );
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [projectAnchorEl, setProjectAnchorEl] = useState<null | HTMLElement>(null);
 
@@ -344,12 +349,6 @@ const WeeklyPlanner = ({ initialDate, calendarView, onViewChange }: WeeklyPlanne
         const data = await fetchTasks(user.uid);
         setTasks(data);
 
-        // Fetch projects if workspace is available
-        if (workspace?.id) {
-          const projectData = await fetchWorkspaceProjects(workspace.id);
-          setProjects(projectData);
-        }
-
         // Rollover logic
         const lastWeekStart = startOfWeek(subWeeks(currentDate, 1), { weekStartsOn: plannerPrefs.weekStartsOn });
         const lastWeekEnd = endOfWeek(subWeeks(currentDate, 1), { weekStartsOn: plannerPrefs.weekStartsOn });
@@ -366,7 +365,7 @@ const WeeklyPlanner = ({ initialDate, calendarView, onViewChange }: WeeklyPlanne
       }
     };
     loadData();
-  }, [user, currentDate, workspace, plannerPrefs.weekStartsOn]);
+  }, [user, currentDate, plannerPrefs.weekStartsOn]);
 
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();

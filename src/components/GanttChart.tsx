@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Box, Typography, Paper, Tooltip } from '@mui/material';
 import { format, addMonths, startOfMonth, endOfMonth, differenceInDays } from 'date-fns';
 import { ko as dateFnsKo } from 'date-fns/locale';
@@ -23,6 +23,8 @@ const GanttChart = ({ items, onItemClick }: GanttChartProps) => {
   const { lang } = useLanguage();
   const dateLocale = lang === 'ko' ? dateFnsKo : undefined;
   const todayLabel = lang === 'ko' ? '\uC624\uB298' : 'Today';
+  // Stable fallback timestamp — useState initializer runs once, safe for impure calls
+  const [stableNowMs] = useState(() => Date.now());
 
   const { minDate, maxDate, totalDays } = useMemo(() => {
     if (items.length === 0) {
@@ -36,7 +38,7 @@ const GanttChart = ({ items, onItemClick }: GanttChartProps) => {
 
     const dates = items.flatMap(p => [
       p.startDate ? new Date(p.startDate) : new Date(p.createdAt),
-      p.targetDate ? new Date(p.targetDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      p.targetDate ? new Date(p.targetDate) : new Date(stableNowMs + 30 * 24 * 60 * 60 * 1000),
     ]);
 
     const min = startOfMonth(new Date(Math.min(...dates.map(d => d.getTime()))));
@@ -50,7 +52,7 @@ const GanttChart = ({ items, onItemClick }: GanttChartProps) => {
       maxDate: paddedMax,
       totalDays: Math.max(differenceInDays(paddedMax, paddedMin), 30),
     };
-  }, [items]);
+  }, [items, stableNowMs]);
 
   const months = useMemo(() => {
     const list = [];

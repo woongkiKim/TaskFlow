@@ -23,6 +23,7 @@ import { updateProject } from '../services/projectService';
 import { updateInitiative } from '../services/initiativeService';
 import { fetchProjectUpdates } from '../services/projectUpdateService';
 import ProjectUpdateSection from '../components/ProjectUpdateSection';
+import useApiData from '../hooks/useApiData';
 import type { Project, ProjectUpdate } from '../types';
 
 const InitiativePage = () => {
@@ -39,8 +40,9 @@ const InitiativePage = () => {
     const myRole = currentMembers.find(m => m.uid === user?.uid)?.role || 'member';
     const canEdit = myRole === 'owner' || myRole === 'admin';
 
-    const [stats, setStats] = useState<Record<string, { total: number, completed: number }>>({});
-    const [loadingStats, setLoadingStats] = useState(false);
+    const initiative = initiatives.find(i => i.id === id);
+    const linkedProjects = projects.filter(p => p.initiativeId === id);
+    const availableProjects = projects.filter(p => p.initiativeId !== id).sort((a, b) => a.name.localeCompare(b.name));
 
     // Dialog States
     const [addProjectOpen, setAddProjectOpen] = useState(false);
@@ -58,14 +60,6 @@ const InitiativePage = () => {
     // Edit Form State
     const [editForm, setEditForm] = useState({ name: '', description: '', status: '', targetDate: '' });
 
-    // Project Updates State
-    const [updates, setUpdates] = useState<ProjectUpdate[]>([]);
-
-    const initiative = initiatives.find(i => i.id === id);
-    const linkedProjects = projects.filter(p => p.initiativeId === id);
-    // Projects not currently linked to THIS initiative
-    const availableProjects = projects.filter(p => p.initiativeId !== id).sort((a, b) => a.name.localeCompare(b.name));
-
     useEffect(() => {
         if (!initiative) return;
         setEditForm({
@@ -76,37 +70,27 @@ const InitiativePage = () => {
         });
     }, [initiative]);
 
+    // SWR-based project stats loading
+    const linkedProjectIds = linkedProjects.map(p => p.id).sort().join(',');
+    const { data: stats = {}, loading: loadingStats } = useApiData<Record<string, { total: number; completed: number }>>(
+        linkedProjectIds ? `initiative-stats:${linkedProjectIds}` : null,
+        async () => {
+            const newStats: Record<string, { total: number; completed: number }> = {};
+            await Promise.all(linkedProjects.map(async (p) => {
+                const s = await fetchProjectStats(p.id);
+                newStats[p.id] = s;
+            }));
+            return newStats;
+        },
+        { ttlMs: 3 * 60_000, persist: true },
+    );
 
-
-    useEffect(() => {
-        if (linkedProjects.length === 0) {
-            setStats({});
-            return;
-        }
-
-        const loadStats = async () => {
-            setLoadingStats(true);
-            const newStats: Record<string, { total: number, completed: number }> = {};
-            try {
-                // Fetch in parallel
-                await Promise.all(linkedProjects.map(async (p) => {
-                    const s = await fetchProjectStats(p.id);
-                    newStats[p.id] = s;
-                }));
-            } catch (e) {
-                console.error("Failed to load project stats", e);
-            }
-            setStats(newStats);
-            setLoadingStats(false);
-        };
-        loadStats();
-    }, [linkedProjects.length, JSON.stringify(linkedProjects.map(p => p.id))]);
-
-    // Load project updates
-    useEffect(() => {
-        if (!id) return;
-        fetchProjectUpdates(id).then(setUpdates);
-    }, [id]);
+    // SWR-based project updates loading
+    const { data: updates = [], mutate: mutateUpdates } = useApiData<ProjectUpdate[]>(
+        id ? `project-updates:${id}` : null,
+        () => fetchProjectUpdates(id!),
+        { ttlMs: 3 * 60_000, persist: true },
+    );
 
 
 
@@ -282,14 +266,14 @@ const InitiativePage = () => {
                     parentId={id!}
                     workspaceId={currentWorkspace?.id || ''}
                     updates={updates}
-                    onUpdateChange={setUpdates}
+                    onUpdateChange={mutateUpdates}
                     canEdit={canEdit}
                     contextData={{
                         totalTasks: Object.values(stats).reduce((acc, s) => acc + s.total, 0),
                         completedTasks: Object.values(stats).reduce((acc, s) => acc + s.completed, 0),
                         progress: Object.values(stats).reduce((acc, s) => acc + s.total, 0) > 0
-                             ? Math.round((Object.values(stats).reduce((acc, s) => acc + s.completed, 0) / Object.values(stats).reduce((acc, s) => acc + s.total, 0)) * 100)
-                             : 0
+                            ? Math.round((Object.values(stats).reduce((acc, s) => acc + s.completed, 0) / Object.values(stats).reduce((acc, s) => acc + s.total, 0)) * 100)
+                            : 0
                     }}
                 />
             </Box>

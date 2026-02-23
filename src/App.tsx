@@ -30,11 +30,14 @@ const ProductivityPage = lazy(() => import('./pages/ProductivityPage'));
 const AutomationsPage = lazy(() => import('./pages/AutomationsPage'));
 const CustomFieldsPage = lazy(() => import('./pages/CustomFieldsPage'));
 const GanttPage = lazy(() => import('./pages/GanttPage'));
+const WhiteboardPage = lazy(() => import('./pages/WhiteboardPage'));
 const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'));
 const TimeTrackingPage = lazy(() => import('./pages/TimeTrackingPage'));
 const SeedPage = lazy(() => import('./pages/SeedPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 const ServerErrorPage = lazy(() => import('./pages/ServerErrorPage'));
+const PublicFormPage = lazy(() => import('./pages/public/PublicFormPage'));
+const PublicFormsPage = lazy(() => import('./pages/PublicFormsPage'));
 
 // Loading Fallback Component — Linear-style branded loader
 const FullPageLoader = () => (
@@ -70,6 +73,7 @@ function App() {
         <Suspense fallback={<FullPageLoader />}>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/f/:slug" element={<PublicFormPage />} />
             <Route element={<PrivateRoute />}>
               <Route path="/" element={<MainLayout />}>
                 <Route index element={<HomePage />} />
@@ -87,6 +91,7 @@ function App() {
                 <Route path="analytics" element={<AnalyticsPage />} />
                 <Route path="okr" element={<OKRPage />} />
                 <Route path="wiki" element={<WikiPage />} />
+                <Route path="whiteboard" element={<WhiteboardPage />} />
                 <Route path="gantt" element={<GanttPage />} />
                 <Route path="discussions" element={<DiscussionPage />} />
                 <Route path="productivity" element={<ProductivityPage />} />
@@ -94,6 +99,7 @@ function App() {
                 <Route path="integrations" element={<IntegrationsPage />} />
                 <Route path="custom-fields" element={<CustomFieldsPage />} />
                 <Route path="time-tracking" element={<TimeTrackingPage />} />
+                <Route path="public-forms" element={<PublicFormsPage />} />
                 <Route path="github" element={<GitHubPanel />} />
                 <Route path="dev/seed" element={<SeedPage />} />
                 <Route path="*" element={<NotFoundPage />} />

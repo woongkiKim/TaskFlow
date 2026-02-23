@@ -138,45 +138,72 @@ function buildTaskBody(fields: Record<string, unknown>): Record<string, unknown>
 
 // ─── API: Fetch ──────────────────────────────────────────
 
-// 1. 개인 tasks 조회 (기본 200개 제한 — 무한 전량 조회 방지)
-export const fetchTasks = async (userId: string, options?: { limit?: number; offset?: number }): Promise<Task[]> => {
-  const { limit = 200, offset = 0 } = options || {};
+// 1. 개인 tasks 조회 — server already sorts by -created_at
+export const fetchTasks = async (userId: string): Promise<Task[]> => {
   try {
     const data = await api.get<{ results: ApiTask[] }>('tasks/', {
       assignee_id: userId,
-      limit,
-      offset,
     });
-    return (data.results || []).map(mapTask).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return (data.results || []).map(mapTask);
   } catch (error) { console.error("Error fetching tasks:", error); throw error; }
 };
 
-// 2. 프로젝트별 tasks
+// 1b. Cursor-based task fetch for infinite scroll
+export interface CursorPage<T> {
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
+export const fetchTasksCursor = async (
+  userId: string,
+  params?: Record<string, string | number | boolean | undefined>,
+  cursor?: string,
+): Promise<CursorPage<Task>> => {
+  const queryParams: Record<string, string | number | boolean | undefined> = {
+    assignee_id: userId,
+    ...params,
+  };
+  if (cursor) queryParams.cursor = cursor;
+
+  const data = await api.get<{ next: string | null; previous: string | null; results: ApiTask[] }>(
+    'tasks/',
+    queryParams,
+  );
+  return {
+    next: data.next,
+    previous: data.previous,
+    results: (data.results || []).map(mapTask),
+  };
+};
+
+// 2. 프로젝트별 tasks — server sorted, no client sort needed
 export const fetchProjectTasks = async (projectId: string): Promise<Task[]> => {
   try {
     const data = await api.get<{ results: ApiTask[] }>('tasks/', { project_id: projectId });
-    return (data.results || []).map(mapTask).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return (data.results || []).map(mapTask);
   } catch (error) { console.error("Error fetching project tasks:", error); throw error; }
 };
 
-// 2a. 개인 tasks (scope personal)
+// 2a. 개인 tasks — uses server-side scope filter (no client-side filtering)
 export const fetchPersonalTasks = async (userId: string): Promise<Task[]> => {
   try {
-    const data = await api.get<{ results: ApiTask[] }>('tasks/', { assignee_id: userId });
-    const all = (data.results || []).map(mapTask);
-    return all.filter(t => !t.projectId || t.scope === 'personal')
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const data = await api.get<{ results: ApiTask[] }>('tasks/', {
+      assignee_id: userId,
+      scope: 'personal',
+    });
+    return (data.results || []).map(mapTask);
   } catch (error) { console.error("Error fetching personal tasks:", error); throw error; }
 };
 
-// 2b. 회사 tasks
+// 2b. 회사 tasks — server sorted
 export const fetchMyWorkTasks = async (userId: string, workspaceId: string): Promise<Task[]> => {
   try {
     const data = await api.get<{ results: ApiTask[] }>('tasks/', {
       workspace_id: workspaceId,
       assignee_id: userId,
     });
-    return (data.results || []).map(mapTask).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return (data.results || []).map(mapTask);
   } catch (error) { console.error("Error fetching work tasks:", error); throw error; }
 };
 
@@ -285,9 +312,7 @@ export const updateTaskTagsInDB = async (id: string, tags: string[]): Promise<vo
 
 // 9. Rollover
 export const rolloverTasksToDate = async (taskIds: string[], _newDate: Date): Promise<void> => {
-  for (const id of taskIds) {
-    await api.patch(`tasks/${id}/`, {});
-  }
+  await Promise.all(taskIds.map(id => api.patch(`tasks/${id}/`, {})));
 };
 
 // 10. Kanban status
@@ -345,11 +370,9 @@ export const updateTaskOrderInDB = async (id: string, order: number): Promise<vo
   await api.patch(`tasks/${id}/`, { order });
 };
 
-// 15. 일괄 순서
+// 15. 일괄 순서 — parallel batch
 export const updateTaskOrdersInDB = async (updates: { id: string; order: number }[]): Promise<void> => {
-  for (const { id, order } of updates) {
-    await api.patch(`tasks/${id}/`, { order });
-  }
+  await Promise.all(updates.map(({ id, order }) => api.patch(`tasks/${id}/`, { order })));
 };
 
 // 16. Project Stats
@@ -418,40 +441,35 @@ export const removeTaskRelation = async (
   targetTaskId: string,
   relationType: RelationType
 ): Promise<void> => {
-  // Find and delete the relation
+  // Fetch only relevant relations using query params (server-side filter)
   const data = await api.get<{ results: Array<{ id: number; sourceTask: number; targetTask: number; type: string }> }>(
-    'task-relations/'
+    'task-relations/',
+    { source_task: taskId, target_task: targetTaskId },
   );
   const relations = data.results || [];
   const invType = RELATION_TYPE_CONFIG[relationType].inverse;
 
-  for (const rel of relations) {
-    if (
-      (rel.sourceTask === Number(taskId) && rel.targetTask === Number(targetTaskId) && rel.type === relationType) ||
-      (rel.sourceTask === Number(targetTaskId) && rel.targetTask === Number(taskId) && rel.type === invType)
-    ) {
-      await api.delete(`task-relations/${rel.id}/`);
-    }
-  }
+  // Collect matching relation IDs and delete in parallel
+  const toDelete = relations.filter(rel =>
+    (rel.sourceTask === Number(taskId) && rel.targetTask === Number(targetTaskId) && rel.type === relationType) ||
+    (rel.sourceTask === Number(targetTaskId) && rel.targetTask === Number(taskId) && rel.type === invType)
+  );
+  await Promise.all(toDelete.map(rel => api.delete(`task-relations/${rel.id}/`)));
 };
 
-// 20. Sprint Rollover
+// 20. Sprint Rollover — parallel batch
 export const rolloverSprintTasks = async (
   fromSprintId: string,
   toSprintId: string,
   taskIds?: string[]
 ): Promise<number> => {
   if (taskIds?.length) {
-    for (const id of taskIds) {
-      await api.patch(`tasks/${id}/`, { sprint: Number(toSprintId) });
-    }
+    await Promise.all(taskIds.map(id => api.patch(`tasks/${id}/`, { sprint: Number(toSprintId) })));
     return taskIds.length;
   }
   // Move all incomplete tasks from old sprint
   const data = await api.get<{ results: ApiTask[] }>('tasks/', { sprint_id: fromSprintId });
   const incomplete = (data.results || []).filter(t => !t.completed);
-  for (const t of incomplete) {
-    await api.patch(`tasks/${t.id}/`, { sprint: Number(toSprintId) });
-  }
+  await Promise.all(incomplete.map(t => api.patch(`tasks/${t.id}/`, { sprint: Number(toSprintId) })));
   return incomplete.length;
 };

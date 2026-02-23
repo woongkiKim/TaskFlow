@@ -11,6 +11,7 @@ import OnboardingTour from '../components/OnboardingTour';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useOnboarding } from '../hooks/useOnboarding';
 import { getTourSteps } from '../constants/tourSteps';
+import NetworkBanner from '../components/NetworkBanner';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const MOD = isMac ? 'Cmd' : 'Ctrl';
@@ -222,6 +223,7 @@ const MainLayout = () => {
         }}
         className="main-content-transition"
       >
+        <NetworkBanner />
         <Toolbar />
         <Suspense fallback={
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 12 }}>

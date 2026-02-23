@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import useApiData from '../hooks/useApiData';
+import { useTaskActions } from '../hooks/useTaskActions';
 import {
     Box, Typography, Button, ToggleButtonGroup, ToggleButton,
     alpha, IconButton, Tooltip, Divider, CircularProgress,
@@ -18,13 +20,11 @@ import { useWorkspace } from '../contexts/WorkspaceContext';
 import HomeIcon from '@mui/icons-material/Home';
 import BusinessIcon from '@mui/icons-material/Business';
 import {
-    fetchProjectTasks, fetchPersonalTasks, fetchMyWorkTasks, addTaskToDB,
-    toggleTaskStatusInDB, updateTaskTextInDB, deleteTaskFromDB, updateTaskKanbanStatusInDB,
-    updateTaskOrdersInDB, rolloverSprintTasks
+    fetchProjectTasks, fetchPersonalTasks, fetchMyWorkTasks,
 } from '../services/taskService';
 import { fetchCustomViews, saveCustomView, deleteCustomView } from '../services/savedViewService';
-import { updateProjectColumns, DEFAULT_KANBAN_COLUMNS } from '../services/projectService';
-import type { Task, KanbanColumn, TaskType, TaskOwner, PriorityLevel, CustomView, ViewMode as GlobalViewMode } from '../types';
+import { DEFAULT_KANBAN_COLUMNS } from '../services/projectService';
+import type { Task, PriorityLevel, CustomView, ViewMode as GlobalViewMode } from '../types';
 import ListView from '../components/ListView';
 import BoardView from '../components/BoardView';
 import TableView from '../components/TableView';
@@ -41,26 +41,17 @@ import ArticleIcon from '@mui/icons-material/Article';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { toast } from 'sonner';
-import confetti from 'canvas-confetti';
 import { handleError } from '../utils/errorHandler';
 
 
 type LocalViewMode = GlobalViewMode;
 type TaskScope = 'personal' | 'work';
-const sortTasksByOrder = (arr: Task[]) => [...arr].sort((a, b) => {
-    const ao = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER;
-    const bo = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER;
-    if (ao !== bo) return ao - bo;
-    return b.createdAt.localeCompare(a.createdAt);
-});
 
 const TasksPage = () => {
     const { user } = useAuth();
     const { t, lang } = useLanguage();
     const { currentProject, setCurrentProject, currentWorkspace, currentSprint, scope, sprints, updateCurrentSprint, currentViewMode, setCurrentViewMode, activeViewFilter, setActiveViewFilter, projects } = useWorkspace();
 
-    const [tasks, setTasks] = useState<Task[]>([]);
-    const [loading, setLoading] = useState(true);
     const viewMode = currentViewMode as LocalViewMode;
     const setViewMode = setCurrentViewMode;
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -99,7 +90,6 @@ const TasksPage = () => {
         }
     }, [availableViews, viewMode, setViewMode]);
 
-
     // Quick-Add bar state
     const [quickAddText, setQuickAddText] = useState('');
     const [quickAddFocused, setQuickAddFocused] = useState(false);
@@ -117,33 +107,53 @@ const TasksPage = () => {
         loadViews();
     }, [currentWorkspace, currentProject]);
 
-    // Fetch tasks — branches by taskScope
-    useEffect(() => {
-        if (!user) return;
-        const load = async () => {
-            setLoading(true);
-            try {
-                let data: Task[] = [];
-                if (currentProject) {
-                    data = await fetchProjectTasks(currentProject.id);
-                } else if (activeViewFilter?.initiativeId && currentWorkspace) {
-                    const linkedProjs = projects.filter(p => p.initiativeId === activeViewFilter.initiativeId);
-                    if (linkedProjs.length > 0) {
-                        const results = await Promise.all(linkedProjs.map(p => fetchProjectTasks(p.id)));
-                        data = results.flat();
-                    }
-                } else if (taskScope === 'work' && currentWorkspace) {
-                    data = await fetchMyWorkTasks(user.uid, currentWorkspace.id);
-                } else {
-                    data = await fetchPersonalTasks(user.uid);
-                }
-                setTasks(data);
-            } catch (e) { console.error(e); }
-            finally { setLoading(false); }
-        };
-        load();
+    // ─── SWR-based task loading (instant from cache, background revalidation) ───
+    const taskCacheKey = useMemo(() => {
+        if (!user) return null;
+        if (currentProject) return `tasks:project:${currentProject.id}`;
+        if (activeViewFilter?.initiativeId && currentWorkspace) return `tasks:initiative:${activeViewFilter.initiativeId}`;
+        if (taskScope === 'work' && currentWorkspace) return `tasks:work:${user.uid}:${currentWorkspace.id}`;
+        return `tasks:personal:${user.uid}`;
+    }, [user, currentProject, currentWorkspace, taskScope, activeViewFilter]);
+
+    const taskFetcher = useCallback(async () => {
+        if (!user) return [];
+        if (currentProject) return fetchProjectTasks(currentProject.id);
+        if (activeViewFilter?.initiativeId && currentWorkspace) {
+            const linkedProjs = projects.filter(p => p.initiativeId === activeViewFilter.initiativeId);
+            if (linkedProjs.length > 0) {
+                const results = await Promise.all(linkedProjs.map(p => fetchProjectTasks(p.id)));
+                return results.flat();
+            }
+            return [];
+        }
+        if (taskScope === 'work' && currentWorkspace) return fetchMyWorkTasks(user.uid, currentWorkspace.id);
+        return fetchPersonalTasks(user.uid);
     }, [user, currentProject, currentWorkspace, taskScope, activeViewFilter, projects]);
 
+    const { data: swrTasks = [], loading, mutate: _mutateTasks } = useApiData<Task[]>(
+        taskCacheKey,
+        taskFetcher,
+        { ttlMs: 3 * 60_000, persist: true },
+    );
+
+    const [tasks, setTasks] = useState<Task[]>([]);
+    // Sync SWR data into local state for optimistic updates
+    useEffect(() => { setTasks(swrTasks); }, [swrTasks]);
+
+    // ─── Task Actions (extracted to hook) ───
+    const {
+        pendingDelete,
+        handleAddInline, handleQuickAdd, handleBoardInlineAdd, handleAddDialog,
+        handleToggle, handleEdit, handleDelete, handleUndoDelete, handleSnackbarClose,
+        handleKanbanStatusChange, handleColumnsChange, handleTaskUpdate,
+        handleMoveListTask, handleReorderTodayTasks, handleMoveBoardTask, handleReorderBoardTasks,
+        handleCreateSubIssue, handleRolloverTasks,
+    } = useTaskActions(tasks, setTasks, {
+        user, t: t as (key: string) => string, lang,
+        currentProject, currentWorkspace, currentSprint,
+        setCurrentProject, updateCurrentSprint,
+    });
 
     // Filter: scope + sprint
     const filteredTasks = useMemo(() => {
@@ -157,14 +167,11 @@ const TasksPage = () => {
         // Sprint filter — hierarchy-aware
         else if (currentSprint) {
             if (currentSprint.type === 'phase') {
-                // Phase: include tasks in the phase itself + all child sprints
                 const childIds = sprints.filter(s => s.parentId === currentSprint.id).map(s => s.id);
                 const phaseGroup = new Set([currentSprint.id, ...childIds]);
                 result = result.filter(t => t.sprintId && phaseGroup.has(t.sprintId));
             } else if (currentSprint.type === 'milestone' && currentSprint.linkedSprintIds?.length) {
-                // Milestone: show tasks from all linked sprints/phases (+ their children)
                 const linkedIds = new Set<string>(currentSprint.linkedSprintIds);
-                // Also expand linked phases to include their child sprints
                 for (const lid of currentSprint.linkedSprintIds) {
                     const linked = sprints.find(s => s.id === lid);
                     if (linked?.type === 'phase') {
@@ -250,11 +257,9 @@ const TasksPage = () => {
         if (!currentSprint) return undefined;
         if (currentSprint.type === 'phase') {
             const groups: Record<string, string> = {};
-            // Add the phase itself
             groups[currentSprint.id] = currentSprint.name;
-            // Add child sprints
             sprints.filter(s => s.parentId === currentSprint.id).forEach(s => { groups[s.id] = s.name; });
-            return Object.keys(groups).length > 1 ? groups : undefined; // Only group if there are children
+            return Object.keys(groups).length > 1 ? groups : undefined;
         }
         if (currentSprint.type === 'milestone' && currentSprint.linkedSprintIds?.length) {
             const groups: Record<string, string> = {};
@@ -272,23 +277,7 @@ const TasksPage = () => {
         return undefined;
     }, [currentSprint, sprints]);
 
-    // --- Quick Add Handler (shared across all views) ---
-    const handleQuickAdd = useCallback(async (text: string, statusOverride?: string) => {
-        if (!user || !text.trim()) return;
-        try {
-            const savedTask = await addTaskToDB(text.trim(), user.uid, undefined, undefined, {
-                projectId: currentProject?.id,
-                workspaceId: currentWorkspace?.id,
-                sprintId: currentSprint?.id,
-                assigneeId: user.uid,
-                assigneeName: user.displayName || 'User',
-                assigneePhoto: user.photoURL || '',
-                status: statusOverride || 'todo',
-            });
-            setTasks(prev => [savedTask, ...prev]);
-        } catch (e) { handleError(e, { fallbackMessage: t('quickAddFailed') as string }); }
-    }, [user, currentProject, currentWorkspace, currentSprint, t]);
-
+    // Quick-Add submit
     const handleQuickAddSubmit = () => {
         if (quickAddText.trim()) {
             handleQuickAdd(quickAddText);
@@ -303,187 +292,6 @@ const TasksPage = () => {
         } else if (e.key === 'Escape') {
             setQuickAddText('');
             quickAddRef.current?.blur();
-        }
-    };
-
-    // Board inline add handler (includes status)
-    const handleBoardInlineAdd = useCallback(async (text: string, status: string) => {
-        if (!user || !text.trim()) return;
-        try {
-            const savedTask = await addTaskToDB(text.trim(), user.uid, undefined, undefined, {
-                projectId: currentProject?.id,
-                workspaceId: currentWorkspace?.id,
-                sprintId: currentSprint?.id,
-                assigneeId: user.uid,
-                assigneeName: user.displayName || 'User',
-                assigneePhoto: user.photoURL || '',
-                status,
-            });
-            setTasks(prev => [savedTask, ...prev]);
-        } catch (e) { handleError(e, { fallbackMessage: t('quickAddFailed') as string }); }
-    }, [user, currentProject, currentWorkspace, currentSprint, t]);
-
-    // --- Handlers ---
-    const handleAddInline = async (text: string, tags: string[]) => {
-        if (!user) return;
-        try {
-            const savedTask = await addTaskToDB(text, user.uid, undefined, tags.length > 0 ? tags : undefined, {
-                projectId: currentProject?.id,
-                workspaceId: currentWorkspace?.id,
-                sprintId: currentSprint?.id,
-                assigneeId: user.uid,
-                assigneeName: user.displayName || 'User',
-                assigneePhoto: user.photoURL || '',
-            });
-            setTasks(prev => [savedTask, ...prev]);
-        } catch (e) { handleError(e, { fallbackMessage: t('addFailed') as string }); }
-    };
-
-    const handleAddDialog = async (data: {
-        text: string; description?: string; priority?: string;
-        category?: string; categoryColor?: string; dueDate?: string; tags?: string[];
-        date?: Date; assigneeId?: string; assigneeName?: string; assigneePhoto?: string;
-        sprintId?: string; type?: TaskType; owners?: TaskOwner[];
-        blockerStatus?: 'none' | 'blocked'; blockerDetail?: string;
-        nextAction?: string; links?: string[];
-    }) => {
-        if (!user) return;
-        try {
-            const savedTask = await addTaskToDB(data.text, user.uid, data.date, data.tags, {
-                priority: data.priority, description: data.description, dueDate: data.dueDate,
-                category: data.category, categoryColor: data.categoryColor, status: 'todo',
-                projectId: currentProject?.id, workspaceId: currentWorkspace?.id,
-                sprintId: data.sprintId || currentSprint?.id,
-                assigneeId: data.assigneeId || user.uid,
-                assigneeName: data.assigneeName || user.displayName || 'User',
-                assigneePhoto: data.assigneePhoto || user.photoURL || '',
-                type: data.type, owners: data.owners,
-                blockerStatus: data.blockerStatus, blockerDetail: data.blockerDetail,
-                nextAction: data.nextAction, links: data.links,
-            });
-            setTasks(prev => [savedTask, ...prev]);
-        } catch (e) { handleError(e, { fallbackMessage: t('addFailed') as string }); }
-    };
-
-    const handleToggle = async (id: string) => {
-        const task = tasks.find(t => t.id === id);
-        if (!task) return;
-        const prev = [...tasks];
-        const isCompleting = !task.completed;
-
-        setTasks(tasks.map(t => t.id === id ? { ...t, completed: isCompleting, status: isCompleting ? 'done' as const : 'todo' as const } : t));
-
-        if (isCompleting) {
-            confetti({
-                particleCount: 100,
-                spread: 70,
-                origin: { y: 0.6 },
-                colors: ['#6366f1', '#3b82f6', '#10b981', '#f59e0b']
-            });
-            toast.success(t('taskCompleted') as string || 'Task completed! \ud83c\udf89');
-        }
-
-        try { await toggleTaskStatusInDB(id, task.completed); } catch (e) { setTasks(prev); handleError(e); }
-    };
-
-    const handleEdit = async (id: string, newText: string) => {
-        const prev = [...tasks];
-        setTasks(tasks.map(t => t.id === id ? { ...t, text: newText } : t));
-        try { await updateTaskTextInDB(id, newText); } catch { setTasks(prev); }
-    };
-
-    // --- Soft Delete with Undo ---
-    const [pendingDelete, setPendingDelete] = useState<{ task: Task; timeoutId: ReturnType<typeof setTimeout> } | null>(null);
-
-    const handleDelete = (id: string) => {
-        const taskToDelete = tasks.find(t => t.id === id);
-        if (!taskToDelete) return;
-
-        // Cancel any previous pending delete
-        if (pendingDelete) {
-            clearTimeout(pendingDelete.timeoutId);
-            deleteTaskFromDB(pendingDelete.task.id).catch(() => { });
-        }
-
-        // Remove from UI immediately
-        setTasks(tasks.filter(t => t.id !== id));
-
-        // Schedule actual DB delete after 5 seconds
-        const timeoutId = setTimeout(() => {
-            deleteTaskFromDB(id).catch(() => { });
-            setPendingDelete(null);
-        }, 5000);
-
-        setPendingDelete({ task: taskToDelete, timeoutId });
-    };
-
-    const handleUndoDelete = () => {
-        if (!pendingDelete) return;
-        clearTimeout(pendingDelete.timeoutId);
-        setTasks(prev => [pendingDelete.task, ...prev]);
-        setPendingDelete(null);
-    };
-
-    const handleSnackbarClose = (_event?: React.SyntheticEvent | Event, reason?: string) => {
-        if (reason === 'clickaway') return;
-        if (pendingDelete) {
-            clearTimeout(pendingDelete.timeoutId);
-            deleteTaskFromDB(pendingDelete.task.id).catch(() => { });
-            setPendingDelete(null);
-        }
-    };
-
-    const handleKanbanStatusChange = async (taskId: string, newStatus: string, dropBeforeTaskId?: string) => {
-        const prev = [...tasks];
-        const movingTask = tasks.find(t => t.id === taskId);
-        if (!movingTask) return;
-
-        const sourceStatus = movingTask.status || 'todo';
-        const targetTasks = sortTasksByOrder(
-            tasks.filter(t => t.id !== taskId && (t.status || 'todo') === newStatus)
-        );
-
-        let insertIndex = targetTasks.length;
-        if (dropBeforeTaskId) {
-            const idx = targetTasks.findIndex(t => t.id === dropBeforeTaskId);
-            if (idx >= 0) insertIndex = idx;
-        }
-
-        const reorderedTarget = [...targetTasks];
-        reorderedTarget.splice(insertIndex, 0, { ...movingTask, status: newStatus, completed: newStatus === 'done' });
-
-        const targetUpdates = reorderedTarget.map((t, order) => ({ id: t.id, order }));
-        const sourceUpdates = sourceStatus !== newStatus
-            ? sortTasksByOrder(tasks.filter(t => t.id !== taskId && (t.status || 'todo') === sourceStatus))
-                .map((t, order) => ({ id: t.id, order }))
-            : [];
-
-        const orderMap = new Map([...sourceUpdates, ...targetUpdates].map(u => [u.id, u.order]));
-        setTasks(tasks.map(t => {
-            if (t.id === taskId) {
-                return { ...t, status: newStatus, completed: newStatus === 'done', order: orderMap.get(t.id) };
-            }
-            if (orderMap.has(t.id)) {
-                return { ...t, order: orderMap.get(t.id) };
-            }
-            return t;
-        }));
-
-        try {
-            await updateTaskKanbanStatusInDB(taskId, newStatus);
-            await updateTaskOrdersInDB([...sourceUpdates, ...targetUpdates]);
-        } catch {
-            setTasks(prev);
-        }
-    };
-
-    const handleColumnsChange = async (newColumns: KanbanColumn[]) => {
-        if (currentSprint) {
-            try { await updateCurrentSprint({ kanbanColumns: newColumns }); } catch (e) { console.error(e); }
-        } else if (currentProject) {
-            const updated = { ...currentProject, kanbanColumns: newColumns };
-            setCurrentProject(updated);
-            try { await updateProjectColumns(currentProject.id, newColumns); } catch (e) { console.error(e); }
         }
     };
 
@@ -539,94 +347,11 @@ const TasksPage = () => {
         }
     };
 
-    const handleTaskUpdate = (updatedTask: Task) => {
-        setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
-    };
-
-    const handleRolloverTasks = async () => {
-        if (!currentSprint || !targetSprintId) return;
+    const handleDoRollover = async () => {
         setIsRollingOver(true);
-        try {
-            const count = await rolloverSprintTasks(currentSprint.id, targetSprintId);
-            toast.success(lang === 'ko' ? `${count}개의 할 일이 연기되었습니다.` : `${count} tasks rolled over successfully.`);
-            setRolloverDialogOpen(false);
-            // Refresh tasks
-            const data = currentProject ? await fetchProjectTasks(currentProject.id) : [];
-            setTasks(data);
-        } catch (e) {
-            handleError(e, { fallbackMessage: 'Rollover failed' });
-        } finally {
-            setIsRollingOver(false);
-        }
+        await handleRolloverTasks(targetSprintId, () => setRolloverDialogOpen(false));
+        setIsRollingOver(false);
     };
-
-
-    // Sub-issue creation
-    const handleCreateSubIssue = async (parentTask: Task, subIssueText: string) => {
-        if (!user) return;
-        try {
-            const savedTask = await addTaskToDB(subIssueText, user.uid, undefined, undefined, {
-                status: 'todo',
-                projectId: parentTask.projectId,
-                workspaceId: parentTask.workspaceId,
-                sprintId: parentTask.sprintId,
-                parentTaskId: parentTask.id,
-                parentTaskText: parentTask.text,
-                assigneeId: user.uid,
-                assigneeName: user.displayName || 'User',
-                assigneePhoto: user.photoURL || '',
-            });
-            setTasks(prev => [savedTask, ...prev]);
-            toast.success('Sub-issue created: ' + subIssueText);
-        } catch (e) { handleError(e, { fallbackMessage: 'Failed to create sub-issue' }); }
-    };
-
-    const applyOrderUpdates = useCallback(async (orderedIds: string[]) => {
-        if (orderedIds.length < 2) return;
-        const updates = orderedIds.map((id, order) => ({ id, order }));
-        const orderMap = new Map(updates.map(u => [u.id, u.order]));
-        const prev = [...tasks];
-        setTasks(prevTasks => prevTasks.map(task => (
-            orderMap.has(task.id) ? { ...task, order: orderMap.get(task.id) } : task
-        )));
-        try {
-            await updateTaskOrdersInDB(updates);
-        } catch {
-            setTasks(prev);
-        }
-    }, [tasks]);
-
-    const handleMoveListTask = useCallback((taskId: string, direction: 'up' | 'down', orderedIds: string[]) => {
-        const index = orderedIds.indexOf(taskId);
-        if (index < 0) return;
-        const target = direction === 'up' ? index - 1 : index + 1;
-        if (target < 0 || target >= orderedIds.length) return;
-        const next = [...orderedIds];
-        [next[index], next[target]] = [next[target], next[index]];
-        void applyOrderUpdates(next);
-    }, [applyOrderUpdates]);
-
-    const handleReorderTodayTasks = useCallback((orderedIds: string[]) => {
-        void applyOrderUpdates(orderedIds);
-    }, [applyOrderUpdates]);
-
-    const handleMoveBoardTask = useCallback((taskId: string, status: string, direction: 'up' | 'down') => {
-        const statusTasks = sortTasksByOrder(
-            tasks.filter(t => (t.status || 'todo') === status)
-        );
-        const orderedIds = statusTasks.map(t => t.id);
-        const index = orderedIds.indexOf(taskId);
-        if (index < 0) return;
-        const target = direction === 'up' ? index - 1 : index + 1;
-        if (target < 0 || target >= orderedIds.length) return;
-        const next = [...orderedIds];
-        [next[index], next[target]] = [next[target], next[index]];
-        void applyOrderUpdates(next);
-    }, [tasks, applyOrderUpdates]);
-
-    const handleReorderBoardTasks = useCallback((orderedIds: string[]) => {
-        void applyOrderUpdates(orderedIds);
-    }, [applyOrderUpdates]);
 
     // --- Keyboard Shortcuts ---
     useEffect(() => {
@@ -635,14 +360,12 @@ const TasksPage = () => {
             const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true';
             if (isInput) return;
 
-            // N → Focus quick-add
             if (e.key === 'n' || e.key === 'N') {
                 e.preventDefault();
                 quickAddRef.current?.focus();
                 return;
             }
 
-            // 1-4 → Switch views (only if available)
             const viewKeys: Record<string, LocalViewMode> = { '1': 'list', '2': 'board', '3': 'calendar', '4': 'table' };
             if (viewKeys[e.key] && availableViews.includes(viewKeys[e.key])) {
                 e.preventDefault();
@@ -1041,7 +764,7 @@ const TasksPage = () => {
                 <DialogActions>
                     <Button onClick={() => setRolloverDialogOpen(false)}>{t('cancel')}</Button>
                     <Button
-                        onClick={handleRolloverTasks}
+                        onClick={handleDoRollover}
                         variant="contained"
                         disabled={!targetSprintId || isRollingOver}
                         sx={{ borderRadius: 2 }}

@@ -1,5 +1,4 @@
-// src/pages/OKRPage.tsx
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
     Box, Typography, Paper, Button, IconButton, TextField,
     LinearProgress, Chip, Avatar, Collapse, Tooltip, Select,
@@ -21,6 +20,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { fetchObjectives, createObjective, updateObjective, deleteObjective } from '../services/okrService';
+import useApiData from '../hooks/useApiData';
 import type { Objective, KeyResult, OkrCadence } from '../types';
 import { OKR_STATUS_CONFIG, generateOkrPeriods, getCurrentPeriod, OKR_CADENCE_CONFIG, getDateRangeForPeriod } from '../types';
 
@@ -40,10 +40,8 @@ const OKRPage = () => {
     const { currentWorkspace } = useWorkspace();
     const wsId = currentWorkspace?.id || '';
 
-    const [objectives, setObjectives] = useState<Objective[]>([]);
-    const [loading, setLoading] = useState(true);
     const [periodFilter, setPeriodFilter] = useState<string>('all');
-    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+    const [toggledIds, setToggledIds] = useState<Set<string>>(new Set());
     const [addDialogOpen, setAddDialogOpen] = useState(false);
     const [editingKR, setEditingKR] = useState<{ objId: string; kr: KeyResult } | null>(null);
 
@@ -64,23 +62,26 @@ const OKRPage = () => {
         }
     };
 
-    // ─── Load ───
-    const loadData = useCallback(async () => {
-        if (!wsId) return;
-        try {
-            const data = await fetchObjectives(wsId, periodFilter === 'all' ? undefined : periodFilter);
-            setObjectives(data);
-            // Auto-expand all
-            setExpandedIds(new Set(data.map(o => o.id)));
-        } catch (e) { console.error('OKR load error:', e); }
-        finally { setLoading(false); }
-    }, [wsId, periodFilter]);
+    // ─── SWR-based data loading (instant from cache, background revalidation) ───
+    const { data: objectives = [], loading, isRevalidating: _isRevalidating, mutate } = useApiData<Objective[]>(
+        wsId ? `okr:${wsId}:${periodFilter}` : null,
+        () => fetchObjectives(wsId, periodFilter === 'all' ? undefined : periodFilter),
+        { ttlMs: 5 * 60_000, persist: true },
+    );
 
-    useEffect(() => { loadData(); }, [loadData]);
+    // All objectives expanded by default; user can toggle
+    const expandedIds = useMemo(() => {
+        const all = new Set(objectives.map(o => o.id));
+        toggledIds.forEach(id => {
+            if (all.has(id)) all.delete(id);
+            else all.add(id);
+        });
+        return all;
+    }, [objectives, toggledIds]);
 
     // ─── Toggle expand ───
     const toggleExpand = (id: string) => {
-        setExpandedIds(prev => {
+        setToggledIds(prev => {
             const next = new Set(prev);
             if (next.has(id)) { next.delete(id); } else { next.add(id); }
             return next;
@@ -103,21 +104,22 @@ const OKRPage = () => {
             workspaceId: wsId,
             createdBy: user.uid,
         });
-        setObjectives(prev => [obj, ...prev]);
-        setExpandedIds(prev => new Set(prev).add(obj.id));
+        mutate([obj, ...objectives]);
+        // Ensure the new objective is expanded (remove it from toggled-off set)
+        setToggledIds(prev => { const next = new Set(prev); next.delete(obj.id); return next; });
         setNewTitle(''); setNewDesc(''); setNewStartDate(''); setNewEndDate(''); setAddDialogOpen(false);
     };
 
     // ─── Delete Objective ───
     const handleDelete = async (id: string) => {
         await deleteObjective(id);
-        setObjectives(prev => prev.filter(o => o.id !== id));
+        mutate(objectives.filter(o => o.id !== id));
     };
 
     // ─── Update status ───
     const handleStatusChange = async (id: string, status: Objective['status']) => {
         await updateObjective(id, { status });
-        setObjectives(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+        mutate(objectives.map(o => o.id === id ? { ...o, status } : o));
     };
 
     // ─── Add Key Result ───
@@ -127,7 +129,7 @@ const OKRPage = () => {
         if (!obj) return;
         const newKRs = [...obj.keyResults, kr];
         await updateObjective(objId, { keyResults: newKRs });
-        setObjectives(prev => prev.map(o => o.id === objId ? { ...o, keyResults: newKRs } : o));
+        mutate(objectives.map(o => o.id === objId ? { ...o, keyResults: newKRs } : o));
         setEditingKR({ objId, kr });
     };
 
@@ -137,7 +139,7 @@ const OKRPage = () => {
         if (!obj) return;
         const newKRs = obj.keyResults.map(kr => kr.id === krId ? { ...kr, ...updates } : kr);
         await updateObjective(objId, { keyResults: newKRs });
-        setObjectives(prev => prev.map(o => o.id === objId ? { ...o, keyResults: newKRs } : o));
+        mutate(objectives.map(o => o.id === objId ? { ...o, keyResults: newKRs } : o));
     };
 
     // ─── Delete Key Result ───
@@ -146,7 +148,7 @@ const OKRPage = () => {
         if (!obj) return;
         const newKRs = obj.keyResults.filter(kr => kr.id !== krId);
         await updateObjective(objId, { keyResults: newKRs });
-        setObjectives(prev => prev.map(o => o.id === objId ? { ...o, keyResults: newKRs } : o));
+        mutate(objectives.map(o => o.id === objId ? { ...o, keyResults: newKRs } : o));
     };
 
     // ─── Compute overall progress of an Objective ───

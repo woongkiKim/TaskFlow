@@ -524,6 +524,8 @@ const ko = {
   customFields: '커스텀 필드',
   gantt: '간트 차트',
   timeTracking: '시간 추적',
+  whiteboard: '화이트보드 캔버스',
+  publicForms: '공개 폼 관리',
 };
 
 export default ko;

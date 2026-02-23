@@ -477,7 +477,7 @@ export default function HomePage() {
             </Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
               {[
-                { icon: <AddIcon />, label: t(lang, 'New Task', '할 일 추가'), color: '#6366f1', path: '/' },
+                { icon: <AddIcon />, label: t(lang, 'New Task', '할 일 추가'), color: '#6366f1', path: '/tasks' },
                 { icon: <NoteAddOutlinedIcon />, label: t(lang, 'New Document', '새 문서'), color: '#8b5cf6', path: '/wiki' },
                 { icon: <TrackChangesIcon />, label: t(lang, 'OKR Goals', 'OKR 목표'), color: '#3b82f6', path: '/okr' },
                 { icon: <PlaylistAddCheckIcon />, label: t(lang, 'View Reports', '리포트 보기'), color: '#10b981', path: '/reports' },

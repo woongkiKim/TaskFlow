@@ -29,6 +29,8 @@ import EditAttributesOutlinedIcon from '@mui/icons-material/EditAttributesOutlin
 import EditCalendarOutlinedIcon from '@mui/icons-material/EditCalendarOutlined';
 import TimerOutlinedIcon from '@mui/icons-material/TimerOutlined';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import DrawOutlinedIcon from '@mui/icons-material/DrawOutlined';
+import ListAltIcon from '@mui/icons-material/ListAlt';
 
 import { useLanguage, type TranslationKeys } from '../contexts/LanguageContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
@@ -58,6 +60,12 @@ type SidebarNavItem = {
   path: string;
   protected?: boolean;
   shortcut?: string;
+};
+
+type NavGroup = {
+  labelEn: string;
+  labelKo: string;
+  items: SidebarNavItem[];
 };
 
 const isMobileQuery = () => window.innerWidth < 900;
@@ -98,7 +106,6 @@ const Sidebar = ({
 
   const [projectsExpanded, setProjectsExpanded] = useState(true);
   const [initiativesExpanded, setInitiativesExpanded] = useState(true);
-  const [navExpanded, setNavExpanded] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const [createInitiativeOpen, setCreateInitiativeOpen] = useState(false);
@@ -165,27 +172,52 @@ const Sidebar = ({
     if (mobileOpen && isMobileQuery()) handleDrawerToggle();
   };
 
-  const navItems: SidebarNavItem[] = [
-    { textKey: 'home', icon: <DashboardOutlinedIcon sx={{ fontSize: 20 }} />, path: '/', shortcut: 'G H' },
-    { textKey: 'myTasks', icon: <HomeIcon sx={{ fontSize: 20 }} />, path: '/tasks', shortcut: 'G B' },
-    { textKey: 'reports', icon: <BarChartIcon sx={{ fontSize: 20 }} />, path: '/reports', shortcut: 'G R' },
-    { textKey: 'analytics', icon: <AnalyticsIcon sx={{ fontSize: 20 }} />, path: '/analytics' },
-    { textKey: 'opsCenter', icon: <HubIcon sx={{ fontSize: 20 }} />, path: '/ops' },
-    { textKey: 'okr', icon: <TrackChangesIcon sx={{ fontSize: 20 }} />, path: '/okr' },
-    { textKey: 'gantt', icon: <EditCalendarOutlinedIcon sx={{ fontSize: 20 }} />, path: '/gantt' },
-    { textKey: 'wiki', icon: <DescriptionOutlinedIcon sx={{ fontSize: 20 }} />, path: '/wiki' },
-    { textKey: 'discussions', icon: <ForumOutlinedIcon sx={{ fontSize: 20 }} />, path: '/discussions' },
-    { textKey: 'productivity', icon: <SpeedOutlinedIcon sx={{ fontSize: 20 }} />, path: '/productivity' },
-    { textKey: 'automations', icon: <AutoFixHighOutlinedIcon sx={{ fontSize: 20 }} />, path: '/automations' },
-    { textKey: 'integrations', icon: <ExtensionOutlinedIcon sx={{ fontSize: 20 }} />, path: '/integrations' },
-    { textKey: 'customFields', icon: <EditAttributesOutlinedIcon sx={{ fontSize: 20 }} />, path: '/custom-fields' },
-    { textKey: 'timeTracking', icon: <TimerOutlinedIcon sx={{ fontSize: 20 }} />, path: '/time-tracking' },
+  const navGroups: NavGroup[] = [
+    {
+      labelEn: 'CORE', labelKo: '핵심',
+      items: [
+        { textKey: 'home', icon: <DashboardOutlinedIcon sx={{ fontSize: 20 }} />, path: '/', shortcut: 'G H' },
+        { textKey: 'myTasks', icon: <HomeIcon sx={{ fontSize: 20 }} />, path: '/tasks', shortcut: 'G B' },
+      ],
+    },
+    {
+      labelEn: 'PLAN & TRACK', labelKo: '계획 & 추적',
+      items: [
+        { textKey: 'reports', icon: <BarChartIcon sx={{ fontSize: 20 }} />, path: '/reports', shortcut: 'G R' },
+        { textKey: 'analytics', icon: <AnalyticsIcon sx={{ fontSize: 20 }} />, path: '/analytics' },
+        { textKey: 'okr', icon: <TrackChangesIcon sx={{ fontSize: 20 }} />, path: '/okr' },
+        { textKey: 'gantt', icon: <EditCalendarOutlinedIcon sx={{ fontSize: 20 }} />, path: '/gantt' },
+        { textKey: 'timeTracking', icon: <TimerOutlinedIcon sx={{ fontSize: 20 }} />, path: '/time-tracking' },
+        { textKey: 'productivity', icon: <SpeedOutlinedIcon sx={{ fontSize: 20 }} />, path: '/productivity' },
+      ],
+    },
+    {
+      labelEn: 'COLLABORATE', labelKo: '협업',
+      items: [
+        { textKey: 'wiki', icon: <DescriptionOutlinedIcon sx={{ fontSize: 20 }} />, path: '/wiki' },
+        { textKey: 'discussions', icon: <ForumOutlinedIcon sx={{ fontSize: 20 }} />, path: '/discussions' },
+        { textKey: 'whiteboard', icon: <DrawOutlinedIcon sx={{ fontSize: 20 }} />, path: '/whiteboard' },
+      ],
+    },
+    {
+      labelEn: 'CONFIGURE', labelKo: '설정 & 연동',
+      items: [
+        { textKey: 'automations', icon: <AutoFixHighOutlinedIcon sx={{ fontSize: 20 }} />, path: '/automations' },
+        { textKey: 'integrations', icon: <ExtensionOutlinedIcon sx={{ fontSize: 20 }} />, path: '/integrations' },
+        { textKey: 'customFields', icon: <EditAttributesOutlinedIcon sx={{ fontSize: 20 }} />, path: '/custom-fields' },
+        { textKey: 'publicForms', icon: <ListAltIcon sx={{ fontSize: 20 }} />, path: '/public-forms' },
+        { textKey: 'opsCenter', icon: <HubIcon sx={{ fontSize: 20 }} />, path: '/ops' },
+      ],
+    },
   ];
 
-  const filteredNavItems = navItems.filter(item => {
-    if (item.protected && myRole !== 'owner' && myRole !== 'admin') return false;
-    return true;
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    CORE: true, 'PLAN & TRACK': true, COLLABORATE: true, CONFIGURE: false,
   });
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const handleCreateWs = async (name: string, color: string, type: 'personal' | 'team' | 'organization') => {
     try {
@@ -368,63 +400,82 @@ const Sidebar = ({
 
       <Divider sx={{ mx: 2, mb: 1 }} />
 
-      <Box sx={{ px: 2, mb: 1 }}>
-        {!collapsed && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, mb: 0.5, cursor: 'pointer' }} onClick={() => setNavExpanded(!navExpanded)}>
-            {navExpanded ? <ExpandLessIcon sx={{ fontSize: 12, color: 'text.secondary' }} /> : <ExpandMoreIcon sx={{ fontSize: 12, color: 'text.secondary' }} />}
-            <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'uppercase', fontSize: '0.6rem', letterSpacing: 0.8 }}>
-              {lang === 'ko' ? '기본 메뉴' : 'FAVORITES'}
-            </Typography>
-          </Box>
-        )}
-        <Collapse in={navExpanded || collapsed}>
-          <List dense disablePadding>
-            {filteredNavItems.map(item => (
-              <ListItem key={item.textKey} disablePadding sx={{ mb: 0.2 }}>
-                <Tooltip
-                  title={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="caption" fontWeight={600}>{t(item.textKey)}</Typography>
-                      {item.shortcut && (
-                        <Chip
-                          label={item.shortcut}
-                          size="small"
-                          sx={{
-                            height: 16, fontSize: '0.6rem', fontWeight: 800,
-                            bgcolor: 'rgba(255,255,255,0.2)', color: 'white',
-                            borderRadius: 1, '& .MuiChip-label': { px: 0.5 }
-                          }}
-                        />
-                      )}
-                    </Box>
-                  }
-                  placement="right"
-                  arrow
+      <Box sx={{ px: collapsed ? 1 : 2, mb: 1 }}>
+        {navGroups.map((group) => {
+          const groupKey = group.labelEn;
+          const isExpanded = expandedGroups[groupKey] ?? true;
+          const filteredItems = group.items.filter(item => {
+            if (item.protected && myRole !== 'owner' && myRole !== 'admin') return false;
+            return true;
+          });
+          if (filteredItems.length === 0) return null;
+
+          return (
+            <Box key={groupKey} sx={{ mb: 0.5 }}>
+              {!collapsed && (
+                <Box
+                  sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, mb: 0.3, mt: 1, cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => toggleGroup(groupKey)}
                 >
-                  <ListItemButton
-                    component={NavLink} to={item.path} end={item.path === '/'} selected={location.pathname === item.path}
-                    onClick={() => {
-                      closeMobileDrawer();
-                      if (item.path === '/tasks') { setCurrentProject(null); setCurrentSprint(null); }
-                    }}
-                    sx={{
-                      borderRadius: 1.5, py: 0.8, px: 1.5,
-                      justifyContent: collapsed ? 'center' : 'flex-start',
-                      '&.active': { bgcolor: 'primary.main', color: 'white', '& .MuiListItemIcon-root': { color: 'white' } }
-                    }}>
-                    <ListItemIcon sx={{ minWidth: collapsed ? 'auto' : 32, color: location.pathname === item.path ? 'white' : 'text.secondary' }}>
-                      {item.icon}
-                    </ListItemIcon>
-                    {!collapsed && (
-                      <ListItemText primary={t(item.textKey)}
-                        primaryTypographyProps={{ fontSize: '0.82rem', fontWeight: 600 }} />
-                    )}
-                  </ListItemButton>
-                </Tooltip>
-              </ListItem>
-            ))}
-          </List>
-        </Collapse>
+                  {isExpanded
+                    ? <ExpandLessIcon sx={{ fontSize: 12, color: 'text.disabled' }} />
+                    : <ExpandMoreIcon sx={{ fontSize: 12, color: 'text.disabled' }} />}
+                  <Typography variant="caption" color="text.disabled" fontWeight={700} sx={{ textTransform: 'uppercase', fontSize: '0.6rem', letterSpacing: 0.8 }}>
+                    {lang === 'ko' ? group.labelKo : group.labelEn}
+                  </Typography>
+                </Box>
+              )}
+              <Collapse in={isExpanded || collapsed}>
+                <List dense disablePadding>
+                  {filteredItems.map(item => (
+                    <ListItem key={item.textKey} disablePadding sx={{ mb: 0.2 }}>
+                      <Tooltip
+                        title={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="caption" fontWeight={600}>{t(item.textKey)}</Typography>
+                            {item.shortcut && (
+                              <Chip
+                                label={item.shortcut}
+                                size="small"
+                                sx={{
+                                  height: 16, fontSize: '0.6rem', fontWeight: 800,
+                                  bgcolor: 'rgba(255,255,255,0.2)', color: 'white',
+                                  borderRadius: 1, '& .MuiChip-label': { px: 0.5 }
+                                }}
+                              />
+                            )}
+                          </Box>
+                        }
+                        placement="right"
+                        arrow
+                      >
+                        <ListItemButton
+                          component={NavLink} to={item.path} end={item.path === '/'} selected={location.pathname === item.path}
+                          onClick={() => {
+                            closeMobileDrawer();
+                            if (item.path === '/tasks') { setCurrentProject(null); setCurrentSprint(null); }
+                          }}
+                          sx={{
+                            borderRadius: 1.5, py: 0.6, px: 1.5,
+                            justifyContent: collapsed ? 'center' : 'flex-start',
+                            '&.active': { bgcolor: 'primary.main', color: 'white', '& .MuiListItemIcon-root': { color: 'white' } }
+                          }}>
+                          <ListItemIcon sx={{ minWidth: collapsed ? 'auto' : 32, color: location.pathname === item.path ? 'white' : 'text.secondary' }}>
+                            {item.icon}
+                          </ListItemIcon>
+                          {!collapsed && (
+                            <ListItemText primary={t(item.textKey)}
+                              primaryTypographyProps={{ fontSize: '0.82rem', fontWeight: 600 }} />
+                          )}
+                        </ListItemButton>
+                      </Tooltip>
+                    </ListItem>
+                  ))}
+                </List>
+              </Collapse>
+            </Box>
+          );
+        })}
       </Box>
 
       <Divider sx={{ mx: 2, mb: 1 }} />

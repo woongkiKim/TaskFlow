@@ -67,7 +67,7 @@ const DailyView = ({ currentDate, setCurrentDate, calendarView, onViewChange }: 
         const savedTask = await addTaskToDB(newTaskText.trim(), user.uid, targetTime);
         setAllTasks(prev => [savedTask, ...prev]);
         setNewTaskText('');
-      } catch (error) {
+      } catch {
         toast.error(t('addFailed') as string);
       }
     }
@@ -83,7 +83,7 @@ const DailyView = ({ currentDate, setCurrentDate, calendarView, onViewChange }: 
 
     try {
       await toggleTaskStatusInDB(id, taskToToggle.completed);
-    } catch (error) {
+    } catch {
       setAllTasks(previousTasks);
       toast.error(t('toggleFailed') as string);
     }
@@ -96,7 +96,7 @@ const DailyView = ({ currentDate, setCurrentDate, calendarView, onViewChange }: 
 
     try {
       await updateTaskTextInDB(id, newText);
-    } catch (error) {
+    } catch {
       setAllTasks(previousTasks);
       toast.error(t('editFailed') as string);
     }
@@ -109,7 +109,7 @@ const DailyView = ({ currentDate, setCurrentDate, calendarView, onViewChange }: 
 
     try {
       await deleteTaskFromDB(id);
-    } catch (error) {
+    } catch {
       setAllTasks(previousTasks);
       toast.error(t('deleteFailed') as string);
     }
