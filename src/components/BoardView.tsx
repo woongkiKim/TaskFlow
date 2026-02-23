@@ -18,7 +18,7 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import SubdirectoryArrowRightIcon from '@mui/icons-material/SubdirectoryArrowRight';
 import {
-    DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
+    DndContext, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors,
     type DragStartEvent, type DragEndEvent,
     defaultDropAnimationSideEffects, type DropAnimation,
 } from '@dnd-kit/core';
@@ -437,7 +437,10 @@ const BoardView = ({
     const [colName, setColName] = useState('');
     const [colColor, setColColor] = useState(COLUMN_COLORS[0]);
 
-    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+    const sensors = useSensors(
+        useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } })
+    );
 
     const filteredTasks = useMemo(() => {
         if (!selectedTag) return tasks;

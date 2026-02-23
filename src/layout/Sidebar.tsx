@@ -3,7 +3,7 @@ import { handleError } from '../utils/errorHandler';
 import {
   Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText,
   Typography, Divider, Avatar, Chip, IconButton,
-  Tooltip, Collapse, Menu, MenuItem, alpha
+  Tooltip, Collapse, Menu, MenuItem, alpha, Button
 } from '@mui/material';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
@@ -431,20 +431,22 @@ const Sidebar = ({
                     <ListItem key={item.textKey} disablePadding sx={{ mb: 0.2 }}>
                       <Tooltip
                         title={
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography variant="caption" fontWeight={600}>{t(item.textKey)}</Typography>
-                            {item.shortcut && (
-                              <Chip
-                                label={item.shortcut}
-                                size="small"
-                                sx={{
-                                  height: 16, fontSize: '0.6rem', fontWeight: 800,
-                                  bgcolor: 'rgba(255,255,255,0.2)', color: 'white',
-                                  borderRadius: 1, '& .MuiChip-label': { px: 0.5 }
-                                }}
-                              />
-                            )}
-                          </Box>
+                          collapsed ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="caption" fontWeight={600}>{t(item.textKey) as string}</Typography>
+                              {item.shortcut && (
+                                <Chip
+                                  label={item.shortcut}
+                                  size="small"
+                                  sx={{
+                                    height: 16, fontSize: '0.6rem', fontWeight: 800,
+                                    bgcolor: 'rgba(255,255,255,0.2)', color: 'white',
+                                    borderRadius: 1, '& .MuiChip-label': { px: 0.5 }
+                                  }}
+                                />
+                              )}
+                            </Box>
+                          ) : ''
                         }
                         placement="right"
                         arrow
@@ -492,6 +494,21 @@ const Sidebar = ({
         )}
         <Collapse in={projectsExpanded || collapsed}>
           <List dense disablePadding>
+            {projects.length === 0 && !collapsed && (
+              <ListItem disablePadding sx={{ mb: 1, px: 2, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', opacity: 0.7 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, fontStyle: 'italic' }}>
+                  {t('noProjects') as string}
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setCreateProjectOpen(true)}
+                  sx={{ py: 0.2, px: 1, fontSize: '0.7rem', textTransform: 'none', borderRadius: 1.5 }}
+                >
+                  + {t('addProject') as string}
+                </Button>
+              </ListItem>
+            )}
             {projects.map(proj => (
               <ListItem key={proj.id} disablePadding sx={{ mb: 0.2 }}>
                 <Tooltip title={collapsed ? proj.name : ''} placement="right">

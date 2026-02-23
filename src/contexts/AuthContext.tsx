@@ -1,8 +1,9 @@
 // src/contexts/AuthContext.tsx
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { type User, onAuthStateChanged, GoogleAuthProvider, OAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { type User, onAuthStateChanged, GoogleAuthProvider, OAuthProvider, signInWithPopup, signOut, getAdditionalUserInfo } from 'firebase/auth';
 import { auth } from '../FBase';
 import { Box, CircularProgress } from '@mui/material';
+import { addTaskToDB } from '../services/taskService';
 
 const IS_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 
@@ -68,7 +69,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      const additionalUserInfo = getAdditionalUserInfo(result);
+      if (additionalUserInfo?.isNewUser && result.user) {
+        await createSampleTasks(result.user.uid, result.user.displayName || 'User');
+      }
     } catch (error) {
       console.error("Login Failed", error);
       throw error;
@@ -85,10 +90,47 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     provider.addScope('email');
     provider.addScope('name');
     try {
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      const additionalUserInfo = getAdditionalUserInfo(result);
+      if (additionalUserInfo?.isNewUser && result.user) {
+        await createSampleTasks(result.user.uid, result.user.displayName || 'User');
+      }
     } catch (error) {
       console.error("Apple Login Failed", error);
       throw error;
+    }
+  };
+
+  // 2-2. 첫 사용자 샘플 데이터 생성
+  const createSampleTasks = async (uid: string, name: string) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      await Promise.all([
+        addTaskToDB('🎉 Welcome to TaskFlow! (Click me to edit)', uid, undefined, ['Welcome'], {
+          status: 'todo',
+          priority: 'high',
+          description: 'This is the task detail view. You can add more information here.\n\nTry checking the subtasks below!',
+          assigneeId: uid,
+          assigneeName: name,
+        }),
+        addTaskToDB('📱 Drag this card to "In Progress"', uid, undefined, ['Tutorial'], {
+          status: 'todo',
+          priority: 'medium',
+          assigneeId: uid,
+          assigneeName: name,
+        }),
+        addTaskToDB('✅ I am a completed task!', uid, undefined, ['Tutorial'], {
+          status: 'done',
+          priority: 'low',
+          dueDate: today,
+          assigneeId: uid,
+          assigneeName: name,
+        }),
+      ]);
+      // Note: we don't handle subtasks here as the backend API might be complex 
+      // but showing 3 basic cards works perfectly for first impressions
+    } catch (e) {
+      console.error('Failed to create sample tasks', e);
     }
   };
 
