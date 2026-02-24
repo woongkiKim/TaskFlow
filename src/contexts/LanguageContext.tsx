@@ -1,12 +1,13 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import en from '../locales/en';
 import ko from '../locales/ko';
+import sw from '../locales/sw';
 import type { TranslationKeys } from '../locales/en';
 
 export type { TranslationKeys };
 
-type Lang = 'ko' | 'en';
-const dictionaries = { ko, en };
+type Lang = 'ko' | 'en' | 'sw';
+const dictionaries = { ko, en, sw };
 
 interface LanguageContextType {
   lang: Lang;
@@ -19,7 +20,7 @@ const LanguageContext = createContext<LanguageContextType | null>(null);
 export const LanguageProvider = ({ children }: { children: ReactNode }) => {
   const [lang, setLangState] = useState<Lang>(() => {
     const saved = localStorage.getItem('taskflow-lang');
-    return (saved === 'en' || saved === 'ko') ? saved : 'ko';
+    return (saved === 'en' || saved === 'ko' || saved === 'sw') ? (saved as Lang) : 'ko';
   });
 
   const setLang = useCallback((newLang: Lang) => {

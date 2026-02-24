@@ -40,7 +40,7 @@ import useApiData from '../hooks/useApiData';
 import type { Task, Project } from '../types';
 import { getDaysInWeek, formatWeekHeader, getNextWeek, getPrevWeek, isSameDate } from '../utils/dateUtils';
 import { PomodoroStartButton } from '../components/PomodoroTimer';
-import { parseTagsFromText, getTagColor } from '../components/TagInput';
+import { parseTagsFromText, getTagColor } from '../utils/tagUtils';
 import CategoryFilter from '../components/CategoryFilter';
 import RolloverBanner from '../components/RolloverBanner';
 import { getWeeklyPlannerPreferences, setWeeklyPlannerPreferences, DEFAULT_WEEKLY_PLANNER_PREFERENCES, type WeeklyPlannerPreferences } from '../utils/plannerPreferences';

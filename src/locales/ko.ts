@@ -529,6 +529,17 @@ const ko = {
   whiteboard: '화이트보드 캔버스',
   publicForms: '공개 폼 관리',
   workload: '워크로드',
+
+  // AI & New Features
+  description: '설명',
+  aiSuggest: 'AI 제안받기',
+  aiAnalyzing: '분석 중...',
+  aiSuggestions: '✨ AI 제안 목록',
+  dismiss: '무시하기',
+  addAll: '모두 추가',
+  aiRefine: 'AI로 다듬기',
+  aiRefining: 'AI가 다듬는 중...',
+  addedSubtasks: '{n}개의 하위 작업 추가됨',
 };
 
 export default ko;

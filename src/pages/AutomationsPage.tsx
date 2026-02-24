@@ -18,7 +18,17 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 
 import { useLanguage } from '../contexts/LanguageContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { toast } from 'sonner';
+import {
+  loadRules as loadAutomationRules,
+  addRule as addAutomationRule,
+  removeRule as removeAutomationRule,
+  toggleRuleActive,
+  type AutomationRule as ServiceRule,
+  type AutomationTrigger,
+  type AutomationAction,
+} from '../services/automationService';
 
 const t = (lang: 'ko' | 'en', en: string, ko: string) => (lang === 'ko' ? ko : en);
 
@@ -70,7 +80,44 @@ const INITIAL_RULES: AutomationRule[] = [
 export default function AutomationsPage() {
   const theme = useTheme();
   const { lang } = useLanguage();
-  const [rules, setRules] = useState<AutomationRule[]>(INITIAL_RULES);
+  const { currentWorkspace } = useWorkspace();
+
+  // Local UI type includes icon/color for rendering
+  type UIRule = {
+    id: string;
+    name: string;
+    description: string;
+    trigger: string;
+    action: string;
+    active: boolean;
+    icon: ReactNode;
+    color: string;
+  };
+
+  // Convert service rules to UI rules for rendering
+  const serviceToUI = (sr: ServiceRule): UIRule => ({
+    id: sr.id,
+    name: sr.name,
+    description: `IF ${sr.trigger} [${Object.values(sr.triggerParams).join(', ')}] → THEN ${sr.action} [${Object.values(sr.actionParams).join(', ')}]`,
+    trigger: sr.trigger === 'status_change' ? `Status → ${sr.triggerParams.status || ''}` :
+      sr.trigger === 'task_created' ? 'Task Created' :
+        sr.trigger === 'due_date' ? `Due date ${sr.triggerParams.timeframe || ''}` :
+          sr.trigger === 'tag_added' ? `Tag: ${sr.triggerParams.tag || ''}` : sr.trigger,
+    action: sr.action === 'assign_user' ? `Assign to ${sr.actionParams.assignee || ''}` :
+      sr.action === 'set_status' ? `Set status → ${sr.actionParams.status || ''}` :
+        sr.action === 'add_comment' ? `Comment: ${sr.actionParams.comment || ''}` :
+          sr.action === 'send_notification' ? `Notify: ${sr.actionParams.channel || ''}` : sr.action,
+    active: sr.active,
+    icon: <AutoFixHighIcon sx={{ fontSize: 24 }} />,
+    color: sr.action === 'send_notification' ? '#ef4444' : sr.action === 'set_status' ? '#10b981' : '#6366f1',
+  });
+
+  const [rules, setRules] = useState<UIRule[]>(() => {
+    // Load persisted rules from service, fall back to initial rules
+    const persisted = loadAutomationRules();
+    if (persisted.length > 0) return persisted.map(serviceToUI);
+    return INITIAL_RULES;
+  });
   const [tab, setTab] = useState<'my_rules' | 'templates'>('my_rules');
   const [openBuilder, setOpenBuilder] = useState(false);
 
@@ -81,33 +128,15 @@ export default function AutomationsPage() {
   const [actionParam, setActionParam] = useState('');
   const [ruleName, setRuleName] = useState('');
 
-  const renderTriggerText = (tKey: string, pKey: string) => {
-    switch (tKey) {
-      case 'status_change': return `상태가 '${pKey || '...'}'(으)로 변경될 때`;
-      case 'task_created': return `새 태스크가 생성될 때`;
-      case 'due_date': return `마감일이 ${pKey || '...'} 다가올 때`;
-      case 'tag_added': return `'${pKey || '...'}' 태그가 추가될 때`;
-      default: return tKey;
-    }
-  };
-
-  const renderActionText = (aKey: string, pKey: string) => {
-    switch (aKey) {
-      case 'assign_user': return `'${pKey || '...'}'에게 할당`;
-      case 'set_status': return `상태를 '${pKey || '...'}'(으)로 변경`;
-      case 'add_comment': return `댓글 '${pKey || '...'}' 추가`;
-      case 'send_notification': return `${pKey || '...'}로 알림 전송`;
-      default: return aKey;
-    }
-  };
-
   const toggleRule = (id: string) => {
+    toggleRuleActive(id);
     setRules(prev => prev.map(r => r.id === id ? { ...r, active: !r.active } : r));
     toast.success(t(lang, 'Rule status updated', '규칙 상태가 업데이트되었습니다'));
   };
 
   const handleDelete = (id: string) => {
     if (confirm(t(lang, 'Are you sure you want to delete this rule?', '이 규칙을 삭제하시겠습니까?'))) {
+      removeAutomationRule(id);
       setRules(prev => prev.filter(r => r.id !== id));
       toast.success(t(lang, 'Rule deleted', '규칙이 삭제되었습니다'));
     }
@@ -118,23 +147,35 @@ export default function AutomationsPage() {
       toast.error(t(lang, 'Please enter a rule name', '규칙 이름을 입력해주세요'));
       return;
     }
-    const isKo = lang === 'ko';
-    const newRule: AutomationRule = {
-      id: `rule_${Date.now()}`,
+
+    const ruleId = `rule_${Date.now()}`;
+
+    // Save to automationService (localStorage-backed)
+    const serviceRule: ServiceRule = {
+      id: ruleId,
       name: ruleName,
-      description: `IF ${renderTriggerText(trigger, triggerParam)}, THEN ${renderActionText(action, actionParam)}`,
-      trigger: isKo ? renderTriggerText(trigger, triggerParam) : `If ${trigger} is ${triggerParam}`,
-      action: isKo ? renderActionText(action, actionParam) : `Then ${action} ${actionParam}`,
+      trigger: trigger as AutomationTrigger,
+      triggerParams: trigger === 'status_change' ? { status: triggerParam } :
+        trigger === 'tag_added' ? { tag: triggerParam } :
+          trigger === 'due_date' ? { timeframe: triggerParam } : {},
+      action: action as AutomationAction,
+      actionParams: action === 'assign_user' ? { assignee: actionParam } :
+        action === 'set_status' ? { status: actionParam } :
+          action === 'add_comment' ? { comment: actionParam } :
+            action === 'send_notification' ? { channel: actionParam, message: `Notification from rule: ${ruleName}` } : {},
       active: true,
-      icon: <AutoFixHighIcon sx={{ fontSize: 24 }} />,
-      color: '#6366f1'
+      workspaceId: currentWorkspace?.id || '',
     };
-    setRules([newRule, ...rules]);
+    addAutomationRule(serviceRule);
+
+    // Update local UI state
+    const uiRule = serviceToUI(serviceRule);
+    setRules(prev => [uiRule, ...prev]);
     setOpenBuilder(false);
     setRuleName('');
     setTriggerParam('');
     setActionParam('');
-    toast.success(t(lang, 'Automation rule created!', '자동화 규칙이 생성되었습니다!'));
+    toast.success(t(lang, 'Automation rule created! It will trigger on matching events.', '자동화 규칙이 생성되었습니다! 이벤트 발생 시 자동으로 실행됩니다.'));
   };
 
   const cardSx = {

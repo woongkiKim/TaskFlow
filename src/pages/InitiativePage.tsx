@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -57,18 +57,19 @@ const InitiativePage = () => {
         name: '', description: '', status: '', startDate: '', targetDate: ''
     });
 
-    // Edit Form State
+    // Edit Form State — sync from initiative via render-time reset
     const [editForm, setEditForm] = useState({ name: '', description: '', status: '', targetDate: '' });
+    const [lastInitiativeId, setLastInitiativeId] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (!initiative) return;
+    if (initiative && initiative.id !== lastInitiativeId) {
         setEditForm({
             name: initiative.name,
             description: initiative.description || '',
             status: initiative.status,
             targetDate: initiative.targetDate || ''
         });
-    }, [initiative]);
+        setLastInitiativeId(initiative.id);
+    }
 
     // SWR-based project stats loading
     const linkedProjectIds = linkedProjects.map(p => p.id).sort().join(',');

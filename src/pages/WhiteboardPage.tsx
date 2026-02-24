@@ -2,11 +2,26 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Box, Typography, Select, MenuItem, FormControl, Tooltip, CircularProgress,
   ToggleButtonGroup, ToggleButton, Button, IconButton, Chip, Paper, TextField,
-  Dialog, DialogTitle, DialogContent, DialogActions, alpha,
+  Dialog, DialogTitle, DialogContent, DialogActions, alpha, useTheme,
   Menu, ListItemIcon, ListItemText, Divider,
 } from '@mui/material';
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import LaunchIcon from '@mui/icons-material/Launch';
+import DeleteIcon from '@mui/icons-material/Delete';
+import CloudSyncIcon from '@mui/icons-material/CloudSync';
+import CloudDoneIcon from '@mui/icons-material/CloudDone';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import DrawIcon from '@mui/icons-material/Draw';
+import SaveIcon from '@mui/icons-material/Save';
+import StorageIcon from '@mui/icons-material/Storage';
+import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
+import RectangleOutlinedIcon from '@mui/icons-material/RectangleOutlined';
+import CircleOutlinedIcon from '@mui/icons-material/CircleOutlined';
+import DiamondOutlinedIcon from '@mui/icons-material/DiamondOutlined';
+import WebIcon from '@mui/icons-material/Web';
+import CloudQueueIcon from '@mui/icons-material/CloudQueue';
+import { useNavigate } from 'react-router-dom';
 import { Tldraw, Editor, getSnapshot, loadSnapshot } from '@tldraw/tldraw';
 import '@tldraw/tldraw/tldraw.css';
 
@@ -31,24 +46,10 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import { useWorkspace } from '../contexts/WorkspaceContext';
+import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
-import CloudDoneIcon from '@mui/icons-material/CloudDone';
-import CloudSyncIcon from '@mui/icons-material/CloudSync';
-import DrawIcon from '@mui/icons-material/Draw';
-import AccountTreeIcon from '@mui/icons-material/AccountTree';
-import DeleteIcon from '@mui/icons-material/Delete';
-import SaveIcon from '@mui/icons-material/Save';
-import RectangleOutlinedIcon from '@mui/icons-material/RectangleOutlined';
-import CircleOutlinedIcon from '@mui/icons-material/CircleOutlined';
-import DiamondOutlinedIcon from '@mui/icons-material/DiamondOutlined';
-import StorageIcon from '@mui/icons-material/Storage';
-import WebIcon from '@mui/icons-material/Web';
-import CloudQueueIcon from '@mui/icons-material/CloudQueue';
-import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
-
 import api from '../services/apiClient';
 import { addTaskToDB } from '../services/taskService';
-import { useAuth } from '../contexts/AuthContext';
 
 /* ──────────────────────────────────────── */
 /*  Custom Node Components for ReactFlow    */
@@ -236,6 +237,8 @@ const templateDiagrams: Record<string, { nodes: Node[]; edges: Edge[] }> = {
 /* ──────────────────────────────── */
 
 export default function WhiteboardPage() {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
   const { projects, currentProject, setCurrentProject } = useWorkspace();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -244,7 +247,8 @@ export default function WhiteboardPage() {
 
   // ──── Context Menu (right-click) state ────
   const [ctxMenu, setCtxMenu] = useState<{ mouseX: number; mouseY: number; nodeId: string } | null>(null);
-  const [convertedNodeIds, setConvertedNodeIds] = useState<Set<string>>(new Set());
+  const [convertedNodeIds, setConvertedNodeIds] = useState<Record<string, string>>({}); // nodeId -> taskId
+  const navigate = useNavigate();
 
   // ──── Freeform (tldraw) state ────
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -330,7 +334,7 @@ export default function WhiteboardPage() {
 
     const nodeData = targetNode.data as DiagramNodeData;
     try {
-      await addTaskToDB(
+      const newTask = await addTaskToDB(
         nodeData.label || 'Untitled Task',
         user.uid,
         undefined,
@@ -343,7 +347,7 @@ export default function WhiteboardPage() {
           scope: 'work',
         }
       );
-      setConvertedNodeIds(prev => new Set(prev).add(ctxMenu.nodeId));
+      setConvertedNodeIds(prev => ({ ...prev, [ctxMenu.nodeId]: newTask.id }));
       // Visual feedback: update node border
       setNodes(nds => nds.map(n =>
         n.id === ctxMenu.nodeId
@@ -357,6 +361,15 @@ export default function WhiteboardPage() {
     }
     handleCloseCtxMenu();
   }, [ctxMenu, currentProject, user, nodes, setNodes, handleCloseCtxMenu]);
+
+  const handleOpenTask = useCallback(() => {
+    if (!ctxMenu) return;
+    const taskId = convertedNodeIds[ctxMenu.nodeId];
+    if (taskId) {
+      navigate(`/tasks?id=${taskId}`);
+    }
+    handleCloseCtxMenu();
+  }, [ctxMenu, convertedNodeIds, navigate, handleCloseCtxMenu]);
 
   const handleDuplicateNode = useCallback(() => {
     if (!ctxMenu) return;
@@ -464,7 +477,7 @@ export default function WhiteboardPage() {
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* ─── Top Bar ─── */}
       <Box sx={{
-        px: 2.5, py: 1.5, borderBottom: '1px solid #e2e8f0', bgcolor: 'white',
+        px: 2.5, py: 1.5, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2,
         flexWrap: 'wrap',
       }}>
@@ -508,7 +521,7 @@ export default function WhiteboardPage() {
         {loading && (
           <Box sx={{
             position: 'absolute', inset: 0, zIndex: 10,
-            bgcolor: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            bgcolor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <CircularProgress />
           </Box>
@@ -530,14 +543,14 @@ export default function WhiteboardPage() {
               snapToGrid
               snapGrid={[16, 16]}
               defaultEdgeOptions={{ animated: true, style: { strokeWidth: 2 } }}
-              style={{ background: '#f8fafc' }}
+              style={{ background: isDark ? '#1a1a2e' : '#f8fafc' }}
             >
-              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#cbd5e1" />
+              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color={isDark ? '#334155' : '#cbd5e1'} />
               <Controls />
               <MiniMap
                 nodeStrokeColor="#6366f1"
                 nodeColor={(n) => (n.data as DiagramNodeData)?.color || '#3b82f6'}
-                style={{ borderRadius: 8, border: '1px solid #e2e8f0' }}
+                style={{ borderRadius: 8, border: `1px solid ${isDark ? '#334155' : '#e2e8f0'}` }}
               />
 
               {/* ── Toolbar Panel ── */}
@@ -563,7 +576,7 @@ export default function WhiteboardPage() {
                     </Button>
                   ))}
 
-                  <Box sx={{ borderTop: '1px solid #e2e8f0', pt: 1, mt: 0.5 }}>
+                  <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 1, mt: 0.5 }}>
                     <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ px: 0.5 }}>
                       TEMPLATES
                     </Typography>
@@ -581,7 +594,7 @@ export default function WhiteboardPage() {
                     </Button>
                   </Box>
 
-                  <Box sx={{ borderTop: '1px solid #e2e8f0', pt: 1, mt: 0.5 }}>
+                  <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 1, mt: 0.5 }}>
                     <Tooltip title="Delete selected nodes (Del)">
                       <IconButton size="small" color="error" onClick={deleteSelectedNodes}>
                         <DeleteIcon fontSize="small" />
@@ -601,7 +614,7 @@ export default function WhiteboardPage() {
                 <Chip
                   size="small" variant="outlined"
                   label={`${nodes.length} nodes · ${edges.length} edges — Double-click to edit · Drag to connect`}
-                  sx={{ bgcolor: 'white', fontWeight: 500, fontSize: '0.7rem' }}
+                  sx={{ bgcolor: 'background.paper', fontWeight: 500, fontSize: '0.7rem' }}
                 />
               </Panel>
             </ReactFlow>
@@ -651,12 +664,17 @@ export default function WhiteboardPage() {
         slotProps={{ paper: { sx: { borderRadius: 2, minWidth: 200, boxShadow: '0 8px 32px rgba(0,0,0,0.12)' } } }}
       >
         <MenuItem
-          onClick={handleConvertToTask}
-          disabled={!currentProject || (ctxMenu ? convertedNodeIds.has(ctxMenu.nodeId) : false)}
+          onClick={ctxMenu && convertedNodeIds[ctxMenu.nodeId] ? handleOpenTask : handleConvertToTask}
+          disabled={!currentProject}
         >
-          <ListItemIcon><AssignmentTurnedInIcon fontSize="small" sx={{ color: '#10b981' }} /></ListItemIcon>
+          <ListItemIcon>
+            {ctxMenu && convertedNodeIds[ctxMenu.nodeId]
+              ? <LaunchIcon fontSize="small" sx={{ color: '#6366f1' }} />
+              : <AssignmentTurnedInIcon fontSize="small" sx={{ color: '#10b981' }} />
+            }
+          </ListItemIcon>
           <ListItemText
-            primary={ctxMenu && convertedNodeIds.has(ctxMenu.nodeId) ? 'Already converted' : 'Convert to Task'}
+            primary={ctxMenu && convertedNodeIds[ctxMenu.nodeId] ? 'Open Task' : 'Convert to Task'}
             primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600 }}
           />
         </MenuItem>

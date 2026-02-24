@@ -1,129 +1,140 @@
 // src/services/automationService.ts
-// AutomationService — now proxied through Django REST API
-
+import { toast } from 'sonner';
+import { createNotification } from './notificationService';
 import api from './apiClient';
-import type { AutomationRule, AutomationAction } from '../types';
+import type { Task } from '../types';
 
-// ─── Response type ───────────────────────────────────────
+export type AutomationTrigger = 'status_change' | 'task_created' | 'due_date' | 'tag_added';
+export type AutomationAction = 'assign_user' | 'set_status' | 'add_comment' | 'send_notification';
 
-interface ApiAutomationRule {
-  id: number;
+export interface AutomationRule {
+  id: string;
   name: string;
-  workspace: number;
-  trigger: {
-    type: string;
-    from?: string;
-    to?: string;
-  };
-  actions: AutomationAction[];
-  isEnabled: boolean;
-  createdBy: number;
-  createdAt: string;
+  trigger: AutomationTrigger;
+  triggerParams: Record<string, unknown>;
+  action: AutomationAction;
+  actionParams: Record<string, unknown>;
+  active: boolean;
+  projectId?: string;
+  workspaceId: string;
 }
 
-// ─── Mapper ──────────────────────────────────────────────
+// ─── localStorage-backed CRUD ───────────────────────────
 
-function mapRule(r: ApiAutomationRule): AutomationRule {
-  return {
-    id: String(r.id),
-    name: r.name,
-    workspaceId: String(r.workspace),
-    trigger: r.trigger as unknown as AutomationRule['trigger'],
-    actions: r.actions || [],
-    isEnabled: r.isEnabled,
-    createdBy: String(r.createdBy),
-    createdAt: r.createdAt,
-  };
-}
+const STORAGE_KEY = 'taskflow_automation_rules';
 
-// ─── CRUD ────────────────────────────────────────────────
-
-export const fetchAutomationRules = async (workspaceId: string): Promise<AutomationRule[]> => {
+export const loadRules = (): AutomationRule[] => {
   try {
-    const data = await api.get<{ results: ApiAutomationRule[] }>('automation-rules/', { workspace_id: workspaceId });
-    return (data.results || []).map(mapRule);
-  } catch (e) {
-    console.error("Error fetching automation rules:", e);
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
     return [];
   }
 };
 
-export const createAutomationRule = async (
-  rule: Omit<AutomationRule, 'id'>
-): Promise<AutomationRule> => {
-  const body: Record<string, unknown> = {
-    name: rule.name,
-    workspace: Number(rule.workspaceId),
-    trigger: rule.trigger,
-    actions: rule.actions,
-    isEnabled: rule.isEnabled,
-  };
-  const data = await api.post<ApiAutomationRule>('automation-rules/', body);
-  return mapRule(data);
+export const saveRules = (rules: AutomationRule[]): void => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(rules));
 };
 
-export const deleteAutomationRule = async (ruleId: string): Promise<void> => {
-  await api.delete(`automation-rules/${ruleId}/`);
+export const addRule = (rule: AutomationRule): void => {
+  const rules = loadRules();
+  rules.unshift(rule);
+  saveRules(rules);
 };
 
-export const toggleAutomationRule = async (ruleId: string, isEnabled: boolean): Promise<void> => {
-  await api.patch(`automation-rules/${ruleId}/`, { isEnabled });
+export const removeRule = (id: string): void => {
+  const rules = loadRules().filter(r => r.id !== id);
+  saveRules(rules);
 };
 
-// ─── Trigger Engine ──────────────────────────────────────
+export const toggleRuleActive = (id: string): void => {
+  const rules = loadRules().map(r => r.id === id ? { ...r, active: !r.active } : r);
+  saveRules(rules);
+};
+
+// ─── Execution Engine ───────────────────────────────────
 
 /**
- * Evaluate automation rules against a task update and apply matching actions.
- * Now delegates to the backend where automations should ideally run.
- * For now, we still do client-side evaluation as a stopgap.
+ * Check and execute automations for a task event
  */
-export const triggerAutomations = async (
-  workspaceId: string,
-  taskId: string,
-  newStatus: string,
-  oldStatus?: string,
-): Promise<void> => {
-  try {
-    const rules = await fetchAutomationRules(workspaceId);
-    const enabledRules = rules.filter(r => r.isEnabled);
+export const checkAutomations = async (
+  task: Task,
+  eventType: AutomationTrigger,
+  _context?: { prevTask?: Task; actor?: { uid: string; name: string } }
+) => {
+  const rules = loadRules().filter(r => r.active);
+  if (rules.length === 0) return;
 
-    for (const rule of enabledRules) {
-      if (rule.trigger.type !== 'status_change') continue;
-      if (rule.trigger.to !== newStatus) continue;
-      if (rule.trigger.from && oldStatus && rule.trigger.from !== oldStatus) continue;
+  console.log(`[Automation] Checking ${eventType} for task ${task.id} — ${rules.length} active rule(s)`);
 
-      // Rule matches — apply all actions
-      await applyActions(taskId, rule.actions);
+  for (const rule of rules) {
+    // Check trigger match
+    let triggerMatch = false;
+
+    if (rule.trigger === 'status_change' && eventType === 'status_change') {
+      // triggerParams.status stores the status label from the UI (e.g. 'Done')
+      // Normalize both to lowercase for comparison
+      const target = String(rule.triggerParams.status || '').toLowerCase();
+      const actual = (task.status || '').toLowerCase();
+      if (target && actual === target) triggerMatch = true;
+      // Also match common aliases
+      if (target === 'done' && actual === 'done') triggerMatch = true;
+    } else if (rule.trigger === 'task_created' && eventType === 'task_created') {
+      triggerMatch = true;
+    } else if (rule.trigger === 'tag_added' && eventType === 'tag_added') {
+      const targetTag = String(rule.triggerParams.tag || '').toLowerCase();
+      if (task.tags?.some(t => t.toLowerCase() === targetTag)) triggerMatch = true;
     }
-  } catch (e) {
-    console.error("Error triggering automations:", e);
-    // Don't throw — automations are best-effort
+
+    if (!triggerMatch) continue;
+
+    console.log(`[Automation] ✅ Triggered rule: "${rule.name}"`);
+    await executeAction(rule, task);
   }
 };
 
-// ─── Action Executor ─────────────────────────────────────
+const executeAction = async (rule: AutomationRule, task: Task) => {
+  try {
+    switch (rule.action) {
+      case 'send_notification':
+        if (task.assigneeId) {
+          await createNotification({
+            type: 'task_status_changed',
+            title: `[Automation] ${rule.name}`,
+            body: (rule.actionParams.message as string) || `Rule "${rule.name}" triggered for: ${task.text}`,
+            actorUid: 'system',
+            actorName: 'TaskFlow Automation',
+            recipientUid: task.assigneeId,
+            workspaceId: task.workspaceId || '',
+            taskId: task.id,
+            taskText: task.text,
+          });
+          toast.success(`⚡ [Automation] Notification sent`);
+        }
+        break;
 
-const applyActions = async (taskId: string, actions: AutomationAction[]): Promise<void> => {
-  const updates: Record<string, unknown> = {};
+      case 'set_status':
+        if (rule.actionParams.status) {
+          await api.patch(`tasks/${task.id}/`, { status: rule.actionParams.status });
+          toast.success(`⚡ [Automation] Status → ${rule.actionParams.status}`);
+        }
+        break;
 
-  for (const action of actions) {
-    switch (action.type) {
       case 'assign_user':
-        if (action.userId) updates.assignee = action.userId;
-        if (action.userName) updates.assigneeName = action.userName;
-        if (action.userPhoto) updates.assigneePhoto = action.userPhoto;
+        if (rule.actionParams.userId) {
+          await api.patch(`tasks/${task.id}/`, { assignee: rule.actionParams.userId });
+          toast.success(`⚡ [Automation] Task auto-assigned`);
+        }
         break;
-      case 'set_priority':
-        updates.priority = action.priority;
-        break;
-      case 'add_label':
-        // Labels need to be appended; for now we just set them
-        // TODO: Backend should handle array append
-        break;
-    }
-  }
 
-  if (Object.keys(updates).length > 0) {
-    await api.patch(`tasks/${taskId}/`, updates);
+      case 'add_comment':
+        toast.info(`⚡ [Automation] Comment: "${rule.actionParams.comment || ''}"`);
+        break;
+
+      default:
+        console.warn(`[Automation] Unknown action: ${rule.action}`);
+    }
+  } catch (err) {
+    console.error(`[Automation] Action failed:`, err);
   }
 };

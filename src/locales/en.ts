@@ -529,6 +529,17 @@ const en = {
   whiteboard: 'Whiteboard Canvas',
   publicForms: 'Public Forms',
   workload: 'Workload',
+
+  // AI & New Features
+  description: 'Description',
+  aiSuggest: 'AI Suggest',
+  aiAnalyzing: 'Analyzing...',
+  aiSuggestions: '✨ AI SUGGESTIONS',
+  dismiss: 'Dismiss',
+  addAll: 'Add All',
+  aiRefine: 'AI Refine',
+  aiRefining: 'AI Refining...',
+  addedSubtasks: 'Added {n} subtasks',
 };
 
 export default en;

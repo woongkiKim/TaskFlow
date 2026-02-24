@@ -3,7 +3,7 @@ import {
     Dialog, DialogTitle, DialogContent, DialogActions, Box, Typography, TextField, Chip,
     IconButton, Checkbox, InputBase, Divider, ToggleButtonGroup, ToggleButton,
     LinearProgress, Avatar, AvatarGroup, Switch, FormControlLabel, Collapse,
-    Select, MenuItem, FormControl, Button, Autocomplete,
+    Select, MenuItem, FormControl, Button, Autocomplete, Paper, alpha,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import FlagIcon from '@mui/icons-material/Flag';
@@ -28,13 +28,16 @@ import {
 } from '../types';
 import { updateTaskDetailInDB, updateSubtasksInDB, addTaskRelation, removeTaskRelation } from '../services/taskService';
 import { fetchTimeEntries, addManualTimeEntry, deleteTimeEntry } from '../services/timeTrackingService';
-import { getTagColor } from './TagInput';
+import { getTagColor } from '../utils/tagUtils';
 import { PomodoroStartButton } from './PomodoroTimer';
 import BlockEditor from './BlockEditor';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
+import { decomposeTask, refineDescription, type SuggestedSubtask } from '../services/aiService';
+import { toast } from 'sonner';
 
 interface TaskDetailDialogProps {
     open: boolean;
@@ -48,6 +51,7 @@ interface TaskDetailDialogProps {
 
 const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCreateSubIssue, onTaskClick }: TaskDetailDialogProps) => {
     const { t, lang } = useLanguage();
+    const textByLang = (en: string, ko: string) => (lang === 'ko' ? ko : en);
     useWorkspace();
     const [text, setText] = useState('');
     const [description, setDescription] = useState('');
@@ -90,31 +94,42 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
     // Sub-issues
     const [newSubIssueText, setNewSubIssueText] = useState('');
 
+    // AI Features
+    const [isDecomposing, setIsDecomposing] = useState(false);
+    const [isRefining, setIsRefining] = useState(false);
+    const [aiSuggestions, setAiSuggestions] = useState<SuggestedSubtask[]>([]);
+
+    // Sync form state from task prop — render-time reset avoids cascading effects
+    const [lastTaskId, setLastTaskId] = useState<string | null>(null);
+    if (task && task.id !== lastTaskId) {
+        setText(task.text);
+        setDescription(task.description || '');
+        const norm = normalizePriority(task.priority);
+        setPriority(norm || '');
+        setTaskType(task.type || 'task');
+        setStatus(task.status || 'todo');
+        setDueDate(task.dueDate || '');
+        setSubtasks(task.subtasks || []);
+        setBlockerStatus(task.blockerStatus || 'none');
+        setBlockerDetail(task.blockerDetail || '');
+        setNextAction(task.nextAction || '');
+        setLinks(task.links || []);
+        setAiUsage(task.aiUsage || '');
+        setDelayReason(task.delayReason || '');
+        setRelations(task.relations || []);
+        setEstimate((task.estimate ?? null) as EstimatePoint | null);
+        setTags(task.tags || []);
+        setNewTagText('');
+        setLastTaskId(task.id);
+    }
+
+    // Ref + async side-effects (must be in an effect)
     useEffect(() => {
         if (task) {
-            setText(task.text);
-            setDescription(task.description || '');
             descriptionRef.current = task.description || '';
-            const norm = normalizePriority(task.priority);
-            setPriority(norm || '');
-            setTaskType(task.type || 'task');
-            setStatus(task.status || 'todo');
-            setDueDate(task.dueDate || '');
-            setSubtasks(task.subtasks || []);
-            setBlockerStatus(task.blockerStatus || 'none');
-            setBlockerDetail(task.blockerDetail || '');
-            setNextAction(task.nextAction || '');
-            setLinks(task.links || []);
-            setAiUsage(task.aiUsage || '');
-            setDelayReason(task.delayReason || '');
-            setRelations(task.relations || []);
-            setEstimate((task.estimate ?? null) as EstimatePoint | null);
-            setTags(task.tags || []);
-            setNewTagText('');
-            // Load time entries
             fetchTimeEntries(task.id).then(setTimeEntries).catch(() => { });
         }
-    }, [task]);
+    }, [task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (!task) return null;
 
@@ -168,9 +183,49 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
     const handleSubtaskKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); handleAddSubtask(); }
     };
-    const handleToggleSubtask = (subId: string) => {
-        const updated = subtasks.map(s => s.id === subId ? { ...s, completed: !s.completed } : s);
+    const toggleSubtask = (id: string) => {
+        const updated = subtasks.map(s => s.id === id ? { ...s, completed: !s.completed } : s);
         setSubtasks(updated); updateSubtasksInDB(task.id, updated).catch(() => { });
+    };
+
+    // AI Actions
+    const handleDecompose = async () => {
+        setIsDecomposing(true);
+        try {
+            const suggestions = await decomposeTask(text, descriptionRef.current);
+            setAiSuggestions(suggestions);
+        } catch {
+            toast.error('Failed to get AI suggestions');
+        } finally {
+            setIsDecomposing(false);
+        }
+    };
+
+    const handleRefineDescription = async () => {
+        setIsRefining(true);
+        try {
+            const refined = await refineDescription(descriptionRef.current);
+            descriptionRef.current = refined;
+            setDescription(refined); // Force re-render of BlockEditor
+            toast.success('Description refined by AI');
+        } catch {
+            toast.error('Failed to refine description');
+        } finally {
+            setIsRefining(false);
+        }
+    };
+
+    const addSuggestedSubtasks = () => {
+        const newOnes: Subtask[] = aiSuggestions.map(s => ({
+            id: `sub_${Date.now()}_${Math.random()}`,
+            text: s.text,
+            completed: false,
+        }));
+        const updated = [...subtasks, ...newOnes];
+        setSubtasks(updated);
+        updateSubtasksInDB(task.id, updated).catch(() => { });
+        setAiSuggestions([]);
+        toast.success((t('addedSubtasks') as string).replace('{n}', newOnes.length.toString()));
     };
     const handleDeleteSubtask = (subId: string) => {
         const updated = subtasks.filter(s => s.id !== subId);
@@ -178,7 +233,10 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
     };
     const handleAddLink = () => {
         const trimmed = linkText.trim();
-        if (trimmed && !links.includes(trimmed)) { setLinks([...links, trimmed]); setLinkText(''); }
+        if (trimmed && !links.includes(trimmed)) {
+            setLinks([...links, trimmed]);
+            setLinkText('');
+        }
     };
     const handleLinkKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') { e.preventDefault(); handleAddLink(); }
@@ -363,12 +421,27 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
                     sx={{ '& .MuiInputBase-input': { fontSize: '1.25rem', fontWeight: 700 } }} />
 
                 {/* Description (Block Editor) */}
-                <BlockEditor
-                    key={task?.id || 'new'}
-                    initialContent={description}
-                    onChange={(md) => { descriptionRef.current = md; }}
-                    minHeight={100}
-                />
+                <Box sx={{ position: 'relative' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                        <Typography variant="caption" fontWeight={600} color="text.secondary">
+                            {textByLang('Description', '설명')}
+                        </Typography>
+                        <Button
+                            size="small" startIcon={<AutoFixHighIcon fontSize="small" />}
+                            onClick={handleRefineDescription}
+                            disabled={isRefining}
+                            sx={{ textTransform: 'none', fontSize: '0.65rem', fontWeight: 700, borderRadius: 2 }}
+                        >
+                            {isRefining ? t('aiRefining') as string : t('aiRefine') as string}
+                        </Button>
+                    </Box>
+                    <BlockEditor
+                        key={task?.id || 'new'}
+                        initialContent={description}
+                        onChange={(md) => { descriptionRef.current = md; }}
+                        minHeight={100}
+                    />
+                </Box>
 
                 {/* Time Tracking */}
                 <Box>
@@ -761,14 +834,45 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
                                 </Typography>
                             )}
                         </Typography>
+                        <Button
+                            size="small" startIcon={<SmartToyIcon fontSize="small" />}
+                            onClick={handleDecompose}
+                            disabled={isDecomposing}
+                            sx={{ textTransform: 'none', fontSize: '0.65rem', fontWeight: 700, borderRadius: 2 }}
+                        >
+                            {isDecomposing ? t('aiAnalyzing') as string : t('aiSuggest') as string}
+                        </Button>
                     </Box>
+
+                    {/* AI Suggestions Preview */}
+                    {aiSuggestions.length > 0 && (
+                        <Paper variant="outlined" sx={{ p: 1.5, mb: 2, bgcolor: alpha('#8b5cf6', 0.05), borderColor: alpha('#8b5cf6', 0.2), borderRadius: 2 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                                <Typography variant="caption" fontWeight={800} color="primary" sx={{ letterSpacing: 0.5 }}>
+                                    {t('aiSuggestions') as string}
+                                </Typography>
+                                <Box>
+                                    <Button size="small" onClick={() => setAiSuggestions([])} sx={{ fontSize: '0.6rem' }}>{t('dismiss') as string}</Button>
+                                    <Button size="small" onClick={addSuggestedSubtasks} variant="contained" sx={{ fontSize: '0.6rem', fontWeight: 700, borderRadius: 1.5 }}>{t('addAll') as string}</Button>
+                                </Box>
+                            </Box>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.8 }}>
+                                {aiSuggestions.map((s, idx) => (
+                                    <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: 'primary.main', flexShrink: 0 }} />
+                                        <Typography variant="caption" fontWeight={500}>{s.text}</Typography>
+                                    </Box>
+                                ))}
+                            </Box>
+                        </Paper>
+                    )}
                     {subtasks.length > 0 && (
                         <LinearProgress variant="determinate" value={subtaskProgress}
                             sx={{ borderRadius: 4, height: 6, mb: 1.5, bgcolor: 'action.hover' }} />
                     )}
                     {subtasks.map(sub => (
                         <Box key={sub.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, py: 0.5, '&:hover .sub-delete': { opacity: 1 } }}>
-                            <Checkbox checked={sub.completed} onChange={() => handleToggleSubtask(sub.id)} size="small" sx={{ p: 0.5 }} />
+                            <Checkbox checked={sub.completed} onChange={() => toggleSubtask(sub.id)} size="small" sx={{ p: 0.5 }} />
                             <Typography variant="body2" sx={{
                                 flex: 1, textDecoration: sub.completed ? 'line-through' : 'none',
                                 color: sub.completed ? 'text.secondary' : 'text.primary',

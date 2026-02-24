@@ -9,20 +9,23 @@ interface ProjectTimelineProps {
 }
 
 const ProjectTimeline = ({ projects, onProjectClick }: ProjectTimelineProps) => {
+    // Stable "now" reference — computed once on mount
+    const stableNow = useMemo(() => new Date(), []);
+    const defaultEndMs = useMemo(() => stableNow.getTime() + 30 * 24 * 60 * 60 * 1000, [stableNow]);
+
     // 1. Calculate Global Range (Min Start - Max End)
     const { minDate, maxDate, totalDays } = useMemo(() => {
         if (projects.length === 0) {
-            const now = new Date();
             return {
-                minDate: startOfMonth(now),
-                maxDate: endOfMonth(addMonths(now, 1)),
+                minDate: startOfMonth(stableNow),
+                maxDate: endOfMonth(addMonths(stableNow, 1)),
                 totalDays: 60
             };
         }
 
         const dates = projects.flatMap(p => [
             p.startDate ? new Date(p.startDate) : new Date(p.createdAt),
-            p.targetDate ? new Date(p.targetDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // Default +30 days
+            p.targetDate ? new Date(p.targetDate) : new Date(defaultEndMs) // Default +30 days
         ]);
 
         const min = startOfMonth(new Date(Math.min(...dates.map(d => d.getTime()))));
@@ -37,7 +40,7 @@ const ProjectTimeline = ({ projects, onProjectClick }: ProjectTimelineProps) => 
             maxDate: paddedMax,
             totalDays: Math.max(differenceInDays(paddedMax, paddedMin), 30) // Minimum 30 days
         };
-    }, [projects]);
+    }, [projects, stableNow, defaultEndMs]);
 
     // 2. Generate Month Columns
     const months = useMemo(() => {

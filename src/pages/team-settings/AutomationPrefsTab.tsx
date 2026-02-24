@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
     Box, Typography, Paper, Chip, IconButton, Button, TextField,
@@ -15,9 +15,12 @@ import AutomationIcon from '@mui/icons-material/SmartToy';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { fetchAutomationRules, createAutomationRule, deleteAutomationRule, toggleAutomationRule } from '../../services/automationService';
+import {
+    loadRules, addRule, removeRule, toggleRuleActive,
+    type AutomationRule as ServiceRule,
+} from '../../services/automationService';
 import { fetchIssueTemplates, createIssueTemplate, updateIssueTemplate, deleteIssueTemplate } from '../../services/issueTemplateService';
-import type { AutomationRule, AutomationAction, IssueTemplate } from '../../types';
+import type { IssueTemplate } from '../../types';
 import { STATUS_CONFIG } from '../../types';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import IssueTemplateDialog from '../../components/IssueTemplateDialog';
@@ -33,12 +36,12 @@ const AutomationPrefsTab = () => {
     const { user } = useAuth();
     const { currentWorkspace } = useWorkspace();
 
-    // Automation state
-    const [automationRules, setAutomationRules] = useState<AutomationRule[]>([]);
+    // Automation state — localStorage backed
+    const [automationRules, setAutomationRules] = useState<ServiceRule[]>(() => loadRules());
     const [createRuleOpen, setCreateRuleOpen] = useState(false);
     const [newRuleName, setNewRuleName] = useState('');
     const [newRuleTriggerTo, setNewRuleTriggerTo] = useState('done');
-    const [newRuleActionType, setNewRuleActionType] = useState<'assign_user' | 'add_label' | 'set_priority'>('assign_user');
+    const [newRuleActionType, setNewRuleActionType] = useState<'assign_user' | 'set_status' | 'send_notification'>('set_status');
     const [newRuleActionValue, setNewRuleActionValue] = useState('');
 
     // Issue Templates State
@@ -46,25 +49,25 @@ const AutomationPrefsTab = () => {
     const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState<IssueTemplate | null>(null);
     const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null);
+    const [templatesLoaded, setTemplatesLoaded] = useState(false);
 
-    // Weekly Planner Preferences
+    // Weekly Planner Preferences — render-time sync
     const [plannerPrefs, setPlannerPrefs] = useState<WeeklyPlannerPreferences>(
-        getWeeklyPlannerPreferences(user?.uid)
+        () => getWeeklyPlannerPreferences(user?.uid)
     );
-
-    useEffect(() => {
-        if (!currentWorkspace?.id) return;
-        fetchAutomationRules(currentWorkspace.id).then(setAutomationRules).catch(console.error);
-    }, [currentWorkspace?.id]);
-
-    useEffect(() => {
-        if (!currentWorkspace?.id) return;
-        fetchIssueTemplates(currentWorkspace.id).then(setTemplates).catch(console.error);
-    }, [currentWorkspace?.id]);
-
-    useEffect(() => {
+    const [lastUserId, setLastUserId] = useState<string | undefined>(user?.uid);
+    if (user?.uid !== lastUserId) {
         setPlannerPrefs(getWeeklyPlannerPreferences(user?.uid));
-    }, [user?.uid]);
+        setLastUserId(user?.uid);
+    }
+
+    // Load templates once when workspace is available
+    const [lastWsId, setLastWsId] = useState<string | undefined>(undefined);
+    if (currentWorkspace?.id && currentWorkspace.id !== lastWsId) {
+        setLastWsId(currentWorkspace.id);
+        setTemplatesLoaded(false);
+        fetchIssueTemplates(currentWorkspace.id).then(setTemplates).catch(console.error).finally(() => setTemplatesLoaded(true));
+    }
 
     const savePlannerPrefs = (next: WeeklyPlannerPreferences) => {
         setWeeklyPlannerPreferences(next, user?.uid);
@@ -76,30 +79,24 @@ const AutomationPrefsTab = () => {
         textByLang('Wed', '수'), textByLang('Thu', '목'), textByLang('Fri', '금'), textByLang('Sat', '토'),
     ];
 
-    const handleCreateAutomation = async () => {
-        if (!currentWorkspace || !newRuleName.trim() || !user) return;
-        let action: AutomationAction;
-        switch (newRuleActionType) {
-            case 'assign_user':
-                action = { type: 'assign_user', userId: newRuleActionValue, userName: '' };
-                break;
-            case 'add_label':
-                action = { type: 'add_label', label: newRuleActionValue };
-                break;
-            case 'set_priority':
-                action = { type: 'set_priority', priority: newRuleActionValue as 'P0' | 'P1' | 'P2' | 'P3' };
-                break;
-        }
-        const rule = await createAutomationRule({
-            workspaceId: currentWorkspace.id,
+    const handleCreateAutomation = () => {
+        if (!currentWorkspace || !newRuleName.trim()) return;
+        const newRule: ServiceRule = {
+            id: `rule_${Date.now()}`,
             name: newRuleName,
-            trigger: { type: 'status_change', to: newRuleTriggerTo },
-            actions: [action],
-            isEnabled: true,
-            createdBy: user.uid,
-            createdAt: new Date().toISOString(),
-        });
-        setAutomationRules(prev => [...prev, rule]);
+            trigger: 'status_change',
+            triggerParams: { status: newRuleTriggerTo },
+            action: newRuleActionType,
+            actionParams: newRuleActionType === 'set_status'
+                ? { status: newRuleActionValue }
+                : newRuleActionType === 'assign_user'
+                    ? { userId: newRuleActionValue }
+                    : { message: newRuleActionValue },
+            active: true,
+            workspaceId: currentWorkspace.id,
+        };
+        addRule(newRule);
+        setAutomationRules(loadRules());
         setCreateRuleOpen(false);
         setNewRuleName('');
         toast.success(textByLang('Automation created', '자동화 규칙이 생성되었습니다'));
@@ -161,17 +158,20 @@ const AutomationPrefsTab = () => {
                         <Box sx={{ flex: 1 }}>
                             <Typography fontWeight={600} fontSize="0.85rem">{rule.name}</Typography>
                             <Typography variant="caption" color="text.secondary">
-                                {textByLang('When status → ', '상태 → ')}{rule.trigger.to}
+                                {textByLang('When status → ', '상태 → ')}{String(rule.triggerParams.status || '')}
+                                {' → '}{rule.action}
                             </Typography>
                         </Box>
-                        <Chip label={rule.isEnabled ? textByLang('Active', '활성') : textByLang('Disabled', '비활성')}
-                            size="small" color={rule.isEnabled ? 'success' : 'default'}
-                            onClick={() => toggleAutomationRule(rule.id, !rule.isEnabled).then(() =>
-                                setAutomationRules(prev => prev.map(r => r.id === rule.id ? { ...r, isEnabled: !r.isEnabled } : r))
-                            )} sx={{ cursor: 'pointer', fontWeight: 600 }} />
-                        <IconButton size="small" onClick={() => deleteAutomationRule(rule.id).then(() =>
-                            setAutomationRules(prev => prev.filter(r => r.id !== rule.id))
-                        )}><DeleteIcon sx={{ fontSize: 18 }} /></IconButton>
+                        <Chip label={rule.active ? textByLang('Active', '활성') : textByLang('Disabled', '비활성')}
+                            size="small" color={rule.active ? 'success' : 'default'}
+                            onClick={() => {
+                                toggleRuleActive(rule.id);
+                                setAutomationRules(loadRules());
+                            }} sx={{ cursor: 'pointer', fontWeight: 600 }} />
+                        <IconButton size="small" onClick={() => {
+                            removeRule(rule.id);
+                            setAutomationRules(loadRules());
+                        }}><DeleteIcon sx={{ fontSize: 18 }} /></IconButton>
                     </Box>
                 ))}
                 {automationRules.length === 0 && (
@@ -207,7 +207,11 @@ const AutomationPrefsTab = () => {
                         </IconButton>
                     </Box>
                 ))}
-                {templates.length === 0 && (
+                {!templatesLoaded ? (
+                    <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                        {textByLang('Loading...', '로딩 중...')}
+                    </Typography>
+                ) : templates.length === 0 && (
                     <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
                         {textByLang('No templates yet', '아직 템플릿이 없습니다')}
                     </Typography>
@@ -235,15 +239,15 @@ const AutomationPrefsTab = () => {
                         {weekDayOrder.map(d => {
                             const isVisible = !plannerPrefs.hiddenWeekdays.includes(d);
                             return (
-                            <Chip key={d} label={dayNames[d]} size="small"
-                                color={isVisible ? 'primary' : 'default'}
-                                onClick={() => {
-                                    const nextHidden = isVisible
-                                        ? [...plannerPrefs.hiddenWeekdays, d].sort((a, b) => a - b)
-                                        : plannerPrefs.hiddenWeekdays.filter(x => x !== d);
-                                    if (nextHidden.length < 7) savePlannerPrefs({ ...plannerPrefs, hiddenWeekdays: nextHidden });
-                                }}
-                                sx={{ cursor: 'pointer', fontWeight: 600, minWidth: 44 }} />
+                                <Chip key={d} label={dayNames[d]} size="small"
+                                    color={isVisible ? 'primary' : 'default'}
+                                    onClick={() => {
+                                        const nextHidden = isVisible
+                                            ? [...plannerPrefs.hiddenWeekdays, d].sort((a, b) => a - b)
+                                            : plannerPrefs.hiddenWeekdays.filter(x => x !== d);
+                                        if (nextHidden.length < 7) savePlannerPrefs({ ...plannerPrefs, hiddenWeekdays: nextHidden });
+                                    }}
+                                    sx={{ cursor: 'pointer', fontWeight: 600, minWidth: 44 }} />
                             );
                         })}
                     </Box>
@@ -270,8 +274,8 @@ const AutomationPrefsTab = () => {
                         <Select value={newRuleActionType} label={textByLang('Action Type', '액션 유형')}
                             onChange={e => setNewRuleActionType(e.target.value as typeof newRuleActionType)}>
                             <MenuItem value="assign_user">{textByLang('Assign User', '담당자 지정')}</MenuItem>
-                            <MenuItem value="add_label">{textByLang('Add Label', '레이블 추가')}</MenuItem>
-                            <MenuItem value="set_priority">{textByLang('Set Priority', '우선순위 설정')}</MenuItem>
+                            <MenuItem value="set_status">{textByLang('Set Status', '상태 설정')}</MenuItem>
+                            <MenuItem value="send_notification">{textByLang('Send Notification', '알림 전송')}</MenuItem>
                         </Select>
                     </FormControl>
                     <TextField fullWidth size="small" label={textByLang('Value', '값')} value={newRuleActionValue}

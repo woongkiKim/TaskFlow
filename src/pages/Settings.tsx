@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Box, Typography, Paper, Avatar, Switch, Divider, Chip, Select, MenuItem, FormControl, IconButton, TextField, Fade,
 } from '@mui/material';
@@ -96,19 +96,19 @@ const Settings = () => {
 
   const shortcutGroups = SHORTCUT_GROUPS_BY_LANG[lang];
 
-  // Backlog settings state
+  // Backlog settings state — sync from workspace on change
   const [backlogSettings, setBacklogSettingsState] = useState<BacklogSettings>({
     autoArchiveEnabled: false,
     archiveDaysThreshold: 90,
     staleNotificationDays: 60,
     sprintRolloverEnabled: true,
   });
+  const [lastWsId, setLastWsId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (currentWorkspace?.id) {
-      setBacklogSettingsState(getBacklogSettings(currentWorkspace.id));
-    }
-  }, [currentWorkspace?.id]);
+  if (currentWorkspace?.id && currentWorkspace.id !== lastWsId) {
+    setBacklogSettingsState(getBacklogSettings(currentWorkspace.id));
+    setLastWsId(currentWorkspace.id);
+  }
 
   const updateBacklogSetting = <K extends keyof BacklogSettings>(key: K, value: BacklogSettings[K]) => {
     const updated = { ...backlogSettings, [key]: value };
@@ -124,7 +124,7 @@ const Settings = () => {
       await updateDisplayName(newName.trim());
       setIsEditingName(false);
       toast.success(lang === 'ko' ? '이름이 변경되었습니다.' : 'Display name updated.');
-    } catch (e) {
+    } catch {
       toast.error(lang === 'ko' ? '변경 실패' : 'Update failed');
     }
   };

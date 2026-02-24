@@ -3,11 +3,9 @@
 import { useState, useRef, useCallback, useEffect, type KeyboardEvent } from 'react';
 import { Box } from '@mui/material';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { uploadImage } from '../services/fileService';
-
-// Re-export types for external consumers
-export type { BlockType, Block } from './block-editor/blockEditorTypes';
-export { markdownToBlocks, blocksToMarkdown } from './block-editor/blockEditorUtils';
+import { useTasks } from '../hooks/useTasks';
 
 import { SLASH_COMMANDS, type Block, type BlockType } from './block-editor/blockEditorTypes';
 import { createBlock, markdownToBlocks, blocksToMarkdown } from './block-editor/blockEditorUtils';
@@ -24,6 +22,8 @@ interface BlockEditorProps {
 const BlockEditor = ({ initialContent, onChange, minHeight = 300 }: BlockEditorProps) => {
   const { lang } = useLanguage();
   const isKo = lang === 'ko';
+  const { tasks: allTasks } = useTasks();
+  const { currentMembers } = useWorkspace();
 
   const [blocks, setBlocks] = useState<Block[]>(() => markdownToBlocks(initialContent));
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
@@ -97,6 +97,10 @@ const BlockEditor = ({ initialContent, onChange, minHeight = 300 }: BlockEditorP
     setBlocks(prev => prev.map(b =>
       b.id === id ? { ...b, checked: !b.checked } : b
     ));
+  }, []);
+
+  const updateBlock = useCallback((id: string, updates: Partial<Block>) => {
+    setBlocks(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
   }, []);
 
   const closeSlashMenu = useCallback(() => {
@@ -428,6 +432,9 @@ const BlockEditor = ({ initialContent, onChange, minHeight = 300 }: BlockEditorP
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
           onAddBlockBelow={handleAddBlockBelow}
+          onUpdateBlock={updateBlock}
+          allTasks={allTasks}
+          workspaceMembers={currentMembers}
           blockRef={(el) => { blockRefs.current.set(block.id, el); }}
           lang={lang}
         />

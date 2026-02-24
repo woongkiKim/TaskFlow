@@ -20,7 +20,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Task, Project, EstimatePoint } from '../types';
 import { normalizePriority, PRIORITY_CONFIG, TASK_TYPE_CONFIG, ESTIMATE_CONFIG } from '../types';
 import { PomodoroStartButton } from './PomodoroTimer';
-import { getTagColor } from './TagInput';
+import { getTagColor } from '../utils/tagUtils';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface TaskItemProps {

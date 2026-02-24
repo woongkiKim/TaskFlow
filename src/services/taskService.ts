@@ -4,6 +4,7 @@
 import api from './apiClient';
 import type { Task, Subtask, TaskOwner, TaskType, RelationType } from '../types';
 import { RELATION_TYPE_CONFIG } from '../types';
+import { checkAutomations } from './automationService';
 
 // ─── Response type ───────────────────────────────────────
 
@@ -313,7 +314,11 @@ export const addTaskToDB = async (
 export const toggleTaskStatusInDB = async (id: string, currentStatus: boolean): Promise<void> => {
   const newCompleted = !currentStatus;
   const status = newCompleted ? 'done' : 'todo';
-  await api.patch(`tasks/${id}/`, { completed: newCompleted, status });
+  const data = await api.patch<ApiTask>(`tasks/${id}/`, { completed: newCompleted, status });
+  const updatedTask = mapTask(data);
+  
+  // Trigger automation check
+  checkAutomations(updatedTask, 'status_change');
 };
 
 // 5. Edit text

@@ -1,6 +1,6 @@
 import { Box, Chip } from '@mui/material';
 import { useLanguage } from '../contexts/LanguageContext';
-import { getTagColor } from './TagInput';
+import { getTagColor } from '../utils/tagUtils';
 
 interface CategoryFilterProps {
     allTags: string[];

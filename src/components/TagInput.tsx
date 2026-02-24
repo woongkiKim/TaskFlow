@@ -2,34 +2,7 @@ import { useState, useCallback } from 'react';
 import { Box, Chip, InputBase, Paper } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import { useLanguage } from '../contexts/LanguageContext';
-
-// 태그 색상 팔레트
-const TAG_COLORS = [
-    '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
-    '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#06b6d4',
-];
-
-const getTagColor = (tag: string) => {
-    let hash = 0;
-    for (let i = 0; i < tag.length; i++) {
-        hash = tag.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
-};
-
-// #태그 파싱 함수
-export const parseTagsFromText = (text: string): { cleanText: string; tags: string[] } => {
-    const tagRegex = /#([\w\uAC00-\uD7A3]+)/g;
-    const tags: string[] = [];
-    let match;
-    while ((match = tagRegex.exec(text)) !== null) {
-        if (!tags.includes(match[1])) {
-            tags.push(match[1]);
-        }
-    }
-    const cleanText = text.replace(tagRegex, '').trim();
-    return { cleanText, tags };
-};
+import { getTagColor, parseTagsFromText } from '../utils/tagUtils';
 
 interface TagInputProps {
     onSubmit: (text: string, tags: string[]) => void;
@@ -130,5 +103,5 @@ const TagInput = ({ onSubmit, placeholder, disabled }: TagInputProps) => {
     );
 };
 
-export { getTagColor };
 export default TagInput;
+

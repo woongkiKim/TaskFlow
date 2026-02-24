@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button,
   Typography, List, ListItem, ListItemAvatar, Avatar,
@@ -23,13 +23,15 @@ export default function ProjectMembersDialog({ open, project, onClose, onProject
   const textByLang = (en: string, ko: string) => (lang === 'ko' ? ko : en);
   const { currentMembers } = useWorkspace();
   const [loading, setLoading] = useState(false);
-  const [members, setMembers] = useState<ProjectMember[]>([]);
+  // Use project reference as reset key — members re-initialize when project changes
+  const [members, setMembers] = useState<ProjectMember[]>(project?.members || []);
+  const [lastProjectId, setLastProjectId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (open && project) {
-      setMembers(project.members || []);
-    }
-  }, [open, project]);
+  // Reset members when a different project is opened
+  if (open && project && project.id !== lastProjectId) {
+    setMembers(project.members || []);
+    setLastProjectId(project.id);
+  }
 
   const handleAddMember = async (userId: string, role: string) => {
     if (!project) return;

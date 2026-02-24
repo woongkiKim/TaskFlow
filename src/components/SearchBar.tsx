@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
     Box,
     InputBase,
@@ -15,7 +15,7 @@ import {
 import SearchIcon from '@mui/icons-material/Search';
 import type { Task } from '../types';
 import { normalizePriority } from '../types';
-import { getTagColor } from './TagInput';
+import { getTagColor } from '../utils/tagUtils';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface SearchBarProps {
@@ -26,8 +26,13 @@ interface SearchBarProps {
 const SearchBar = ({ tasks, onSelectTask }: SearchBarProps) => {
     const { t } = useLanguage();
     const [query, setQuery] = useState('');
-    const [isOpen, setIsOpen] = useState(false);
-    const anchorRef = useRef<HTMLDivElement>(null);
+    const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
+    const [manualClose, setManualClose] = useState(false);
+
+    // Ref callback — fires once on mount, stores the element in state
+    const anchorRefCallback = useCallback((node: HTMLDivElement | null) => {
+        setAnchorEl(node);
+    }, []);
 
     const results = useMemo(() => {
         if (!query.trim()) return [];
@@ -40,14 +45,13 @@ const SearchBar = ({ tasks, onSelectTask }: SearchBarProps) => {
         ).slice(0, 8);
     }, [query, tasks]);
 
-    useEffect(() => {
-        setIsOpen(query.trim().length > 0);
-    }, [query, results]);
+    // Derived — no setState needed
+    const isOpen = query.trim().length > 0 && !manualClose;
 
     const handleSelect = (task: Task) => {
         onSelectTask(task);
         setQuery('');
-        setIsOpen(false);
+        setManualClose(true);
     };
 
     const priorityIcon = (p?: string) => {
@@ -58,8 +62,8 @@ const SearchBar = ({ tasks, onSelectTask }: SearchBarProps) => {
     };
 
     return (
-        <ClickAwayListener onClickAway={() => setIsOpen(false)}>
-            <Box ref={anchorRef} sx={{ position: 'relative' }}>
+        <ClickAwayListener onClickAway={() => setManualClose(true)}>
+            <Box ref={anchorRefCallback} sx={{ position: 'relative' }}>
                 <Paper
                     elevation={0}
                     sx={{
@@ -80,16 +84,16 @@ const SearchBar = ({ tasks, onSelectTask }: SearchBarProps) => {
                     <InputBase
                         placeholder={t('searchPlaceholder') as string}
                         value={query}
-                        onChange={e => setQuery(e.target.value)}
+                        onChange={e => { setQuery(e.target.value); setManualClose(false); }}
                         sx={{ flex: 1, fontSize: '0.85rem' }}
                     />
                 </Paper>
 
                 <Popper
                     open={isOpen}
-                    anchorEl={anchorRef.current}
+                    anchorEl={anchorEl}
                     placement="bottom-start"
-                    style={{ zIndex: 1300, width: anchorRef.current?.offsetWidth || 280 }}
+                    style={{ zIndex: 1300, width: anchorEl?.offsetWidth || 280 }}
                 >
                     <Paper
                         elevation={8}

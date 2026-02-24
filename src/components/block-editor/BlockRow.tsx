@@ -1,12 +1,14 @@
 // src/components/block-editor/BlockRow.tsx
 import React, { useRef, useEffect, type KeyboardEvent } from 'react';
-import { Box, Paper, Typography, alpha } from '@mui/material';
+import { IconButton, Chip, Typography, Box, Paper, alpha } from '@mui/material';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import AddIcon from '@mui/icons-material/Add';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import AlternateEmailIcon from '@mui/icons-material/AlternateEmail';
+import PersonIcon from '@mui/icons-material/Person';
 import type { Block, BlockType } from './blockEditorTypes';
+import type { Task, TeamMember } from '../../types';
 
 interface BlockRowProps {
   block: Block;
@@ -14,6 +16,7 @@ interface BlockRowProps {
   isActive: boolean;
   onContentChange: (id: string, content: string) => void;
   onTypeChange: (id: string, type: BlockType) => void;
+  onUpdateBlock: (id: string, updates: Partial<Block>) => void;
   onKeyDown: (e: KeyboardEvent<HTMLElement>, block: Block, index: number) => void;
   onFocus: (id: string) => void;
   onCheckToggle: (id: string) => void;
@@ -21,6 +24,8 @@ interface BlockRowProps {
   onDragOver: (e: React.DragEvent, index: number) => void;
   onDragEnd: () => void;
   onAddBlockBelow: (index: number) => void;
+  allTasks: Task[];
+  workspaceMembers: TeamMember[];
   blockRef: (el: HTMLElement | null) => void;
   lang: string;
 }
@@ -29,10 +34,26 @@ const BlockRow: React.FC<BlockRowProps> = ({
   block, index,
   onContentChange, onKeyDown, onFocus, onCheckToggle,
   onDragStart, onDragOver, onDragEnd, onAddBlockBelow,
+  onUpdateBlock,
+  allTasks, workspaceMembers,
   blockRef, lang,
 }) => {
   const isKo = lang === 'ko';
   const contentRef = useRef<HTMLDivElement>(null);
+
+  const [showSearch, setShowSearch] = React.useState(false);
+  const [selectedSearchIndex, setSelectedSearchIndex] = React.useState(0);
+
+  // Compute filtered results for task/mention blocks
+  const filteredTasks = React.useMemo(() => {
+    if (block.type !== 'task' || !block.content) return [];
+    return allTasks.filter((t: Task) => t.text.toLowerCase().includes(block.content.toLowerCase())).slice(0, 5);
+  }, [block.type, block.content, allTasks]);
+
+  const filteredMembers = React.useMemo(() => {
+    if (block.type !== 'mention' || !block.content) return [];
+    return workspaceMembers.filter((m: TeamMember) => m.displayName?.toLowerCase().includes(block.content.toLowerCase())).slice(0, 5);
+  }, [block.type, block.content, workspaceMembers]);
 
   // Keep contentEditable in sync with block.content
   useEffect(() => {
@@ -48,7 +69,48 @@ const BlockRow: React.FC<BlockRowProps> = ({
 
   const handleInput = () => {
     if (contentRef.current) {
-      onContentChange(block.id, contentRef.current.textContent || '');
+      const newContent = contentRef.current.textContent || '';
+      onContentChange(block.id, newContent);
+      if ((block.type === 'task' || block.type === 'mention') && newContent.length > 0) {
+        setShowSearch(true);
+        setSelectedSearchIndex(0);
+      } else {
+        setShowSearch(false);
+      }
+    }
+  };
+
+  // Keyboard navigation for search results
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!showSearch || !block.content) return;
+    const items = block.type === 'task' ? filteredTasks : filteredMembers;
+    if (items.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedSearchIndex(prev => Math.min(prev + 1, items.length - 1));
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedSearchIndex(prev => Math.max(prev - 1, 0));
+      return;
+    }
+    if (e.key === 'Enter' && items.length > 0) {
+      e.preventDefault();
+      const selected = items[selectedSearchIndex];
+      if (block.type === 'task' && 'text' in selected) {
+        onUpdateBlock(block.id, { taskId: (selected as Task).id, content: (selected as Task).text });
+      } else if (block.type === 'mention' && 'uid' in selected) {
+        onUpdateBlock(block.id, { userId: (selected as TeamMember).uid, content: (selected as TeamMember).displayName || '' });
+      }
+      setShowSearch(false);
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setShowSearch(false);
+      return;
     }
   };
 
@@ -205,31 +267,84 @@ const BlockRow: React.FC<BlockRowProps> = ({
             onFocus={() => onFocus(block.id)} data-placeholder={placeholderMap[block.type]}
             sx={{ outline: 'none', minHeight: 24, ...styleMap[block.type], ...emptyBeforeSx }} />
         </Box>
-      ) : block.type === 'callout' ? (
-        <Box sx={{ flex: 1, bgcolor: alpha('#6366f1', 0.06), borderRadius: 2, px: 1.5, py: 1, my: 0.3, border: '1px solid', borderColor: alpha('#6366f1', 0.12), display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-          <Typography fontSize="1.1rem" lineHeight={1} sx={{ mt: 0.3, userSelect: 'none' }}>💡</Typography>
-          <Box ref={contentRef} contentEditable suppressContentEditableWarning onInput={handleInput}
-            onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => onKeyDown(e, block, index)}
-            onFocus={() => onFocus(block.id)} data-placeholder={placeholderMap[block.type]}
-            sx={{ outline: 'none', flex: 1, minHeight: 24, ...styleMap[block.type], ...emptyBeforeSx }} />
-        </Box>
       ) : block.type === 'task' ? (
-        <Box sx={{ flex: 1, bgcolor: alpha('#10b981', 0.06), borderRadius: 2, px: 1.5, py: 0.8, my: 0.3, border: '1px solid', borderColor: alpha('#10b981', 0.2), display: 'flex', alignItems: 'center', gap: 1 }}>
-          <AssignmentIcon sx={{ color: '#10b981', fontSize: 18 }} />
-          <Box ref={contentRef} contentEditable suppressContentEditableWarning onInput={handleInput}
-            onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => onKeyDown(e, block, index)}
-            onFocus={() => onFocus(block.id)} data-placeholder={placeholderMap[block.type]}
-            sx={{ outline: 'none', flex: 1, minHeight: 24, ...styleMap[block.type], ...emptyBeforeSx }} />
+        <Box sx={{ flex: 1, position: 'relative' }}>
+          {block.taskId ? (
+            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, display: 'flex', alignItems: 'center', gap: 1.5, border: '1.5px solid', borderColor: 'divider', bgcolor: alpha('#10b981', 0.02) }}>
+              <AssignmentIcon sx={{ color: '#10b981' }} />
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" fontWeight={700}>{block.content}</Typography>
+                <Typography variant="caption" color="text.secondary">ID: {block.taskId}</Typography>
+              </Box>
+              <IconButton size="small" onClick={() => onUpdateBlock(block.id, { taskId: undefined })}>
+                <AddIcon sx={{ fontSize: 16, transform: 'rotate(45deg)' }} />
+              </IconButton>
+            </Paper>
+          ) : (
+            <>
+              <Box sx={{ flex: 1, bgcolor: alpha('#10b981', 0.06), borderRadius: 2, px: 1.5, py: 0.8, my: 0.3, border: '1px solid', borderColor: alpha('#10b981', 0.2), display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AssignmentIcon sx={{ color: '#10b981', fontSize: 18 }} />
+                <Box ref={contentRef} contentEditable suppressContentEditableWarning onInput={handleInput}
+                  onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => { handleSearchKeyDown(e); if (!e.defaultPrevented) onKeyDown(e, block, index); }}
+                  onFocus={() => onFocus(block.id)} data-placeholder={placeholderMap[block.type]}
+                  sx={{ outline: 'none', flex: 1, minHeight: 24, ...styleMap[block.type], ...emptyBeforeSx }} />
+              </Box>
+              {showSearch && block.content && (
+                <Paper elevation={8} sx={{ position: 'absolute', top: '100%', left: 0, zIndex: 100, mt: 0.5, width: 300, maxHeight: 250, overflow: 'auto', borderRadius: 2, p: 1 }}>
+                  <Typography variant="overline" sx={{ px: 1, color: 'text.disabled' }}>{isKo ? '작업 검색' : 'Search Tasks'}</Typography>
+                  {filteredTasks.length === 0 ? (
+                    <Box sx={{ px: 1, py: 2, textAlign: 'center' }}>
+                      <Typography variant="caption" color="text.disabled">{isKo ? '검색 결과가 없습니다' : 'No tasks found'}</Typography>
+                    </Box>
+                  ) : filteredTasks.map((task: Task, i: number) => (
+                    <Box key={task.id} onClick={() => { onUpdateBlock(block.id, { taskId: task.id, content: task.text }); setShowSearch(false); }}
+                      sx={{ p: 1, borderRadius: 1.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 1, bgcolor: i === selectedSearchIndex ? 'action.selected' : 'transparent', '&:hover': { bgcolor: 'action.hover' } }}>
+                      <AssignmentIcon sx={{ fontSize: 16, color: '#10b981' }} />
+                      <Typography variant="body2">{task.text}</Typography>
+                    </Box>
+                  ))}
+                </Paper>
+              )}
+            </>
+          )}
         </Box>
       ) : block.type === 'mention' ? (
-        <Box sx={{ flex: 1, bgcolor: alpha('#3b82f6', 0.06), borderRadius: 2, px: 1.5, py: 0.8, my: 0.3, border: '1px solid', borderColor: alpha('#3b82f6', 0.2), display: 'flex', alignItems: 'center', gap: 1, width: 'fit-content', minWidth: 200 }}>
-          <AlternateEmailIcon sx={{ color: '#3b82f6', fontSize: 18 }} />
-          <Box ref={contentRef} contentEditable suppressContentEditableWarning onInput={handleInput}
-            onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => onKeyDown(e, block, index)}
-            onFocus={() => onFocus(block.id)} data-placeholder={placeholderMap[block.type]}
-            sx={{ outline: 'none', flex: 1, minHeight: 24, ...styleMap[block.type], ...emptyBeforeSx }} />
+        <Box sx={{ flex: 1, position: 'relative', width: 'fit-content', minWidth: 200 }}>
+          {block.userId ? (
+            <Chip
+              avatar={<Box sx={{ width: 24, height: 24, borderRadius: '50%', bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>{block.content.charAt(0)}</Box>}
+              label={block.content}
+              onDelete={() => onUpdateBlock(block.id, { userId: undefined })}
+              sx={{ fontWeight: 600, color: 'primary.main', bgcolor: alpha('#3b82f6', 0.08), border: '1px solid', borderColor: alpha('#3b82f6', 0.15) }}
+            />
+          ) : (
+            <>
+              <Box sx={{ flex: 1, bgcolor: alpha('#3b82f6', 0.06), borderRadius: 2, px: 1.5, py: 0.8, my: 0.3, border: '1px solid', borderColor: alpha('#3b82f6', 0.2), display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AlternateEmailIcon sx={{ color: '#3b82f6', fontSize: 18 }} />
+                <Box ref={contentRef} contentEditable suppressContentEditableWarning onInput={handleInput}
+                  onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => { handleSearchKeyDown(e); if (!e.defaultPrevented) onKeyDown(e, block, index); }}
+                  onFocus={() => onFocus(block.id)} data-placeholder={placeholderMap[block.type]}
+                  sx={{ outline: 'none', flex: 1, minHeight: 24, ...styleMap[block.type], ...emptyBeforeSx }} />
+              </Box>
+              {showSearch && block.content && (
+                <Paper elevation={8} sx={{ position: 'absolute', top: '100%', left: 0, zIndex: 100, mt: 0.5, width: 250, maxHeight: 200, overflow: 'auto', borderRadius: 2, p: 1 }}>
+                  {filteredMembers.length === 0 ? (
+                    <Box sx={{ px: 1, py: 2, textAlign: 'center' }}>
+                      <Typography variant="caption" color="text.disabled">{isKo ? '멤버를 찾을 수 없습니다' : 'No members found'}</Typography>
+                    </Box>
+                  ) : filteredMembers.map((member: TeamMember, i: number) => (
+                    <Box key={member.uid} onClick={() => { onUpdateBlock(block.id, { userId: member.uid, content: member.displayName || '' }); setShowSearch(false); }}
+                      sx={{ p: 1, borderRadius: 1.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 1, bgcolor: i === selectedSearchIndex ? 'action.selected' : 'transparent', '&:hover': { bgcolor: 'action.hover' } }}>
+                      <PersonIcon sx={{ fontSize: 16, color: '#3b82f6' }} />
+                      <Typography variant="body2">{member.displayName}</Typography>
+                    </Box>
+                  ))}
+                </Paper>
+              )}
+            </>
+          )}
         </Box>
-      ) : block.type === 'code' ? (
+      ) : block.type === 'callout' ? (
         <Box sx={{ flex: 1, bgcolor: '#1e293b', borderRadius: 2, px: 2, py: 1.5, my: 0.3, overflow: 'auto' }}>
           <Box ref={contentRef} contentEditable suppressContentEditableWarning onInput={handleInput}
             onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => onKeyDown(e, block, index)}
