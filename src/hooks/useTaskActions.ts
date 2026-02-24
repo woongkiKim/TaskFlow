@@ -3,7 +3,7 @@
 // Provides optimistic updates with rollback on failure.
 
 import { useState, useCallback } from 'react';
-import type { Task, TaskType, TaskOwner, KanbanColumn } from '../types';
+import type { Task, TaskType, TaskOwner, KanbanColumn, Project } from '../types';
 import {
     addTaskToDB, toggleTaskStatusInDB, updateTaskTextInDB,
     deleteTaskFromDB, updateTaskKanbanStatusInDB, updateTaskOrdersInDB,
@@ -25,10 +25,10 @@ interface TaskActionsDeps {
     user: { uid: string; displayName?: string | null; photoURL?: string | null } | null;
     t: (key: string) => string | Record<string, string>;
     lang: string;
-    currentProject?: { id: string; name: string; color: string; kanbanColumns?: KanbanColumn[] } | null;
+    currentProject?: Project | null;
     currentWorkspace?: { id: string } | null;
     currentSprint?: { id: string; kanbanColumns?: KanbanColumn[] } | null;
-    setCurrentProject?: (p: typeof TaskActionsDeps.prototype.currentProject) => void;
+    setCurrentProject?: (p: Project | null) => void;
     updateCurrentSprint?: (partial: Record<string, unknown>) => Promise<void>;
 }
 

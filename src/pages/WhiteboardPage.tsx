@@ -2,8 +2,11 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Box, Typography, Select, MenuItem, FormControl, Tooltip, CircularProgress,
   ToggleButtonGroup, ToggleButton, Button, IconButton, Chip, Paper, TextField,
-  Dialog, DialogTitle, DialogContent, DialogActions, alpha
+  Dialog, DialogTitle, DialogContent, DialogActions, alpha,
+  Menu, ListItemIcon, ListItemText, Divider,
 } from '@mui/material';
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { Tldraw, Editor, getSnapshot, loadSnapshot } from '@tldraw/tldraw';
 import '@tldraw/tldraw/tldraw.css';
 
@@ -44,6 +47,8 @@ import CloudQueueIcon from '@mui/icons-material/CloudQueue';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 
 import api from '../services/apiClient';
+import { addTaskToDB } from '../services/taskService';
+import { useAuth } from '../contexts/AuthContext';
 
 /* ──────────────────────────────────────── */
 /*  Custom Node Components for ReactFlow    */
@@ -232,9 +237,14 @@ const templateDiagrams: Record<string, { nodes: Node[]; edges: Edge[] }> = {
 
 export default function WhiteboardPage() {
   const { projects, currentProject, setCurrentProject } = useWorkspace();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'saved'>('idle');
   const [mode, setMode] = useState<'freeform' | 'diagram'>('diagram');
+
+  // ──── Context Menu (right-click) state ────
+  const [ctxMenu, setCtxMenu] = useState<{ mouseX: number; mouseY: number; nodeId: string } | null>(null);
+  const [convertedNodeIds, setConvertedNodeIds] = useState<Set<string>>(new Set());
 
   // ──── Freeform (tldraw) state ────
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -301,6 +311,75 @@ export default function WhiteboardPage() {
     setEdges((eds) => eds.filter((e) => !e.selected));
   }, [setNodes, setEdges]);
 
+  // ──── Context Menu Handlers ────
+  const handleNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
+    event.preventDefault();
+    setCtxMenu({ mouseX: event.clientX, mouseY: event.clientY, nodeId: node.id });
+  }, []);
+
+  const handleCloseCtxMenu = useCallback(() => setCtxMenu(null), []);
+
+  const handleConvertToTask = useCallback(async () => {
+    if (!ctxMenu || !currentProject || !user) {
+      toast.error('Please select a project first.');
+      handleCloseCtxMenu();
+      return;
+    }
+    const targetNode = nodes.find(n => n.id === ctxMenu.nodeId);
+    if (!targetNode) { handleCloseCtxMenu(); return; }
+
+    const nodeData = targetNode.data as DiagramNodeData;
+    try {
+      await addTaskToDB(
+        nodeData.label || 'Untitled Task',
+        user.uid,
+        undefined,
+        ['whiteboard'],
+        {
+          description: nodeData.description ? `[From Whiteboard] ${nodeData.description}` : '[Created from Whiteboard diagram node]',
+          projectId: currentProject.id,
+          workspaceId: currentProject.workspaceId,
+          status: 'todo',
+          scope: 'work',
+        }
+      );
+      setConvertedNodeIds(prev => new Set(prev).add(ctxMenu.nodeId));
+      // Visual feedback: update node border
+      setNodes(nds => nds.map(n =>
+        n.id === ctxMenu.nodeId
+          ? { ...n, style: { ...n.style, outline: '3px solid #10b981', outlineOffset: '2px' } }
+          : n
+      ));
+      toast.success(`✅ Task "${nodeData.label}" created!`);
+    } catch (err) {
+      console.error('Failed to convert node to task:', err);
+      toast.error('Failed to create task.');
+    }
+    handleCloseCtxMenu();
+  }, [ctxMenu, currentProject, user, nodes, setNodes, handleCloseCtxMenu]);
+
+  const handleDuplicateNode = useCallback(() => {
+    if (!ctxMenu) return;
+    const sourceNode = nodes.find(n => n.id === ctxMenu.nodeId);
+    if (!sourceNode) { handleCloseCtxMenu(); return; }
+    const id = `node_${++nodeCounter.current}`;
+    const newNode: Node = {
+      ...sourceNode,
+      id,
+      position: { x: sourceNode.position.x + 40, y: sourceNode.position.y + 40 },
+      selected: false,
+    };
+    setNodes(nds => [...nds, newNode]);
+    handleCloseCtxMenu();
+  }, [ctxMenu, nodes, setNodes, handleCloseCtxMenu]);
+
+  const handleDeleteNode = useCallback(() => {
+    if (!ctxMenu) return;
+    setNodes(nds => nds.filter(n => n.id !== ctxMenu.nodeId));
+    setEdges(eds => eds.filter(e => e.source !== ctxMenu.nodeId && e.target !== ctxMenu.nodeId));
+    handleCloseCtxMenu();
+  }, [ctxMenu, setNodes, setEdges, handleCloseCtxMenu]);
+
   // ──── Load & Save ────
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -326,9 +405,10 @@ export default function WhiteboardPage() {
 
         if (wb && Object.keys(wb).length > 0) {
           // Diagram data
-          if (wb.diagram) {
-            setNodes(wb.diagram.nodes || []);
-            setEdges(wb.diagram.edges || []);
+          const diagramData = wb.diagram as { nodes?: Node[]; edges?: Edge[] } | undefined;
+          if (diagramData) {
+            setNodes(diagramData.nodes || []);
+            setEdges(diagramData.edges || []);
           }
           // Tldraw data
           if (wb.freeform && editor) {
@@ -444,6 +524,7 @@ export default function WhiteboardPage() {
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
               onNodeDoubleClick={handleNodeDoubleClick}
+              onNodeContextMenu={handleNodeContextMenu}
               nodeTypes={memoizedNodeTypes}
               fitView
               snapToGrid
@@ -560,6 +641,35 @@ export default function WhiteboardPage() {
           <Button variant="contained" onClick={saveNodeEdit}>Save</Button>
         </DialogActions>
       </Dialog>
+
+      {/* ─── Right-Click Context Menu ─── */}
+      <Menu
+        open={ctxMenu !== null}
+        onClose={handleCloseCtxMenu}
+        anchorReference="anchorPosition"
+        anchorPosition={ctxMenu ? { top: ctxMenu.mouseY, left: ctxMenu.mouseX } : undefined}
+        slotProps={{ paper: { sx: { borderRadius: 2, minWidth: 200, boxShadow: '0 8px 32px rgba(0,0,0,0.12)' } } }}
+      >
+        <MenuItem
+          onClick={handleConvertToTask}
+          disabled={!currentProject || (ctxMenu ? convertedNodeIds.has(ctxMenu.nodeId) : false)}
+        >
+          <ListItemIcon><AssignmentTurnedInIcon fontSize="small" sx={{ color: '#10b981' }} /></ListItemIcon>
+          <ListItemText
+            primary={ctxMenu && convertedNodeIds.has(ctxMenu.nodeId) ? 'Already converted' : 'Convert to Task'}
+            primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600 }}
+          />
+        </MenuItem>
+        <MenuItem onClick={handleDuplicateNode}>
+          <ListItemIcon><ContentCopyIcon fontSize="small" /></ListItemIcon>
+          <ListItemText primary="Duplicate" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600 }} />
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={handleDeleteNode}>
+          <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
+          <ListItemText primary="Delete" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600, color: 'error.main' }} />
+        </MenuItem>
+      </Menu>
     </Box>
   );
 }

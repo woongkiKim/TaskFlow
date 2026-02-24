@@ -50,7 +50,7 @@ import HelpTooltip from '../components/HelpTooltip';
 import AuthorProfileCard from '../components/wiki/AuthorProfileCard';
 import TemplatePicker from '../components/wiki/TemplatePicker';
 import { WIKI_VISIBILITY_CONFIG, type WikiVisibility } from '../types';
-import type { WikiDocument, WikiComment, WikiVersion, TeamGroup } from '../types';
+import type { WikiDocument, TeamGroup } from '../types';
 import {
   extractHeadings, renderMarkdown, getDisplayTitle, EMOJI_OPTIONS, FORMATTING_GUIDE,
   addRecentDocId, getRecentDocIds

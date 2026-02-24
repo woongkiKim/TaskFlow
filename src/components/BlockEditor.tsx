@@ -1,7 +1,7 @@
 // src/components/BlockEditor.tsx
 // Notion-style block editor with slash commands
 import { useState, useRef, useCallback, useEffect, type KeyboardEvent } from 'react';
-import { Box, alpha } from '@mui/material';
+import { Box } from '@mui/material';
 import { useLanguage } from '../contexts/LanguageContext';
 import { uploadImage } from '../services/fileService';
 
