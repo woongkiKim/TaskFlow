@@ -32,16 +32,19 @@ import LightModeIcon from '@mui/icons-material/LightMode';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import PeopleIcon from '@mui/icons-material/People';
 import { useWorkspace } from '../contexts/WorkspaceContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useThemeMode } from '../contexts/ThemeContext';
+import { useTasks } from '../hooks/useTasks';
 
 interface CommandItem {
   id: string;
   label: string;
   description?: string;
   icon: React.ReactNode;
-  category: 'action' | 'navigation' | 'project' | 'initiative';
+  category: 'action' | 'navigation' | 'project' | 'initiative' | 'task';
   action: () => void;
   keywords?: string[];
 }
@@ -58,7 +61,8 @@ const CommandMenu = ({ open, onClose, onCreateTask }: CommandMenuProps) => {
   const { mode, toggleMode } = useThemeMode();
   const { projects, setCurrentProject, initiatives } = useWorkspace();
   const { lang } = useLanguage();
-  const t = (en: string, ko: string) => (lang === 'ko' ? ko : en);
+  const { tasks: allTasks } = useTasks();
+  const t = useCallback((en: string, ko: string) => (lang === 'ko' ? ko : en), [lang]);
 
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -128,6 +132,7 @@ const CommandMenu = ({ open, onClose, onCreateTask }: CommandMenuProps) => {
       { id: 'nav-ops', label: t('Go to Ops Center', 'Ops 센터로 이동'), icon: <BuildIcon fontSize="small" />, category: 'navigation', action: () => { navigate('/ops'); onClose(); }, keywords: ['ops', 'operations'] },
       { id: 'nav-settings', label: t('Go to Settings', '설정으로 이동'), icon: <SettingsIcon fontSize="small" />, category: 'navigation', action: () => { navigate('/settings'); onClose(); }, keywords: ['settings', '설정'] },
       { id: 'nav-team', label: t('Go to Team Settings', '팀 설정으로 이동'), icon: <GroupIcon fontSize="small" />, category: 'navigation', action: () => { navigate('/team-settings'); onClose(); }, keywords: ['team', 'members', '팀'] },
+      { id: 'nav-workload', label: t('Go to Workload', '워크로드로 이동'), description: t('Team capacity & distribution', '팀 용량 및 분배'), icon: <PeopleIcon fontSize="small" />, category: 'navigation', action: () => { navigate('/workload'); onClose(); }, keywords: ['workload', 'capacity', '워크로드', '용량'] },
     ];
 
     // Projects
@@ -156,16 +161,53 @@ const CommandMenu = ({ open, onClose, onCreateTask }: CommandMenuProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projects, initiatives, navigate, onClose, onCreateTask, setCurrentProject, lang, isDark, query]);
 
-  // ─── Filter ───────────────────────────────────────────
   const filtered = useMemo(() => {
-    if (!query.trim()) return commands;
+    if (!query.trim()) {
+      // Show recent tasks when query is empty
+      const recentTasks = [...allTasks]
+        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
+        .slice(0, 3)
+        .map(task => ({
+          id: `recent-task-${task.id}`,
+          label: task.text || 'Untitled',
+          description: `${t('Recent Task', '최근 작업')} · ${task.status || 'todo'}${task.projectId ? ` · P-${task.projectId.toString().slice(0, 6)}` : ''}`,
+          icon: <AssignmentIcon fontSize="small" sx={{ color: task.completed ? '#10b981' : '#6366f1' }} />,
+          category: 'task' as const,
+          action: () => { navigate('/tasks'); onClose(); },
+          keywords: [],
+        }));
+      return [...commands, ...recentTasks];
+    }
     const q = query.toLowerCase();
-    return commands.filter(cmd =>
+    const filteredCmds = commands.filter(cmd =>
       cmd.label.toLowerCase().includes(q) ||
       cmd.description?.toLowerCase().includes(q) ||
       cmd.keywords?.some(k => k.includes(q)),
     );
-  }, [query, commands]);
+
+    // Also search actual tasks when query is >= 2 chars
+    if (q.length >= 2) {
+      const matchedTasks = allTasks
+        .filter(task =>
+          task.text?.toLowerCase().includes(q) ||
+          task.description?.toLowerCase().includes(q) ||
+          task.tags?.some((tag: string) => tag.toLowerCase().includes(q))
+        )
+        .slice(0, 8)
+        .map(task => ({
+          id: `task-${task.id}`,
+          label: task.text || 'Untitled',
+          description: `${task.completed ? '✅' : '⬜'} ${task.status || 'todo'}${task.projectId ? ` · P-${task.projectId.toString().slice(0, 6)}` : ''}`,
+          icon: <AssignmentIcon fontSize="small" sx={{ color: task.completed ? '#10b981' : '#6366f1' }} />,
+          category: 'task' as const,
+          action: () => { navigate('/tasks'); onClose(); },
+          keywords: [],
+        }));
+      return [...filteredCmds, ...matchedTasks];
+    }
+
+    return filteredCmds;
+  }, [query, commands, allTasks, navigate, onClose, t]);
 
   // ─── Grouping ─────────────────────────────────────────
   const grouped = useMemo(() => {
@@ -200,9 +242,10 @@ const CommandMenu = ({ open, onClose, onCreateTask }: CommandMenuProps) => {
     navigation: t('Navigation', '이동'),
     project: t('Projects', '프로젝트'),
     initiative: t('Initiatives', '이니셔티브'),
+    task: t('Tasks', '작업'),
   };
 
-  const categoryOrder = ['action', 'navigation', 'project', 'initiative'];
+  const categoryOrder = ['action', 'task', 'navigation', 'project', 'initiative'];
 
   return (
     <Dialog
