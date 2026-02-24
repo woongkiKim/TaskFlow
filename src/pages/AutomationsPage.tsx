@@ -76,8 +76,30 @@ export default function AutomationsPage() {
 
   // Rule Builder State
   const [trigger, setTrigger] = useState('status_change');
+  const [triggerParam, setTriggerParam] = useState('');
   const [action, setAction] = useState('assign_user');
+  const [actionParam, setActionParam] = useState('');
   const [ruleName, setRuleName] = useState('');
+
+  const renderTriggerText = (tKey: string, pKey: string) => {
+    switch (tKey) {
+      case 'status_change': return `상태가 '${pKey || '...'}'(으)로 변경될 때`;
+      case 'task_created': return `새 태스크가 생성될 때`;
+      case 'due_date': return `마감일이 ${pKey || '...'} 다가올 때`;
+      case 'tag_added': return `'${pKey || '...'}' 태그가 추가될 때`;
+      default: return tKey;
+    }
+  };
+
+  const renderActionText = (aKey: string, pKey: string) => {
+    switch (aKey) {
+      case 'assign_user': return `'${pKey || '...'}'에게 할당`;
+      case 'set_status': return `상태를 '${pKey || '...'}'(으)로 변경`;
+      case 'add_comment': return `댓글 '${pKey || '...'}' 추가`;
+      case 'send_notification': return `${pKey || '...'}로 알림 전송`;
+      default: return aKey;
+    }
+  };
 
   const toggleRule = (id: string) => {
     setRules(prev => prev.map(r => r.id === id ? { ...r, active: !r.active } : r));
@@ -96,12 +118,13 @@ export default function AutomationsPage() {
       toast.error(t(lang, 'Please enter a rule name', '규칙 이름을 입력해주세요'));
       return;
     }
+    const isKo = lang === 'ko';
     const newRule: AutomationRule = {
       id: `rule_${Date.now()}`,
       name: ruleName,
-      description: `When ${trigger}, then ${action}`, // simplified
-      trigger: trigger,
-      action: action,
+      description: `IF ${renderTriggerText(trigger, triggerParam)}, THEN ${renderActionText(action, actionParam)}`,
+      trigger: isKo ? renderTriggerText(trigger, triggerParam) : `If ${trigger} is ${triggerParam}`,
+      action: isKo ? renderActionText(action, actionParam) : `Then ${action} ${actionParam}`,
       active: true,
       icon: <AutoFixHighIcon sx={{ fontSize: 24 }} />,
       color: '#6366f1'
@@ -109,6 +132,8 @@ export default function AutomationsPage() {
     setRules([newRule, ...rules]);
     setOpenBuilder(false);
     setRuleName('');
+    setTriggerParam('');
+    setActionParam('');
     toast.success(t(lang, 'Automation rule created!', '자동화 규칙이 생성되었습니다!'));
   };
 
@@ -246,29 +271,90 @@ export default function AutomationsPage() {
             <TextField fullWidth label={t(lang, 'Rule Name', '규칙 이름')} value={ruleName} onChange={e => setRuleName(e.target.value)} sx={{ mb: 4 }} />
 
             <Typography variant="overline" color="text.secondary" fontWeight={700}>1. WHEN (Trigger)</Typography>
-            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 3, bgcolor: theme.palette.mode === 'dark' ? alpha('#fff', 0.02) : '#f8fafc' }}>
+            <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, mb: 3, bgcolor: theme.palette.mode === 'dark' ? alpha('#fff', 0.02) : '#f8fafc', display: 'flex', flexDirection: 'column', gap: 2 }}>
               <FormControl fullWidth size="small">
                 <InputLabel>{t(lang, 'Select Trigger', '트리거 선택')}</InputLabel>
-                <Select value={trigger} label={t(lang, 'Select Trigger', '트리거 선택')} onChange={e => setTrigger(e.target.value)}>
-                  <MenuItem value="status_change">{t(lang, 'Task status changes', '태스크 상태가 변경될 때')}</MenuItem>
+                <Select value={trigger} label={t(lang, 'Select Trigger', '트리거 선택')} onChange={e => { setTrigger(e.target.value); setTriggerParam(''); }}>
+                  <MenuItem value="status_change">{t(lang, 'Task status changes to...', '태스크 상태가 다음으로 변경될 때...')}</MenuItem>
                   <MenuItem value="task_created">{t(lang, 'Task is created', '태스크가 생성될 때')}</MenuItem>
-                  <MenuItem value="due_date">{t(lang, 'Due date approaches', '마감일이 다가올 때')}</MenuItem>
-                  <MenuItem value="tag_added">{t(lang, 'Specific tag is added', '특정 태그가 추가될 때')}</MenuItem>
+                  <MenuItem value="due_date">{t(lang, 'Due date approaches...', '마감일이 다가올 때...')}</MenuItem>
+                  <MenuItem value="tag_added">{t(lang, 'Specific tag is added...', '특정 태그가 추가될 때...')}</MenuItem>
                 </Select>
               </FormControl>
+
+              {/* Conditional Trigger Parameters */}
+              {trigger === 'status_change' && (
+                <FormControl fullWidth size="small">
+                  <InputLabel>{t(lang, 'Target Status', '대상 상태')}</InputLabel>
+                  <Select value={triggerParam} label={t(lang, 'Target Status', '대상 상태')} onChange={e => setTriggerParam(e.target.value)}>
+                    <MenuItem value="To Do">To Do</MenuItem>
+                    <MenuItem value="In Progress">In Progress</MenuItem>
+                    <MenuItem value="QA">QA</MenuItem>
+                    <MenuItem value="Done">Done</MenuItem>
+                  </Select>
+                </FormControl>
+              )}
+              {trigger === 'due_date' && (
+                <FormControl fullWidth size="small">
+                  <InputLabel>{t(lang, 'Timeframe', '기간')}</InputLabel>
+                  <Select value={triggerParam} label={t(lang, 'Timeframe', '기간')} onChange={e => setTriggerParam(e.target.value)}>
+                    <MenuItem value="1 day before">1 day before (1일 전)</MenuItem>
+                    <MenuItem value="3 days before">3 days before (3일 전)</MenuItem>
+                    <MenuItem value="On due date">On due date (마감일 당일)</MenuItem>
+                  </Select>
+                </FormControl>
+              )}
+              {trigger === 'tag_added' && (
+                <TextField fullWidth size="small" label={t(lang, 'Tag Name', '태그 이름')} value={triggerParam} onChange={e => setTriggerParam(e.target.value)} />
+              )}
             </Paper>
 
             <Typography variant="overline" color="text.secondary" fontWeight={700}>2. THEN (Action)</Typography>
-            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: theme.palette.mode === 'dark' ? alpha('#fff', 0.02) : '#f8fafc' }}>
+            <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, bgcolor: theme.palette.mode === 'dark' ? alpha('#fff', 0.02) : '#f8fafc', display: 'flex', flexDirection: 'column', gap: 2 }}>
               <FormControl fullWidth size="small">
                 <InputLabel>{t(lang, 'Select Action', '액션 선택')}</InputLabel>
-                <Select value={action} label={t(lang, 'Select Action', '액션 선택')} onChange={e => setAction(e.target.value)}>
-                  <MenuItem value="assign_user">{t(lang, 'Change Assignee', '담당자 변경')}</MenuItem>
-                  <MenuItem value="set_status">{t(lang, 'Change Status', '상태 변경')}</MenuItem>
-                  <MenuItem value="add_comment">{t(lang, 'Add a comment', '댓글 추가')}</MenuItem>
-                  <MenuItem value="send_notification">{t(lang, 'Send Notification (Slack/Email)', '알림 전송 (Slack/이메일)')}</MenuItem>
+                <Select value={action} label={t(lang, 'Select Action', '액션 선택')} onChange={e => { setAction(e.target.value); setActionParam(''); }}>
+                  <MenuItem value="assign_user">{t(lang, 'Assign to...', '다음 사용자에게 할당...')}</MenuItem>
+                  <MenuItem value="set_status">{t(lang, 'Change Status to...', '상태를 다음으로 변경...')}</MenuItem>
+                  <MenuItem value="add_comment">{t(lang, 'Add a comment...', '댓글 구문 추가...')}</MenuItem>
+                  <MenuItem value="send_notification">{t(lang, 'Send Notification to...', '알림을 전송할 대상...')}</MenuItem>
                 </Select>
               </FormControl>
+
+              {/* Conditional Action Parameters */}
+              {action === 'assign_user' && (
+                <FormControl fullWidth size="small">
+                  <InputLabel>{t(lang, 'Assignee', '담당자')}</InputLabel>
+                  <Select value={actionParam} label={t(lang, 'Assignee', '담당자')} onChange={e => setActionParam(e.target.value)}>
+                    <MenuItem value="Project Manager">Project Manager</MenuItem>
+                    <MenuItem value="QA Team">QA Team</MenuItem>
+                    <MenuItem value="Creator">Creator</MenuItem>
+                  </Select>
+                </FormControl>
+              )}
+              {action === 'set_status' && (
+                <FormControl fullWidth size="small">
+                  <InputLabel>{t(lang, 'New Status', '새 상태')}</InputLabel>
+                  <Select value={actionParam} label={t(lang, 'New Status', '새 상태')} onChange={e => setActionParam(e.target.value)}>
+                    <MenuItem value="To Do">To Do</MenuItem>
+                    <MenuItem value="In Progress">In Progress</MenuItem>
+                    <MenuItem value="QA">QA</MenuItem>
+                    <MenuItem value="Done">Done</MenuItem>
+                  </Select>
+                </FormControl>
+              )}
+              {action === 'add_comment' && (
+                <TextField fullWidth size="small" label={t(lang, 'Comment Text', '댓글 내용')} value={actionParam} onChange={e => setActionParam(e.target.value)} />
+              )}
+              {action === 'send_notification' && (
+                <FormControl fullWidth size="small">
+                  <InputLabel>{t(lang, 'Channel', '채널')}</InputLabel>
+                  <Select value={actionParam} label={t(lang, 'Channel', '채널')} onChange={e => setActionParam(e.target.value)}>
+                    <MenuItem value="Slack #engineering">Slack #engineering</MenuItem>
+                    <MenuItem value="Email to PM">Email to PM</MenuItem>
+                  </Select>
+                </FormControl>
+              )}
             </Paper>
           </DialogContent>
           <DialogActions sx={{ p: 2, pt: 0, borderTop: '1px solid', borderColor: 'divider', mt: 2 }}>
