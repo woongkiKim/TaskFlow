@@ -10,6 +10,8 @@ import HorizontalRuleIcon from '@mui/icons-material/HorizontalRule';
 import TextFieldsIcon from '@mui/icons-material/TextFields';
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
 import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import AlternateEmailIcon from '@mui/icons-material/AlternateEmail';
 
 // ─── Block Types ─────────────────────────────────────
 export type BlockType =
@@ -24,7 +26,9 @@ export type BlockType =
   | 'code'
   | 'divider'
   | 'callout'
-  | 'image';
+  | 'image'
+  | 'task'
+  | 'mention';
 
 export interface Block {
   id: string;
@@ -33,6 +37,8 @@ export interface Block {
   checked?: boolean; // for checklist
   language?: string; // for code blocks
   url?: string; // for images
+  taskId?: string; // for task embed
+  userId?: string; // for mentions
 }
 
 // ─── Slash Command Definitions ──────────────────────
@@ -118,5 +124,17 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     description: 'Horizontal divider', descriptionKo: '수평 구분선',
     icon: <HorizontalRuleIcon sx={{ fontSize: 20 }} />,
     keywords: ['divider', 'line', 'hr', '구분선', '줄'],
+  },
+  {
+    id: 'task', label: 'Embed Task', labelKo: '작업 임베드',
+    description: 'Link and display a task', descriptionKo: '작업을 연결하고 표시합니다',
+    icon: <AssignmentIcon sx={{ fontSize: 20 }} />,
+    keywords: ['task', 'embed', 'link', '작업', '태스크', '임베드'],
+  },
+  {
+    id: 'mention', label: 'Mention Person', labelKo: '사람 멘션',
+    description: 'Mention a team member', descriptionKo: '팀원을 멘션합니다',
+    icon: <AlternateEmailIcon sx={{ fontSize: 20 }} />,
+    keywords: ['mention', 'person', 'user', '멘션', '@', '사람', '사용자'],
   },
 ];

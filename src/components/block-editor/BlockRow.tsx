@@ -4,6 +4,8 @@ import { Box, Paper, Typography, alpha } from '@mui/material';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import AddIcon from '@mui/icons-material/Add';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import AlternateEmailIcon from '@mui/icons-material/AlternateEmail';
 import type { Block, BlockType } from './blockEditorTypes';
 
 interface BlockRowProps {
@@ -63,6 +65,8 @@ const BlockRow: React.FC<BlockRowProps> = ({
     'code': isKo ? '코드를 입력하세요' : 'Type code here',
     'divider': '',
     'image': isKo ? '이미지 설명' : 'Image alt text',
+    'task': isKo ? '작업 검색... (태스크 ID 또는 이름)' : 'Search task... (ID or name)',
+    'mention': isKo ? '사용자 멘션... (이름 또는 이메일)' : 'Mention user... (name or email)',
   };
 
   if (block.type === 'divider') {
@@ -100,6 +104,8 @@ const BlockRow: React.FC<BlockRowProps> = ({
     'code': { fontFamily: '"Fira Code", "Consolas", monospace', fontSize: '0.82rem', lineHeight: 1.6 },
     'divider': {},
     'image': { fontSize: '0.85rem', color: 'text.secondary', textAlign: 'center' },
+    'task': { fontSize: '0.88rem', lineHeight: 1.7, fontWeight: 500 },
+    'mention': { fontSize: '0.88rem', lineHeight: 1.7, fontWeight: 600, color: '#3b82f6' },
   };
 
   const emptyBeforeSx = {
@@ -202,6 +208,22 @@ const BlockRow: React.FC<BlockRowProps> = ({
       ) : block.type === 'callout' ? (
         <Box sx={{ flex: 1, bgcolor: alpha('#6366f1', 0.06), borderRadius: 2, px: 1.5, py: 1, my: 0.3, border: '1px solid', borderColor: alpha('#6366f1', 0.12), display: 'flex', alignItems: 'flex-start', gap: 1 }}>
           <Typography fontSize="1.1rem" lineHeight={1} sx={{ mt: 0.3, userSelect: 'none' }}>💡</Typography>
+          <Box ref={contentRef} contentEditable suppressContentEditableWarning onInput={handleInput}
+            onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => onKeyDown(e, block, index)}
+            onFocus={() => onFocus(block.id)} data-placeholder={placeholderMap[block.type]}
+            sx={{ outline: 'none', flex: 1, minHeight: 24, ...styleMap[block.type], ...emptyBeforeSx }} />
+        </Box>
+      ) : block.type === 'task' ? (
+        <Box sx={{ flex: 1, bgcolor: alpha('#10b981', 0.06), borderRadius: 2, px: 1.5, py: 0.8, my: 0.3, border: '1px solid', borderColor: alpha('#10b981', 0.2), display: 'flex', alignItems: 'center', gap: 1 }}>
+          <AssignmentIcon sx={{ color: '#10b981', fontSize: 18 }} />
+          <Box ref={contentRef} contentEditable suppressContentEditableWarning onInput={handleInput}
+            onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => onKeyDown(e, block, index)}
+            onFocus={() => onFocus(block.id)} data-placeholder={placeholderMap[block.type]}
+            sx={{ outline: 'none', flex: 1, minHeight: 24, ...styleMap[block.type], ...emptyBeforeSx }} />
+        </Box>
+      ) : block.type === 'mention' ? (
+        <Box sx={{ flex: 1, bgcolor: alpha('#3b82f6', 0.06), borderRadius: 2, px: 1.5, py: 0.8, my: 0.3, border: '1px solid', borderColor: alpha('#3b82f6', 0.2), display: 'flex', alignItems: 'center', gap: 1, width: 'fit-content', minWidth: 200 }}>
+          <AlternateEmailIcon sx={{ color: '#3b82f6', fontSize: 18 }} />
           <Box ref={contentRef} contentEditable suppressContentEditableWarning onInput={handleInput}
             onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => onKeyDown(e, block, index)}
             onFocus={() => onFocus(block.id)} data-placeholder={placeholderMap[block.type]}

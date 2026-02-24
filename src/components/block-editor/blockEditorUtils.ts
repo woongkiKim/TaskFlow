@@ -112,6 +112,30 @@ export const markdownToBlocks = (md: string): Block[] => {
       continue;
     }
 
+    // Task
+    if (line.startsWith('@[task:')) {
+      const idx = line.indexOf(']');
+      if (idx !== -1) {
+        const taskId = line.slice(7, idx);
+        const text = line.slice(idx + 1).trim();
+        blocks.push({ ...createBlock('task', text), taskId });
+        i++;
+        continue;
+      }
+    }
+
+    // Mention
+    if (line.startsWith('@[mention:')) {
+      const idx = line.indexOf(']');
+      if (idx !== -1) {
+        const userId = line.slice(10, idx);
+        const text = line.slice(idx + 1).trim();
+        blocks.push({ ...createBlock('mention', text), userId });
+        i++;
+        continue;
+      }
+    }
+
     // Default: text
     blocks.push(createBlock('text', line));
     i++;
@@ -145,6 +169,8 @@ export const blocksToMarkdown = (blocks: Block[]): string => {
         case 'code': return `\`\`\`${block.language || ''}\n${block.content}\n\`\`\``;
         case 'divider': return '---';
         case 'image': return `![${block.content}](${block.url || ''})`;
+        case 'task': return `@[task:${block.taskId || ''}] ${block.content}`;
+        case 'mention': return `@[mention:${block.userId || ''}] ${block.content}`;
         default: return block.content;
       }
     })
