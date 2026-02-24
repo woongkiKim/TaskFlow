@@ -83,8 +83,21 @@ export interface Project {
   startDate?: string;
   targetDate?: string;
   status?: 'active' | 'completed' | 'paused' | 'planned';
+  isPrivate?: boolean;
+  inboundEmailAddress?: string;
+  members?: ProjectMember[];
   description?: string;
   githubRepo?: GitHubRepo;
+}
+
+export interface ProjectMember {
+  id: string;
+  project: string;
+  user: string;
+  user_email: string;
+  user_name: string;
+  role: 'viewer' | 'triage' | 'member' | 'maintainer' | 'admin';
+  created_at: string;
 }
 
 export interface Sprint {

@@ -35,7 +35,7 @@ interface WorkspaceContextType {
     projects: Project[];
     currentProject: Project | null;
     setCurrentProject: (p: Project | null) => void;
-    addProject: (name: string, color: string, teamGroupId?: string, initiativeId?: string) => Promise<Project>;
+    addProject: (name: string, color: string, teamGroupId?: string, initiativeId?: string, isPrivate?: boolean) => Promise<Project>;
     refreshProjects: () => Promise<void>;
 
     // Sprints
@@ -245,9 +245,9 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
         }
     }, [currentWorkspace]);
 
-    const addProject = useCallback(async (name: string, color: string, teamGroupId?: string, initiativeId?: string) => {
+    const addProject = useCallback(async (name: string, color: string, teamGroupId?: string, initiativeId?: string, isPrivate?: boolean) => {
         if (!user || !currentWorkspace) throw new Error('No workspace');
-        const p = await createProject(name, currentWorkspace.id, color, user.uid, teamGroupId, initiativeId);
+        const p = await createProject(name, currentWorkspace.id, color, user.uid, teamGroupId, initiativeId, isPrivate);
         setProjects(prev => [...prev, p]);
         return p;
     }, [user, currentWorkspace]);

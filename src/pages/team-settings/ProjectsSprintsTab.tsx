@@ -20,10 +20,13 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { deleteProject } from '../../services/projectService';
 import { deleteSprint, updateSprint } from '../../services/sprintService';
-import type { Sprint } from '../../types';
 import { PROJECT_COLORS } from '../../constants/colors';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import HelpTooltip from '../../components/HelpTooltip';
+import ProjectMembersDialog from '../../components/ProjectMembersDialog';
+import GroupAddIcon from '@mui/icons-material/GroupAdd';
+import EmailIcon from '@mui/icons-material/Email';
+import type { Sprint, Project } from '../../types';
 
 interface ProjectsSprintsTabProps {
     onOpenGhSync: (projectId: string) => void;
@@ -41,11 +44,15 @@ const ProjectsSprintsTab = ({ onOpenGhSync }: ProjectsSprintsTabProps) => {
     const [createSprintOpen, setCreateSprintOpen] = useState(false);
     const [newProjectName, setNewProjectName] = useState('');
     const [newProjectColor, setNewProjectColor] = useState(PROJECT_COLORS[0]);
+    const [newProjectIsPrivate, setNewProjectIsPrivate] = useState(false);
     const [newSprintName, setNewSprintName] = useState('');
     const [newSprintType, setNewSprintType] = useState<'sprint' | 'phase' | 'milestone'>('sprint');
     const [newSprintStartDate, setNewSprintStartDate] = useState('');
     const [newSprintEndDate, setNewSprintEndDate] = useState('');
     const [deleteTarget, setDeleteTarget] = useState<{ type: 'project' | 'sprint'; id: string } | null>(null);
+
+    const [membersDialogOpen, setMembersDialogOpen] = useState(false);
+    const [membersDialogProject, setMembersDialogProject] = useState<Project | null>(null);
 
     // Edit sprint state
     const [editSprint, setEditSprint] = useState<Sprint | null>(null);
@@ -58,8 +65,8 @@ const ProjectsSprintsTab = ({ onOpenGhSync }: ProjectsSprintsTabProps) => {
 
     const handleCreateProject = async () => {
         if (!newProjectName.trim()) return;
-        await addProject(newProjectName.trim(), newProjectColor);
-        setCreateProjectOpen(false); setNewProjectName('');
+        await addProject(newProjectName.trim(), newProjectColor, undefined, undefined, newProjectIsPrivate);
+        setCreateProjectOpen(false); setNewProjectName(''); setNewProjectIsPrivate(false);
     };
 
     const handleDeleteProject = async (id: string) => {
@@ -152,6 +159,27 @@ const ProjectsSprintsTab = ({ onOpenGhSync }: ProjectsSprintsTabProps) => {
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.2 }}>
                                             <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: proj.color }} />
                                             <Typography variant="caption" color="text.secondary">{proj.color}</Typography>
+                                            {proj.isPrivate && (
+                                                <Chip
+                                                    label="🔒 Private"
+                                                    size="small"
+                                                    sx={{ height: 18, fontSize: '0.65rem', fontWeight: 600, bgcolor: '#fef2f2', color: '#dc2626' }}
+                                                />
+                                            )}
+                                            {proj.inboundEmailAddress && (
+                                                <Tooltip title={textByLang('Copy Inbound Email', '수신용 이메일 주소 복사')}>
+                                                    <Chip
+                                                        icon={<EmailIcon sx={{ fontSize: '13px !important' }} />}
+                                                        label={proj.inboundEmailAddress.split('@')[0]}
+                                                        size="small"
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(proj.inboundEmailAddress!);
+                                                            toast.success(textByLang('Email copied to clipboard', '이메일 주소가 클립보드에 복사되었습니다.'));
+                                                        }}
+                                                        sx={{ height: 18, fontSize: '0.65rem', cursor: 'pointer' }}
+                                                    />
+                                                </Tooltip>
+                                            )}
                                             {proj.githubRepo && (
                                                 <Chip
                                                     icon={<GitHubIcon sx={{ fontSize: '14px !important' }} />}
@@ -170,6 +198,13 @@ const ProjectsSprintsTab = ({ onOpenGhSync }: ProjectsSprintsTabProps) => {
                                     <Tooltip title={textByLang('Sync GitHub Issues/PRs', 'GitHub 이슈/PR 동기화')}>
                                         <IconButton size="small" color="primary" onClick={() => onOpenGhSync(proj.id)}>
                                             <SyncIcon sx={{ fontSize: 18 }} />
+                                        </IconButton>
+                                    </Tooltip>
+                                )}
+                                {proj.isPrivate && (
+                                    <Tooltip title={textByLang('Manage Members', '멤버 관리')}>
+                                        <IconButton size="small" sx={{ color: 'primary.main', ml: 0.5 }} onClick={() => { setMembersDialogProject(proj); setMembersDialogOpen(true); }}>
+                                            <GroupAddIcon sx={{ fontSize: 18 }} />
                                         </IconButton>
                                     </Tooltip>
                                 )}
@@ -275,9 +310,17 @@ const ProjectsSprintsTab = ({ onOpenGhSync }: ProjectsSprintsTabProps) => {
                 <DialogContent>
                     <TextField autoFocus fullWidth label={t('projectName') as string} value={newProjectName}
                         onChange={e => setNewProjectName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreateProject()} sx={{ mt: 1, mb: 2 }} />
-                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
                         {PROJECT_COLORS.map(c => <Box key={c} onClick={() => setNewProjectColor(c)} sx={{ width: 28, height: 28, borderRadius: '50%', bgcolor: c, cursor: 'pointer', border: newProjectColor === c ? '3px solid' : '2px solid transparent', borderColor: newProjectColor === c ? 'text.primary' : 'transparent' }} />)}
                     </Box>
+                    <FormControlLabel
+                        control={<Checkbox size="small" checked={newProjectIsPrivate} onChange={(e) => setNewProjectIsPrivate(e.target.checked)} />}
+                        label={
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                🔒 {textByLang('Private Project (Only members can access)', '비공개 프로젝트 (초대된 멤버만 접근 가능)')}
+                            </Typography>
+                        }
+                    />
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setCreateProjectOpen(false)}>{t('cancel') as string}</Button>
@@ -408,6 +451,14 @@ const ProjectsSprintsTab = ({ onOpenGhSync }: ProjectsSprintsTabProps) => {
                     <Button variant="contained" onClick={handleSaveEditSprint} disabled={!editName.trim()}>{t('save') as string}</Button>
                 </DialogActions>
             </Dialog>
+
+            {/* Project Members Dialog */}
+            <ProjectMembersDialog
+                open={membersDialogOpen}
+                project={membersDialogProject}
+                onClose={() => { setMembersDialogOpen(false); setMembersDialogProject(null); }}
+                onProjectUpdated={refreshProjects}
+            />
         </>
     );
 };

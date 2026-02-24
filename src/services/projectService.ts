@@ -2,7 +2,7 @@
 // ProjectService — now proxied through Django REST API
 
 import api from './apiClient';
-import type { Project, KanbanColumn } from '../types';
+import type { Project, KanbanColumn, ProjectMember } from '../types';
 
 // ─── Response types ──────────────────────────────────────
 
@@ -21,6 +21,9 @@ interface ApiProject {
   startDate: string | null;
   targetDate: string | null;
   status: string;
+  is_private?: boolean;
+  inbound_email_address?: string;
+  members?: ProjectMember[];
   githubRepo: Record<string, unknown>;
   createdAt: string;
 }
@@ -49,6 +52,9 @@ function mapProject(p: ApiProject): Project {
     startDate: p.startDate || undefined,
     targetDate: p.targetDate || undefined,
     status: (p.status as Project['status']) || 'active',
+    isPrivate: p.is_private || false,
+    inboundEmailAddress: p.inbound_email_address,
+    members: p.members || [],
     description: p.description || undefined,
   };
 }
@@ -57,13 +63,14 @@ function mapProject(p: ApiProject): Project {
 
 export const createProject = async (
   name: string, workspaceId: string, color: string, _createdBy: string,
-  teamGroupId?: string, initiativeId?: string,
+  teamGroupId?: string, initiativeId?: string, isPrivate?: boolean
 ): Promise<Project> => {
   const body: Record<string, unknown> = {
     name,
     workspace: Number(workspaceId),
     color,
     kanbanColumns: DEFAULT_KANBAN_COLUMNS,
+    is_private: isPrivate || false,
   };
   if (teamGroupId) body.teamGroup = Number(teamGroupId);
   if (initiativeId) body.initiative = Number(initiativeId);
@@ -87,4 +94,22 @@ export const deleteProject = async (id: string): Promise<void> => {
 
 export const updateProjectColumns = async (id: string, columns: KanbanColumn[]): Promise<void> => {
   await api.patch(`projects/${id}/`, { kanbanColumns: columns });
+};
+
+// ─── Project Members API ───────────────────────────────────────
+
+export const addProjectMember = async (projectId: string, userId: string, role: string = 'member'): Promise<ProjectMember> => {
+  return await api.post<ProjectMember>('project-members/', {
+    project: Number(projectId),
+    user: Number(userId),
+    role
+  });
+};
+
+export const updateProjectMemberRole = async (memberId: string, role: string): Promise<void> => {
+  await api.patch(`project-members/${memberId}/`, { role });
+};
+
+export const removeProjectMember = async (memberId: string): Promise<void> => {
+  await api.delete(`project-members/${memberId}/`);
 };
