@@ -528,6 +528,7 @@ const en = {
   timeTracking: 'Time Tracking',
   whiteboard: 'Whiteboard Canvas',
   publicForms: 'Public Forms',
+  workload: 'Workload',
 };
 
 export default en;

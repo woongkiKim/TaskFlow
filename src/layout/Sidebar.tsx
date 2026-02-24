@@ -31,6 +31,7 @@ import TimerOutlinedIcon from '@mui/icons-material/TimerOutlined';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DrawOutlinedIcon from '@mui/icons-material/DrawOutlined';
 import ListAltIcon from '@mui/icons-material/ListAlt';
+import GroupIcon from '@mui/icons-material/Group';
 
 import { useLanguage, type TranslationKeys } from '../contexts/LanguageContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
@@ -188,6 +189,7 @@ const Sidebar = ({
         { textKey: 'okr', icon: <TrackChangesIcon sx={{ fontSize: 20 }} />, path: '/okr' },
         { textKey: 'gantt', icon: <EditCalendarOutlinedIcon sx={{ fontSize: 20 }} />, path: '/gantt' },
         { textKey: 'timeTracking', icon: <TimerOutlinedIcon sx={{ fontSize: 20 }} />, path: '/time-tracking' },
+        { textKey: 'workload', icon: <GroupIcon sx={{ fontSize: 20 }} />, path: '/workload' },
         { textKey: 'productivity', icon: <SpeedOutlinedIcon sx={{ fontSize: 20 }} />, path: '/productivity' },
       ],
     },

@@ -528,6 +528,7 @@ const ko = {
   timeTracking: '시간 추적',
   whiteboard: '화이트보드 캔버스',
   publicForms: '공개 폼 관리',
+  workload: '워크로드',
 };
 
 export default ko;

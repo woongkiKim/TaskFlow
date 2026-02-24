@@ -38,6 +38,7 @@ const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 const ServerErrorPage = lazy(() => import('./pages/ServerErrorPage'));
 const PublicFormPage = lazy(() => import('./pages/public/PublicFormPage'));
 const PublicFormsPage = lazy(() => import('./pages/PublicFormsPage'));
+const WorkloadPage = lazy(() => import('./pages/WorkloadPage'));
 
 // Loading Fallback Component — Linear-style branded loader
 const FullPageLoader = () => (
@@ -96,6 +97,7 @@ function App() {
                 <Route path="discussions" element={<DiscussionPage />} />
                 <Route path="productivity" element={<ProductivityPage />} />
                 <Route path="automations" element={<AutomationsPage />} />
+                <Route path="workload" element={<WorkloadPage />} />
                 <Route path="integrations" element={<IntegrationsPage />} />
                 <Route path="custom-fields" element={<CustomFieldsPage />} />
                 <Route path="time-tracking" element={<TimeTrackingPage />} />
