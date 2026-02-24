@@ -30,6 +30,8 @@ import { useWorkspace } from '../contexts/WorkspaceContext';
 import { fetchTasks, fetchMyWorkTasks } from '../services/taskService';
 import { fetchObjectives } from '../services/okrService';
 import type { Task, Objective } from '../types';
+import GroupIcon from '@mui/icons-material/Group';
+import AnalyticsIcon from '@mui/icons-material/Analytics';
 
 const t = (lang: 'ko' | 'en', en: string, ko: string) => (lang === 'ko' ? ko : en);
 
@@ -501,6 +503,111 @@ export default function HomePage() {
             </Box>
           </Paper>
         </Box>
+
+        {/* ═══ TEAM INSIGHTS MINI WIDGETS ═══ */}
+        {workspace && (
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3, mt: 3 }}>
+
+            {/* ── Project Progress Overview ── */}
+            <Paper sx={cardSx}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <AnalyticsIcon sx={{ fontSize: 20, color: '#6366f1' }} />
+                  <Typography variant="subtitle1" fontWeight={700}>
+                    {t(lang, 'Sprint & Project Health', '스프린트 & 프로젝트 현황')}
+                  </Typography>
+                </Box>
+                <Button size="small" endIcon={<ArrowForwardIcon />} onClick={() => navigate('/analytics')}
+                  sx={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'none' }}>
+                  {t(lang, 'Analytics', '분석')}
+                </Button>
+              </Box>
+              {(() => {
+                const projectStats = tasks.reduce<Record<string, { name: string; total: number; done: number; color: string }>>((acc, task) => {
+                  const pid = task.projectId || 'none';
+                  if (!acc[pid]) acc[pid] = { name: pid === 'none' ? t(lang, 'No Project', '프로젝트 없음') : `P-${pid.slice(0, 6)}`, total: 0, done: 0, color: '#94a3b8' };
+                  acc[pid].total++;
+                  if (task.completed) acc[pid].done++;
+                  return acc;
+                }, {});
+                const sorted = Object.entries(projectStats).sort((a, b) => b[1].total - a[1].total).slice(0, 5);
+                if (sorted.length === 0) {
+                  return (
+                    <Box sx={{ textAlign: 'center', py: 3 }}>
+                      <Typography variant="body2" color="text.disabled">{t(lang, 'No project data', '프로젝트 데이터 없음')}</Typography>
+                    </Box>
+                  );
+                }
+                return (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    {sorted.map(([pid, ps]) => {
+                      const pct = ps.total > 0 ? Math.round((ps.done / ps.total) * 100) : 0;
+                      return (
+                        <Box key={pid} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                          <Box sx={{ minWidth: 80 }}>
+                            <Typography variant="caption" fontWeight={600} noWrap>{ps.name}</Typography>
+                          </Box>
+                          <LinearProgress variant="determinate" value={pct}
+                            sx={{
+                              flex: 1, height: 6, borderRadius: 3, bgcolor: alpha('#6366f1', 0.08),
+                              '& .MuiLinearProgress-bar': { bgcolor: pct >= 80 ? '#10b981' : pct >= 40 ? '#3b82f6' : '#f59e0b', borderRadius: 3 },
+                            }}
+                          />
+                          <Typography variant="caption" fontWeight={700} sx={{ minWidth: 35, textAlign: 'right', color: pct >= 80 ? '#10b981' : pct >= 40 ? '#3b82f6' : '#f59e0b' }}>
+                            {pct}%
+                          </Typography>
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                );
+              })()}
+            </Paper>
+
+            {/* ── Team & Workload Quick View ── */}
+            <Paper sx={cardSx}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <GroupIcon sx={{ fontSize: 20, color: '#8b5cf6' }} />
+                  <Typography variant="subtitle1" fontWeight={700}>
+                    {t(lang, 'Team Quick Stats', '팀 빠른 현황')}
+                  </Typography>
+                </Box>
+                <Button size="small" endIcon={<ArrowForwardIcon />} onClick={() => navigate('/workload')}
+                  sx={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'none' }}>
+                  {t(lang, 'Workload', '워크로드')}
+                </Button>
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                <Box sx={{ p: 2, borderRadius: 2.5, bgcolor: alpha('#10b981', 0.06), border: '1px solid', borderColor: alpha('#10b981', 0.15), textAlign: 'center' }}>
+                  <Typography variant="h5" fontWeight={800} color="#10b981">{stats.weekCompleted}</Typography>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary">
+                    {t(lang, 'Completed this week', '이번 주 완료')}
+                  </Typography>
+                </Box>
+                <Box sx={{ p: 2, borderRadius: 2.5, bgcolor: alpha('#f59e0b', 0.06), border: '1px solid', borderColor: alpha('#f59e0b', 0.15), textAlign: 'center' }}>
+                  <Typography variant="h5" fontWeight={800} color="#f59e0b">{stats.inProgress}</Typography>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary">
+                    {t(lang, 'In Progress', '진행 중')}
+                  </Typography>
+                </Box>
+                <Box sx={{ p: 2, borderRadius: 2.5, bgcolor: alpha('#ef4444', 0.06), border: '1px solid', borderColor: alpha('#ef4444', 0.15), textAlign: 'center' }}>
+                  <Typography variant="h5" fontWeight={800} color="#ef4444">{stats.blocked}</Typography>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary">
+                    {t(lang, 'Blocked', '차단됨')}
+                  </Typography>
+                </Box>
+                <Box sx={{ p: 2, borderRadius: 2.5, bgcolor: alpha('#6366f1', 0.06), border: '1px solid', borderColor: alpha('#6366f1', 0.15), textAlign: 'center' }}>
+                  <Typography variant="h5" fontWeight={800} color="#6366f1">{stats.totalActive}</Typography>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary">
+                    {t(lang, 'Active Tasks', '활성 태스크')}
+                  </Typography>
+                </Box>
+              </Box>
+            </Paper>
+
+          </Box>
+        )}
 
       </Box>
     </Fade>
