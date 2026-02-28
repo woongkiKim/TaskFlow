@@ -40,8 +40,12 @@ import SpeedIcon from '@mui/icons-material/Speed';
 import ArticleIcon from '@mui/icons-material/Article';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import FileUploadIcon from '@mui/icons-material/FileUpload';
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import { toast } from 'sonner';
 import { handleError } from '../utils/errorHandler';
+import { addTaskToDB } from '../services/taskService';
 
 
 type LocalViewMode = GlobalViewMode;
@@ -131,7 +135,7 @@ const TasksPage = () => {
         return fetchPersonalTasks(user.uid);
     }, [user, currentProject, currentWorkspace, taskScope, activeViewFilter, projects]);
 
-    const { data: swrTasks = [], loading, mutate: _mutateTasks } = useApiData<Task[]>(
+    const { data: swrTasks = [], loading, error: fetchError, mutate: _mutateTasks } = useApiData<Task[]>(
         taskCacheKey,
         taskFetcher,
         { ttlMs: 3 * 60_000, persist: true },
@@ -381,6 +385,43 @@ const TasksPage = () => {
         return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}><CircularProgress /></Box>;
     }
 
+    if (fetchError && tasks.length === 0) {
+        return (
+            <Box sx={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                height: '50vh', gap: 2, textAlign: 'center', px: 3,
+            }}>
+                <Box sx={{
+                    width: 80, height: 80, borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #ef4444 0%, #f97316 100%)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 8px 32px rgba(239, 68, 68, 0.25)', mb: 1,
+                }}>
+                    <Typography fontSize="2.5rem">⚠️</Typography>
+                </Box>
+                <Typography variant="h6" fontWeight={800} color="text.primary">
+                    {lang === 'ko' ? '데이터를 불러올 수 없습니다' : 'Unable to load tasks'}
+                </Typography>
+                <Typography color="text.secondary" sx={{ maxWidth: 400, mb: 2 }}>
+                    {lang === 'ko'
+                        ? '서버와의 연결에 문제가 있습니다. 네트워크를 확인하거나 잠시 후 다시 시도해주세요.'
+                        : 'There was a problem connecting to the server. Check your network or try again shortly.'}
+                </Typography>
+                <Button
+                    variant="contained"
+                    onClick={() => _mutateTasks()}
+                    sx={{
+                        borderRadius: 2, px: 4, py: 1,
+                        background: 'linear-gradient(135deg, #6366f1 0%, #3b82f6 100%)',
+                        fontWeight: 700,
+                    }}
+                >
+                    {lang === 'ko' ? '다시 시도' : 'Retry'}
+                </Button>
+            </Box>
+        );
+    }
+
     return (
         <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             {/* Header */}
@@ -539,6 +580,91 @@ const TasksPage = () => {
                     {allTags.length > 0 && viewMode !== 'calendar' && (
                         <CategoryFilter allTags={allTags} selectedTag={selectedTag} onSelectTag={setSelectedTag} />
                     )}
+
+                    {/* CSV Export / Import / Trash */}
+                    <Box sx={{ display: 'flex', gap: 0.5, ml: 1 }}>
+                        <Tooltip title={lang === 'ko' ? 'CSV 내보내기' : 'Export CSV'}>
+                            <IconButton
+                                size="small"
+                                onClick={() => {
+                                    const headers = ['Title', 'Status', 'Priority', 'Type', 'Due Date', 'Category', 'Tags', 'Assignee', 'Created'];
+                                    const rows = tasks.map(t => [
+                                        `"${(t.text || '').replace(/"/g, '""')}"`,
+                                        t.status || 'todo',
+                                        t.priority || '',
+                                        t.type || 'task',
+                                        t.dueDate || '',
+                                        t.category || '',
+                                        (t.tags || []).join(';'),
+                                        t.assigneeName || '',
+                                        t.createdAt || '',
+                                    ]);
+                                    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                                    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `taskflow_export_${new Date().toISOString().slice(0, 10)}.csv`;
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                    toast.success(lang === 'ko' ? `${tasks.length}개 작업 내보내기 완료` : `Exported ${tasks.length} tasks`);
+                                }}
+                                sx={{ bgcolor: 'action.hover' }}
+                            >
+                                <FileDownloadIcon sx={{ fontSize: 18 }} />
+                            </IconButton>
+                        </Tooltip>
+                        <Tooltip title={lang === 'ko' ? 'CSV 가져오기' : 'Import CSV'}>
+                            <IconButton
+                                size="small"
+                                onClick={() => {
+                                    const input = document.createElement('input');
+                                    input.type = 'file';
+                                    input.accept = '.csv';
+                                    input.onchange = async (e) => {
+                                        const file = (e.target as HTMLInputElement).files?.[0];
+                                        if (!file || !user) return;
+                                        const text = await file.text();
+                                        const lines = text.split('\n').filter(l => l.trim());
+                                        if (lines.length < 2) { toast.error('Empty CSV'); return; }
+                                        const headerLine = lines[0].toLowerCase();
+                                        const titleIdx = headerLine.split(',').findIndex(h => h.trim().includes('title') || h.trim().includes('name') || h.trim().includes('task'));
+                                        if (titleIdx < 0) { toast.error(lang === 'ko' ? 'Title 열을 찾을 수 없습니다' : 'No Title column found'); return; }
+                                        let imported = 0;
+                                        for (let i = 1; i < lines.length; i++) {
+                                            const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+                                            const title = cols[titleIdx];
+                                            if (!title) continue;
+                                            try {
+                                                await addTaskToDB(title, user.uid, undefined, [], {
+                                                    projectId: currentProject?.id,
+                                                    workspaceId: currentWorkspace?.id,
+                                                });
+                                                imported++;
+                                            } catch { /* skip */ }
+                                        }
+                                        toast.success(lang === 'ko' ? `${imported}개 작업 가져오기 완료` : `Imported ${imported} tasks`);
+                                        _mutateTasks();
+                                    };
+                                    input.click();
+                                }}
+                                sx={{ bgcolor: 'action.hover' }}
+                            >
+                                <FileUploadIcon sx={{ fontSize: 18 }} />
+                            </IconButton>
+                        </Tooltip>
+                        <Tooltip title={lang === 'ko' ? '휴지통' : 'Trash'}>
+                            <IconButton
+                                size="small"
+                                onClick={() => {
+                                    toast.info(lang === 'ko' ? '삭제된 작업은 아카이브 필터에서 확인할 수 있습니다' : 'Deleted tasks can be viewed via the archive filter');
+                                }}
+                                sx={{ bgcolor: 'action.hover' }}
+                            >
+                                <DeleteSweepIcon sx={{ fontSize: 18 }} />
+                            </IconButton>
+                        </Tooltip>
+                    </Box>
                 </Box>
 
             </Box>

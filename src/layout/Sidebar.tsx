@@ -204,11 +204,11 @@ const Sidebar = ({
     {
       labelEn: 'CONFIGURE', labelKo: '설정 & 연동',
       items: [
-        { textKey: 'automations', icon: <AutoFixHighOutlinedIcon sx={{ fontSize: 20 }} />, path: '/automations' },
-        { textKey: 'integrations', icon: <ExtensionOutlinedIcon sx={{ fontSize: 20 }} />, path: '/integrations' },
-        { textKey: 'customFields', icon: <EditAttributesOutlinedIcon sx={{ fontSize: 20 }} />, path: '/custom-fields' },
-        { textKey: 'publicForms', icon: <ListAltIcon sx={{ fontSize: 20 }} />, path: '/public-forms' },
-        { textKey: 'opsCenter', icon: <HubIcon sx={{ fontSize: 20 }} />, path: '/ops' },
+        { textKey: 'automations', icon: <AutoFixHighOutlinedIcon sx={{ fontSize: 20 }} />, path: '/automations', protected: true },
+        { textKey: 'integrations', icon: <ExtensionOutlinedIcon sx={{ fontSize: 20 }} />, path: '/integrations', protected: true },
+        { textKey: 'customFields', icon: <EditAttributesOutlinedIcon sx={{ fontSize: 20 }} />, path: '/custom-fields', protected: true },
+        { textKey: 'publicForms', icon: <ListAltIcon sx={{ fontSize: 20 }} />, path: '/public-forms', protected: true },
+        { textKey: 'opsCenter', icon: <HubIcon sx={{ fontSize: 20 }} />, path: '/ops', protected: true },
       ],
     },
   ];

@@ -3,7 +3,7 @@ import {
     Dialog, DialogTitle, DialogContent, DialogActions, Box, Typography, TextField, Chip,
     IconButton, Checkbox, InputBase, Divider, ToggleButtonGroup, ToggleButton,
     LinearProgress, Avatar, AvatarGroup, Switch, FormControlLabel, Collapse,
-    Select, MenuItem, FormControl, Button, Autocomplete, Paper, alpha,
+    Select, MenuItem, FormControl, Button, Autocomplete, Paper, alpha, Tooltip,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import FlagIcon from '@mui/icons-material/Flag';
@@ -19,6 +19,12 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import SubdirectoryArrowRightIcon from '@mui/icons-material/SubdirectoryArrowRight';
 import TimerIcon from '@mui/icons-material/Timer';
+import RepeatIcon from '@mui/icons-material/Repeat';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import type { Task, Subtask, PriorityLevel, TaskType, TaskRelation, RelationType, EstimatePoint, TimeEntry } from '../types';
 import ActivityFeed from './ActivityFeed';
 import {
@@ -38,6 +44,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
 import { decomposeTask, refineDescription, type SuggestedSubtask } from '../services/aiService';
 import { toast } from 'sonner';
+import { api } from '../services/apiClient';
+import { addTaskToDB, watchTask, unwatchTask, isWatchingTask } from '../services/taskService';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 
 interface TaskDetailDialogProps {
     open: boolean;
@@ -52,7 +62,7 @@ interface TaskDetailDialogProps {
 const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCreateSubIssue, onTaskClick }: TaskDetailDialogProps) => {
     const { t, lang } = useLanguage();
     const textByLang = (en: string, ko: string) => (lang === 'ko' ? ko : en);
-    useWorkspace();
+    const { projects } = useWorkspace();
     const [text, setText] = useState('');
     const [description, setDescription] = useState('');
     const descriptionRef = useRef('');
@@ -99,6 +109,12 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
     const [isRefining, setIsRefining] = useState(false);
     const [aiSuggestions, setAiSuggestions] = useState<SuggestedSubtask[]>([]);
 
+    // Advanced Fields (Recurring, Reminders, Attachments)
+    const [recurring, setRecurring] = useState<string>('none');
+    const [reminders, setReminders] = useState<string[]>([]);
+    const [attachments, setAttachments] = useState<{ name: string, url: string }[]>([]);
+    const [isUploading, setIsUploading] = useState(false);
+
     // Sync form state from task prop — render-time reset avoids cascading effects
     const [lastTaskId, setLastTaskId] = useState<string | null>(null);
     if (task && task.id !== lastTaskId) {
@@ -120,6 +136,12 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
         setEstimate((task.estimate ?? null) as EstimatePoint | null);
         setTags(task.tags || []);
         setNewTagText('');
+
+        // Advanced
+        setRecurring((task.recurringConfig?.type as string) || 'none');
+        setReminders((task.reminders as string[]) || []);
+        setAttachments((task.attachments as { name: string, url: string }[]) || []);
+
         setLastTaskId(task.id);
     }
 
@@ -152,6 +174,11 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
         if ((estimate ?? undefined) !== (task.estimate ?? undefined)) updates.estimate = estimate ?? undefined;
         if (JSON.stringify(tags) !== JSON.stringify(task.tags || [])) updates.tags = tags;
 
+        const newRecurringConfig = recurring === 'none' ? {} : { type: recurring };
+        if (JSON.stringify(newRecurringConfig) !== JSON.stringify(task.recurringConfig || {})) updates.recurringConfig = newRecurringConfig;
+        if (JSON.stringify(reminders) !== JSON.stringify(task.reminders || [])) updates.reminders = reminders;
+        if (JSON.stringify(attachments) !== JSON.stringify(task.attachments || [])) updates.attachments = attachments;
+
         if (Object.keys(updates).length > 0) {
             try {
                 await updateTaskDetailInDB(task.id, updates);
@@ -165,6 +192,9 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
             blockerStatus, blockerDetail, nextAction, links, aiUsage, delayReason, relations,
             estimate: estimate ?? undefined,
             tags: tags.length > 0 ? tags : undefined,
+            recurringConfig: recurring === 'none' ? {} : { type: recurring },
+            reminders,
+            attachments,
         };
         onUpdate(updatedTask);
     };
@@ -344,7 +374,28 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
                         <Chip icon={<BlockIcon />} label="Blocked" size="small" color="error" sx={{ fontWeight: 600 }} />
                     )}
                 </Box>
-                <IconButton onClick={handleClose} size="small"><CloseIcon /></IconButton>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    {/* Watch/Subscribe */}
+                    <Tooltip title={isWatchingTask(task.id, user?.uid || '') ? (lang === 'ko' ? '구독 취소' : 'Unwatch') : (lang === 'ko' ? '변경 알림 받기' : 'Watch')}>
+                        <IconButton
+                            size="small"
+                            onClick={() => {
+                                if (!user) return;
+                                if (isWatchingTask(task.id, user.uid)) {
+                                    unwatchTask(task.id, user.uid);
+                                    toast.info(lang === 'ko' ? '구독 취소됨' : 'Unwatched');
+                                } else {
+                                    watchTask(task.id, user.uid);
+                                    toast.success(lang === 'ko' ? '변경 알림을 받습니다' : 'Watching for changes');
+                                }
+                            }}
+                            sx={{ color: isWatchingTask(task.id, user?.uid || '') ? 'primary.main' : 'text.secondary' }}
+                        >
+                            {isWatchingTask(task.id, user?.uid || '') ? <VisibilityIcon fontSize="small" /> : <VisibilityOffIcon fontSize="small" />}
+                        </IconButton>
+                    </Tooltip>
+                    <IconButton onClick={handleClose} size="small"><CloseIcon /></IconButton>
+                </Box>
             </DialogTitle>
 
             <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 4, px: 4, py: 4 }}>
@@ -646,6 +697,43 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
                         slotProps={{ inputLabel: { shrink: true } }} />
                 </Box>
 
+                {/* Recurring Tasks */}
+                <Box>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                        <RepeatIcon sx={{ fontSize: 14 }} /> {lang === 'ko' ? '반복 설정' : 'Recurring'}
+                    </Typography>
+                    <Select size="small" value={recurring} onChange={e => setRecurring(e.target.value)}
+                        sx={{ borderRadius: 2, minWidth: 150, fontSize: '0.875rem' }}>
+                        <MenuItem value="none">{lang === 'ko' ? '반복 안함' : 'None'}</MenuItem>
+                        <MenuItem value="daily">{lang === 'ko' ? '매일' : 'Daily'}</MenuItem>
+                        <MenuItem value="weekly">{lang === 'ko' ? '매주' : 'Weekly'}</MenuItem>
+                        <MenuItem value="monthly">{lang === 'ko' ? '매월' : 'Monthly'}</MenuItem>
+                    </Select>
+                </Box>
+
+                {/* Reminders */}
+                <Box>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                        <NotificationsActiveIcon sx={{ fontSize: 14 }} /> {lang === 'ko' ? '알림' : 'Reminders'}
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                        {['10m', '1h', '1d'].map(r => (
+                            <Chip
+                                key={r}
+                                label={r === '10m' ? '10m before' : r === '1h' ? '1h before' : '1d before'}
+                                size="small"
+                                onClick={() => setReminders(prev => prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r])}
+                                sx={{
+                                    fontWeight: reminders.includes(r) ? 700 : 400,
+                                    bgcolor: reminders.includes(r) ? '#f59e0b20' : 'transparent',
+                                    color: reminders.includes(r) ? '#ea580c' : 'text.secondary',
+                                    border: '1px solid', borderColor: reminders.includes(r) ? '#f59e0b' : 'divider',
+                                }}
+                            />
+                        ))}
+                    </Box>
+                </Box>
+
                 <Divider />
 
                 {/* Blocker */}
@@ -693,6 +781,76 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
                                         size="small" component="a" href={link} target="_blank" clickable
                                         onDelete={() => setLinks(links.filter((_, j) => j !== i))}
                                         sx={{ fontWeight: 500, maxWidth: '100%' }} />
+                                </Box>
+                            ))}
+                        </Box>
+                    )}
+                </Box>
+
+                <Divider sx={{ my: 1 }} />
+
+                {/* Attachments */}
+                <Box>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                        <AttachFileIcon sx={{ fontSize: 14 }} /> {lang === 'ko' ? '첨부 파일' : 'Attachments'}
+                    </Typography>
+
+                    {/* Real File Upload */}
+                    <input
+                        type="file"
+                        id="attachment-upload"
+                        style={{ display: 'none' }}
+                        onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+
+                            setIsUploading(true);
+                            try {
+                                const formData = new FormData();
+                                formData.append('file', file);
+
+                                const res = await api.upload<{ name: string, url: string }>('tasks/upload/', formData);
+                                const newAttachments = [...attachments, res];
+                                setAttachments(newAttachments);
+                                toast.success(lang === 'ko' ? `${file.name} 업로드 완료!` : `${file.name} attached!`);
+                            } catch (error) {
+                                console.error('Upload error', error);
+                                toast.error(lang === 'ko' ? '파일 업로드 실패' : 'File upload failed');
+                            } finally {
+                                setIsUploading(false);
+                                // reset input
+                                e.target.value = '';
+                            }
+                        }}
+                    />
+                    <Paper
+                        variant="outlined"
+                        sx={{
+                            borderStyle: 'dashed', borderColor: 'divider', p: 2, mb: 1,
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
+                            bgcolor: 'action.hover', cursor: 'pointer', borderRadius: 2
+                        }}
+                        onClick={() => document.getElementById('attachment-upload')?.click()}
+                    >
+                        <CloudUploadOutlinedIcon color="primary" />
+                        <Typography variant="caption" color="text.secondary">
+                            {isUploading
+                                ? (lang === 'ko' ? '업로드 중...' : 'Uploading...')
+                                : (lang === 'ko' ? '클릭하여 파일 업로드' : 'Click to upload')}
+                        </Typography>
+                    </Paper>
+
+                    {attachments.length > 0 && (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                            {attachments.map((file, i) => (
+                                <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 0.5, borderRadius: 1, '&:hover': { bgcolor: 'action.hover' } }}>
+                                    <AttachFileIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                                    <Typography variant="caption" sx={{ flex: 1, textDecoration: 'underline', cursor: 'pointer' }}>
+                                        {file.name}
+                                    </Typography>
+                                    <IconButton size="small" onClick={() => setAttachments(attachments.filter((_, j) => j !== i))}>
+                                        <CloseIcon sx={{ fontSize: 14 }} />
+                                    </IconButton>
                                 </Box>
                             ))}
                         </Box>
@@ -877,6 +1035,40 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
                                 flex: 1, textDecoration: sub.completed ? 'line-through' : 'none',
                                 color: sub.completed ? 'text.secondary' : 'text.primary',
                             }}>{sub.text}</Typography>
+
+                            {/* Advanced Subtasks Display */}
+                            {sub.dueDate && (
+                                <Chip label={sub.dueDate} size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'transparent', border: '1px solid', borderColor: 'divider' }} />
+                            )}
+                            {sub.assigneeName && (
+                                <Avatar sx={{ width: 18, height: 18, fontSize: 10, bgcolor: 'secondary.main' }}>
+                                    {sub.assigneeName.charAt(0).toUpperCase()}
+                                </Avatar>
+                            )}
+
+                            {/* Quick Mock Actions */}
+                            <IconButton className="sub-delete" size="small"
+                                onClick={() => {
+                                    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+                                    const updated = subtasks.map(s => s.id === sub.id ? { ...s, dueDate: tomorrow.toISOString().split('T')[0] } : s);
+                                    setSubtasks(updated);
+                                    updateSubtasksInDB(task.id, updated).catch(() => { });
+                                }}
+                                title="Add Due Date (Mock To Tomorrow)"
+                                sx={{ opacity: 0, transition: 'opacity 0.15s', p: 0.3 }}>
+                                <CalendarTodayIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                            </IconButton>
+                            <IconButton className="sub-delete" size="small"
+                                onClick={() => {
+                                    const updated = subtasks.map(s => s.id === sub.id ? { ...s, assigneeName: user?.displayName || 'Admin' } : s);
+                                    setSubtasks(updated);
+                                    updateSubtasksInDB(task.id, updated).catch(() => { });
+                                }}
+                                title="Assign to me (Mock)"
+                                sx={{ opacity: 0, transition: 'opacity 0.15s', p: 0.3 }}>
+                                <Typography variant="caption" sx={{ fontSize: 14 }}>👤</Typography>
+                            </IconButton>
+
                             <IconButton className="sub-delete" size="small" onClick={() => handleDeleteSubtask(sub.id)}
                                 sx={{ opacity: 0, transition: 'opacity 0.15s', p: 0.5 }}>
                                 <DeleteOutlineIcon sx={{ fontSize: 16, color: 'error.main' }} />
@@ -989,9 +1181,78 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
                     title={lang === 'ko' ? '변경 이력' : 'Change History'} />
 
             </DialogContent>
-            <DialogActions sx={{ px: 3, pb: 2 }}>
-                <Button onClick={handleClose} color="inherit" sx={{ borderRadius: 2 }}>{t('cancel') as string}</Button>
-                <Button variant="contained" onClick={() => { handleSave(); onClose(); }} sx={{ borderRadius: 2, fontWeight: 600 }}>{t('save') as string}</Button>
+            <DialogActions sx={{ px: 3, pb: 2, justifyContent: 'space-between' }}>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                    {/* Duplicate */}
+                    <Button
+                        size="small"
+                        startIcon={<ContentCopyIcon sx={{ fontSize: 16 }} />}
+                        onClick={async () => {
+                            if (!task || !user) return;
+                            try {
+                                await addTaskToDB(
+                                    `[Copy] ${task.text}`,
+                                    user.uid,
+                                    undefined,
+                                    task.tags,
+                                    {
+                                        description: task.description,
+                                        priority: task.priority,
+                                        category: task.category,
+                                        categoryColor: task.categoryColor,
+                                        dueDate: task.dueDate,
+                                        type: task.type,
+                                        projectId: task.projectId,
+                                        workspaceId: task.workspaceId,
+                                        sprintId: task.sprintId,
+                                        status: task.status,
+                                    }
+                                );
+                                toast.success(lang === 'ko' ? '작업이 복제되었습니다!' : 'Task duplicated!');
+                            } catch {
+                                toast.error(lang === 'ko' ? '복제 실패' : 'Duplicate failed');
+                            }
+                        }}
+                        sx={{ borderRadius: 2, textTransform: 'none', fontSize: '0.78rem', color: 'text.secondary' }}
+                    >
+                        {lang === 'ko' ? '복제' : 'Duplicate'}
+                    </Button>
+                    {/* Move to Project */}
+                    {projects.length > 1 && (
+                        <Select
+                            size="small"
+                            displayEmpty
+                            value={task.projectId || ''}
+                            onChange={async (e) => {
+                                const newProjectId = e.target.value as string;
+                                if (newProjectId && newProjectId !== task.projectId) {
+                                    try {
+                                        const { updateTaskDetailInDB: updateFn } = await import('../services/taskService');
+                                        await updateFn(task.id, { projectId: newProjectId } as Partial<Task>);
+                                        onUpdate({ ...task, projectId: newProjectId });
+                                        toast.success(lang === 'ko' ? '프로젝트가 변경되었습니다' : 'Moved to project');
+                                    } catch {
+                                        toast.error(lang === 'ko' ? '이동 실패' : 'Move failed');
+                                    }
+                                }
+                            }}
+                            renderValue={(v) => {
+                                if (!v) return <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary', fontSize: '0.78rem' }}><DriveFileMoveIcon sx={{ fontSize: 16 }} /> {lang === 'ko' ? '이동' : 'Move'}</Box>;
+                                const p = projects.find(p => p.id === v);
+                                return <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, fontSize: '0.78rem' }}><DriveFileMoveIcon sx={{ fontSize: 16 }} /> {p?.name || v}</Box>;
+                            }}
+                            sx={{ borderRadius: 2, minWidth: 100, height: 32, '& .MuiSelect-select': { py: 0.5, fontSize: '0.78rem' } }}
+                        >
+                            {projects.map(p => (
+                                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                            ))}
+                        </Select>
+                    )}
+                </Box>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button onClick={handleClose} color="inherit" sx={{ borderRadius: 2 }}>{t('cancel') as string}</Button>
+                    <Button variant="contained" onClick={() => { handleSave(); onClose(); }} sx={{ borderRadius: 2, fontWeight: 600 }}>{t('save') as string}</Button>
+                </Box>
             </DialogActions>
         </Dialog>
     );

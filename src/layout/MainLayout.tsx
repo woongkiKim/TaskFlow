@@ -2,16 +2,22 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import {
   Box, Toolbar, Dialog, DialogTitle, DialogContent,
-  Typography, Chip, Divider, CircularProgress,
+  Typography, Chip, Divider, CircularProgress, Fab, Tooltip, Zoom,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import Sidebar, { DRAWER_WIDTH, COLLAPSED_DRAWER_WIDTH } from './Sidebar';
 import Header from './Header';
 import CommandMenu from '../components/CommandMenu';
+import AddTaskDialog from '../components/AddTaskDialog';
 import OnboardingTour from '../components/OnboardingTour';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useOnboarding } from '../hooks/useOnboarding';
 import { getTourSteps } from '../constants/tourSteps';
 import NetworkBanner from '../components/NetworkBanner';
+import { addTaskToDB } from '../services/taskService';
+import { toast } from 'sonner';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const MOD = isMac ? 'Cmd' : 'Ctrl';
@@ -82,6 +88,8 @@ const STEP_SEPARATOR_BY_LANG: Record<'en' | 'ko', string> = {
 const MainLayout = () => {
   const navigate = useNavigate();
   const { t, lang } = useLanguage();
+  const { currentWorkspace, currentProject } = useWorkspace();
+  const { user } = useAuth();
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
@@ -232,7 +240,63 @@ const MainLayout = () => {
         }>
           <Outlet context={{ addTaskOpen, setAddTaskOpen }} />
         </Suspense>
+
+        {/* ───── Global FAB: always-visible task creation button ───── */}
+        <Tooltip title={lang === 'ko' ? '새 작업 만들기 (C)' : 'Create Task (C)'} placement="left">
+          <Zoom in>
+            <Fab
+              color="primary"
+              aria-label="create task"
+              onClick={() => setAddTaskOpen(true)}
+              sx={{
+                position: 'fixed',
+                bottom: 32,
+                right: 32,
+                width: 56,
+                height: 56,
+                background: 'linear-gradient(135deg, #6366f1 0%, #3b82f6 100%)',
+                boxShadow: '0 8px 32px rgba(99, 102, 241, 0.35)',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                '&:hover': {
+                  transform: 'scale(1.08)',
+                  boxShadow: '0 12px 40px rgba(99, 102, 241, 0.5)',
+                  background: 'linear-gradient(135deg, #4f46e5 0%, #2563eb 100%)',
+                },
+                zIndex: 1200,
+              }}
+            >
+              <AddIcon sx={{ fontSize: 28 }} />
+            </Fab>
+          </Zoom>
+        </Tooltip>
       </Box>
+
+      {/* ───── Global AddTaskDialog ───── */}
+      <AddTaskDialog
+        open={addTaskOpen}
+        onClose={() => setAddTaskOpen(false)}
+        onSubmit={async (data) => {
+          try {
+            if (!user) return;
+            await addTaskToDB(data.text, user.uid, undefined, data.tags, {
+              description: data.description,
+              priority: data.priority,
+              category: data.category,
+              categoryColor: data.categoryColor,
+              dueDate: data.dueDate,
+              type: data.type,
+              assigneeId: data.assigneeId,
+              sprintId: data.sprintId,
+              workspaceId: currentWorkspace?.id,
+              projectId: currentProject?.id,
+            });
+            toast.success(lang === 'ko' ? '작업이 생성되었습니다!' : 'Task created!');
+          } catch (e) {
+            console.error('Global task create failed:', e);
+            toast.error(lang === 'ko' ? '작업 생성 실패' : 'Failed to create task');
+          }
+        }}
+      />
 
       <OnboardingTour
         steps={tourSteps}

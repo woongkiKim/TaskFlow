@@ -60,3 +60,19 @@ export const updateCustomView = async (id: string, updates: Partial<CustomView>)
 export const deleteCustomView = async (id: string): Promise<void> => {
   await api.delete(`custom-views/${id}/`);
 };
+
+/** Share a custom view with the entire workspace */
+export const shareCustomView = async (id: string): Promise<void> => {
+  await api.patch(`custom-views/${id}/`, { team_shared: true });
+};
+
+/** Unshare a custom view */
+export const unshareCustomView = async (id: string): Promise<void> => {
+  await api.patch(`custom-views/${id}/`, { team_shared: false });
+};
+
+/** Fetch views shared by other team members */
+export const fetchSharedViews = async (workspaceId: string): Promise<CustomView[]> => {
+  const data = await api.get<{ results: ApiCustomView[] }>('custom-views/', { workspace_id: workspaceId, team_shared: 'true' });
+  return (data.results || []).map(mapView);
+};

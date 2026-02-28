@@ -3,6 +3,7 @@ import {
   Box, Typography, Paper, Avatar, Switch, Divider, Chip, Select, MenuItem, FormControl, IconButton, TextField, Fade,
 } from '@mui/material';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import PersonIcon from '@mui/icons-material/Person';
 import EmailIcon from '@mui/icons-material/Email';
@@ -94,7 +95,37 @@ const Settings = () => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [newName, setNewName] = useState(user?.displayName || '');
 
-  const shortcutGroups = SHORTCUT_GROUPS_BY_LANG[lang];
+  const shortcutGroups = SHORTCUT_GROUPS_BY_LANG[(lang === 'ko' ? 'ko' : 'en') as 'ko' | 'en'];
+
+  // Notification settings
+  type NotifKey = 'task_assigned' | 'task_completed' | 'task_status_changed' | 'task_mentioned' | 'task_due_soon' | 'task_overdue' | 'comment_added' | 'sprint_started' | 'sprint_completed' | 'email_enabled';
+  const defaultNotifSettings: Record<NotifKey, boolean> = {
+    task_assigned: true, task_completed: true, task_status_changed: true,
+    task_mentioned: true, task_due_soon: true, task_overdue: true,
+    comment_added: true, sprint_started: true, sprint_completed: true, email_enabled: false,
+  };
+  const notifStorageKey = `notif_settings_${currentWorkspace?.id || 'default'}`;
+  const loadNotifSettings = (): Record<NotifKey, boolean> => {
+    try { const raw = localStorage.getItem(notifStorageKey); return raw ? { ...defaultNotifSettings, ...JSON.parse(raw) } : defaultNotifSettings; } catch { return defaultNotifSettings; }
+  };
+  const [notifSettings, setNotifSettings] = useState<Record<NotifKey, boolean>>(loadNotifSettings);
+  const toggleNotif = (key: NotifKey) => {
+    const updated = { ...notifSettings, [key]: !notifSettings[key] };
+    setNotifSettings(updated);
+    localStorage.setItem(notifStorageKey, JSON.stringify(updated));
+  };
+  const NOTIF_LABELS: Record<NotifKey, { en: string; ko: string; icon: string }> = {
+    task_assigned: { en: 'Task assigned to me', ko: '작업이 나에게 배정됨', icon: '👤' },
+    task_completed: { en: 'Task completed', ko: '작업 완료됨', icon: '✅' },
+    task_status_changed: { en: 'Task status changed', ko: '작업 상태 변경됨', icon: '🔄' },
+    task_mentioned: { en: '@Mention in comments', ko: '댓글에서 @멘션', icon: '💬' },
+    task_due_soon: { en: 'Task due soon (24h)', ko: '작업 마감 임박 (24시간)', icon: '⏰' },
+    task_overdue: { en: 'Task overdue', ko: '작업 기한 초과', icon: '🔴' },
+    comment_added: { en: 'New comment on my tasks', ko: '내 작업에 새 댓글', icon: '💭' },
+    sprint_started: { en: 'Sprint started', ko: '스프린트 시작됨', icon: '🚀' },
+    sprint_completed: { en: 'Sprint completed', ko: '스프린트 완료됨', icon: '🏁' },
+    email_enabled: { en: 'Send email notifications', ko: '이메일 알림 발송', icon: '📧' },
+  };
 
   // Backlog settings state — sync from workspace on change
   const [backlogSettings, setBacklogSettingsState] = useState<BacklogSettings>({
@@ -162,6 +193,7 @@ const Settings = () => {
             { label: lang === 'ko' ? '워크스페이스' : 'Workspace', icon: <InventoryIcon sx={{ fontSize: 18 }} /> },
             { label: lang === 'ko' ? '외부 서비스 연동' : 'Integrations', icon: <LinkIcon sx={{ fontSize: 18 }} /> },
             { label: lang === 'ko' ? '환경설정' : 'Preferences', icon: <KeyboardIcon sx={{ fontSize: 18 }} /> },
+            { label: lang === 'ko' ? '알림 설정' : 'Notifications', icon: <NotificationsActiveIcon sx={{ fontSize: 18 }} /> },
           ].map((tab, i) => (
             <Box
               key={i}
@@ -369,6 +401,46 @@ const Settings = () => {
                   </Box>
                 </Box>
               ))}
+            </Paper>
+          </Box>
+        </Fade>
+      )}
+
+      {/* ─── TAB 4: Notifications ─── */}
+      {activeTab === 4 && (
+        <Fade in={activeTab === 4}>
+          <Box>
+            <Typography variant="subtitle1" fontWeight={800} sx={{ mb: 2, px: 1 }}>
+              {lang === 'ko' ? '인앱 알림' : 'In-App Notifications'}
+            </Typography>
+            <Paper variant="outlined" sx={{ p: 3, borderRadius: 4, mb: 4, bgcolor: 'background.paper' }}>
+              {(Object.keys(notifSettings) as NotifKey[]).filter(k => k !== 'email_enabled').map((key) => (
+                <Box key={key} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 1.5, borderBottom: '1px solid', borderColor: 'divider', '&:last-child': { borderBottom: 'none' } }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Typography fontSize="1.2rem">{NOTIF_LABELS[key].icon}</Typography>
+                    <Typography variant="body2" fontWeight={600}>{lang === 'ko' ? NOTIF_LABELS[key].ko : NOTIF_LABELS[key].en}</Typography>
+                  </Box>
+                  <Switch checked={notifSettings[key]} onChange={() => toggleNotif(key)} color="primary" />
+                </Box>
+              ))}
+            </Paper>
+
+            <Typography variant="subtitle1" fontWeight={800} sx={{ mb: 2, px: 1 }}>
+              {lang === 'ko' ? '이메일 알림' : 'Email Notifications'}
+            </Typography>
+            <Paper variant="outlined" sx={{ p: 3, borderRadius: 4, mb: 4, bgcolor: 'background.paper' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <Typography fontSize="1.2rem">📧</Typography>
+                  <Box>
+                    <Typography variant="body2" fontWeight={600}>{lang === 'ko' ? NOTIF_LABELS.email_enabled.ko : NOTIF_LABELS.email_enabled.en}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {lang === 'ko' ? '활성화하면 중요 알림을 이메일로도 받습니다' : 'When enabled, important notifications are also sent via email'}
+                    </Typography>
+                  </Box>
+                </Box>
+                <Switch checked={notifSettings.email_enabled} onChange={() => toggleNotif('email_enabled')} color="primary" />
+              </Box>
             </Paper>
           </Box>
         </Fade>

@@ -3,7 +3,7 @@ import {
     Dialog, DialogTitle, DialogContent, DialogActions,
     TextField, Button, Box, ToggleButtonGroup, ToggleButton, Chip, Typography,
     InputBase, IconButton, Avatar, Tooltip, FormControl, Select, MenuItem, Menu,
-    Switch, FormControlLabel, Collapse, Divider, AvatarGroup,
+    Switch, FormControlLabel, Collapse, Divider, AvatarGroup, Paper,
 } from '@mui/material';
 import FlagIcon from '@mui/icons-material/Flag';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
@@ -16,6 +16,9 @@ import BlockIcon from '@mui/icons-material/Block';
 import NextPlanIcon from '@mui/icons-material/NextPlan';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import RepeatIcon from '@mui/icons-material/Repeat';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
 import type { TaskType, TaskOwner, PriorityLevel, IssueTemplate, EstimatePoint } from '../types';
@@ -43,12 +46,14 @@ interface AddTaskDialogProps {
         blockerStatus?: 'none' | 'blocked'; blockerDetail?: string;
         nextAction?: string; links?: string[];
         estimate?: number;
+        recurringConfig?: { type: string; interval: number };
+        attachments?: { name: string; url: string }[];
     }) => void;
     defaultDate?: Date;
 }
 
 const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogProps) => {
-    const { t } = useLanguage();
+    const { t, lang } = useLanguage();
     const { currentMembers, sprints, currentSprint, currentProject, currentWorkspace } = useWorkspace();
     const { user } = useAuth();
     const defaultDueDate = defaultDate ? defaultDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
@@ -82,6 +87,10 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
 
     // Estimate
     const [estimate, setEstimate] = useState<EstimatePoint | null>(null);
+
+    // Advanced Sub
+    const [recurring, setRecurring] = useState<string>('none');
+    const [attachments, setAttachments] = useState<{ name: string, url: string }[]>([]);
 
     // Issue Templates
     const [templates, setTemplates] = useState<IssueTemplate[]>([]);
@@ -219,6 +228,8 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
             nextAction: nextAction.trim() || undefined,
             links: links.length > 0 ? links : undefined,
             estimate: estimate ?? undefined,
+            recurringConfig: recurring === 'none' ? undefined : { type: recurring, interval: 1 },
+            attachments: attachments.length > 0 ? attachments : undefined,
         });
         // Reset
         setText(''); setDescription(''); descriptionRef.current = ''; setPriority(''); setTaskType('task');
@@ -228,6 +239,8 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
         setSprintId(currentSprint?.id || ''); setIsBlocked(false); setBlockerDetail('');
         setNextAction(''); setLinkText(''); setLinks([]); setShowAdvanced(false);
         setEstimate(null);
+        setRecurring('none');
+        setAttachments([]);
         setDetailMode(false);
         onClose();
     };
@@ -564,6 +577,61 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
                                         </Box>
                                     )}
                                 </Box>
+
+                                {/* Recurring tasks setup */}
+                                <Box>
+                                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                                        <RepeatIcon sx={{ fontSize: 14 }} /> {lang === 'ko' ? '반복 설정' : 'Recurring'}
+                                    </Typography>
+                                    <Select size="small" value={recurring} onChange={e => setRecurring(e.target.value)}
+                                        sx={{ borderRadius: 2, minWidth: 150, fontSize: '0.875rem' }}>
+                                        <MenuItem value="none">{lang === 'ko' ? '반복 안함' : 'None'}</MenuItem>
+                                        <MenuItem value="daily">{lang === 'ko' ? '매일' : 'Daily'}</MenuItem>
+                                        <MenuItem value="weekly">{lang === 'ko' ? '매주' : 'Weekly'}</MenuItem>
+                                        <MenuItem value="monthly">{lang === 'ko' ? '매월' : 'Monthly'}</MenuItem>
+                                    </Select>
+                                </Box>
+
+                                {/* Attachments setup */}
+                                <Box>
+                                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                                        <AttachFileIcon sx={{ fontSize: 14 }} /> {lang === 'ko' ? '첨부 파일' : 'Attachments'}
+                                    </Typography>
+
+                                    <Paper
+                                        variant="outlined"
+                                        sx={{
+                                            borderStyle: 'dashed', borderColor: 'divider', p: 2, mb: 1,
+                                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
+                                            bgcolor: 'action.hover', cursor: 'pointer', borderRadius: 2
+                                        }}
+                                        onClick={() => {
+                                            // Make Mock File in AddDialog
+                                            const fileName = `Mock_File_${attachments.length + 1}.pdf`;
+                                            setAttachments([...attachments, { name: fileName, url: '#' }]);
+                                            toast.success(`${fileName} attached!`);
+                                        }}
+                                    >
+                                        <CloudUploadOutlinedIcon color="primary" />
+                                        <Typography variant="caption" color="text.secondary">
+                                            {lang === 'ko' ? '클릭하여 파일 업로드 (Mock)' : 'Click to upload (Mock)'}
+                                        </Typography>
+                                    </Paper>
+
+                                    {attachments.length > 0 && (
+                                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                            {attachments.map((file, i) => (
+                                                <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 0.5, borderRadius: 1, '&:hover': { bgcolor: 'action.hover' } }}>
+                                                    <AttachFileIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                                                    <Typography variant="caption" sx={{ flex: 1, textDecoration: 'underline', cursor: 'pointer' }}>
+                                                        {file.name}
+                                                    </Typography>
+                                                </Box>
+                                            ))}
+                                        </Box>
+                                    )}
+                                </Box>
+
                             </Box>
                         </Collapse>
                     </Box>

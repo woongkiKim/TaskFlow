@@ -26,7 +26,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
 
-const t = (lang: 'ko' | 'en', en: string, ko: string) => (lang === 'ko' ? ko : en);
+const t = (lang: string, en: string, ko: string) => (lang === 'ko' ? ko : en);
 
 // ─── Types ───
 interface DiscussionThread {
@@ -108,6 +108,8 @@ export default function DiscussionPage() {
   const [newThreadChannel, setNewThreadChannel] = useState('general');
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuThread, setMenuThread] = useState<DiscussionThread | null>(null);
+  const [reactionAnchorEl, setReactionAnchorEl] = useState<null | HTMLElement>(null);
+  const [reactionMsgId, setReactionMsgId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const dateFnsLocale = lang === 'ko' ? koLocale : enUS;
@@ -403,7 +405,10 @@ export default function DiscussionPage() {
                               {/* Add reaction */}
                               <Tooltip title={t(lang, 'Add reaction', '반응 추가')}>
                                 <Chip label="+" size="small" variant="outlined"
-                                  onClick={() => handleReaction(msg.id, EMOJIS[Math.floor(Math.random() * EMOJIS.length)])}
+                                  onClick={(e) => {
+                                    setReactionAnchorEl(e.currentTarget);
+                                    setReactionMsgId(msg.id);
+                                  }}
                                   sx={{ height: 24, fontSize: '0.7rem', cursor: 'pointer', opacity: 0.4, '&:hover': { opacity: 1 } }} />
                               </Tooltip>
                             </Box>
@@ -507,6 +512,28 @@ export default function DiscussionPage() {
             <DeleteOutlineIcon sx={{ fontSize: 16 }} />
             {t(lang, 'Delete', '삭제')}
           </MenuItem>
+        </Menu>
+
+        {/* Reaction Picker Menu */}
+        <Menu
+          anchorEl={reactionAnchorEl}
+          open={Boolean(reactionAnchorEl)}
+          onClose={() => { setReactionAnchorEl(null); setReactionMsgId(null); }}
+          slotProps={{ paper: { sx: { borderRadius: 3, p: 0.5, boxShadow: '0 8px 32px rgba(0,0,0,0.15)' } } }}
+          MenuListProps={{ sx: { display: 'flex', gap: 0.5, p: 0.5, flexWrap: 'wrap', maxWidth: 200 } }}
+        >
+          {EMOJIS.map(emoji => (
+            <MenuItem
+              key={emoji}
+              onClick={() => {
+                if (reactionMsgId) handleReaction(reactionMsgId, emoji);
+                setReactionAnchorEl(null); setReactionMsgId(null);
+              }}
+              sx={{ minWidth: 'auto', p: 1, borderRadius: 2, fontSize: '1.25rem', '&:hover': { bgcolor: alpha('#6366f1', 0.1) } }}
+            >
+              {emoji}
+            </MenuItem>
+          ))}
         </Menu>
       </Box>
     </Fade>

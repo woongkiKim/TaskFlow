@@ -233,6 +233,25 @@ export const api = {
 
   /** Manually invalidate cache for a resource type */
   invalidateCache,
+
+  /**
+   * File Upload — handles multipart/form-data
+   */
+  upload: async <T>(path: string, formData: FormData): Promise<T> => {
+    const token = await getAuthToken();
+    const url = new URL(`${API_BASE_URL}/${path.replace(/^\//, '')}`).toString();
+    
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    
+    // Do not set Content-Type header. Browser will automatically set multipart/form-data with bounds.
+    const res = await fetch(url, { method: 'POST', headers, body: formData });
+    
+    if (!res.ok) {
+        throw new Error(`Upload failed: ${res.status}`);
+    }
+    return res.json();
+  },
 };
 
 export default api;

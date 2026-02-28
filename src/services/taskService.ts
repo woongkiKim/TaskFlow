@@ -53,6 +53,9 @@ export interface ApiTask {
   triageStatus: string;
   archived: boolean;
   totalTimeSpent: number;
+  recurringConfig?: Record<string, unknown>;
+  reminders?: unknown[];
+  attachments?: unknown[];
   createdAt: string;
   updatedAt: string;
   updatedBy: number | null;
@@ -101,6 +104,9 @@ function mapTask(t: ApiTask): Task {
     triageStatus: t.triageStatus as Task['triageStatus'] || undefined,
     archived: t.archived,
     totalTimeSpent: t.totalTimeSpent,
+    recurringConfig: t.recurringConfig || undefined,
+    reminders: t.reminders || [],
+    attachments: t.attachments || [],
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
     updatedBy: t.updatedBy ? String(t.updatedBy) : undefined,
@@ -502,4 +508,56 @@ export const rolloverSprintTasks = async (
   const incomplete = results.filter(t => !t.completed);
   await Promise.all(incomplete.map(t => api.patch(`tasks/${t.id}/`, { sprint: Number(toSprintId) })));
   return incomplete.length;
+};
+
+// ─── 21. Task Watchers (Subscribe) ────────────────────────────
+
+const WATCHERS_KEY = 'task_watchers';
+
+interface TaskWatchers {
+  [taskId: string]: string[]; // array of user UIDs
+}
+
+function loadWatchers(): TaskWatchers {
+  try {
+    return JSON.parse(localStorage.getItem(WATCHERS_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function saveWatchers(data: TaskWatchers) {
+  localStorage.setItem(WATCHERS_KEY, JSON.stringify(data));
+}
+
+/** Subscribe to task changes (watch) */
+export const watchTask = (taskId: string, userId: string): void => {
+  const data = loadWatchers();
+  if (!data[taskId]) data[taskId] = [];
+  if (!data[taskId].includes(userId)) {
+    data[taskId].push(userId);
+    saveWatchers(data);
+  }
+};
+
+/** Unsubscribe from task changes */
+export const unwatchTask = (taskId: string, userId: string): void => {
+  const data = loadWatchers();
+  if (data[taskId]) {
+    data[taskId] = data[taskId].filter(uid => uid !== userId);
+    if (data[taskId].length === 0) delete data[taskId];
+    saveWatchers(data);
+  }
+};
+
+/** Check if user is watching a task */
+export const isWatchingTask = (taskId: string, userId: string): boolean => {
+  const data = loadWatchers();
+  return (data[taskId] || []).includes(userId);
+};
+
+/** Get all watchers of a task */
+export const getTaskWatchers = (taskId: string): string[] => {
+  const data = loadWatchers();
+  return data[taskId] || [];
 };

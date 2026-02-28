@@ -4,6 +4,7 @@ import {
   ToggleButtonGroup, ToggleButton, Button, IconButton, Chip, Paper, TextField,
   Dialog, DialogTitle, DialogContent, DialogActions, alpha, useTheme,
   Menu, ListItemIcon, ListItemText, Divider,
+  Drawer, List, ListItem, ListItemButton,
 } from '@mui/material';
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -49,7 +50,8 @@ import { useWorkspace } from '../contexts/WorkspaceContext';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
 import api from '../services/apiClient';
-import { addTaskToDB } from '../services/taskService';
+import { addTaskToDB, fetchProjectTasks } from '../services/taskService';
+import type { Task as TaskType } from '../types';
 
 /* ──────────────────────────────────────── */
 /*  Custom Node Components for ReactFlow    */
@@ -60,17 +62,37 @@ interface DiagramNodeData {
   color: string;
   icon?: string;
   description?: string;
+  taskId?: string;
+  taskCode?: string;
+  taskStatus?: string;
   [key: string]: unknown;
 }
 
+interface ProjectStats {
+  total: number;
+  completed: number;
+  in_progress: number;
+  todo: number;
+  blocked: number;
+}
+
 function ProcessNode({ data }: { data: DiagramNodeData }) {
+  const statusColor = getStatusColor(data.taskStatus);
+  const bgColor = data.taskId ? statusColor : (data.color || '#3b82f6');
+
   return (
     <Box sx={{
-      px: 2.5, py: 1.5, borderRadius: 2, bgcolor: data.color || '#3b82f6',
+      px: 2.5, py: 1.5, borderRadius: 2, bgcolor: bgColor,
       color: '#fff', minWidth: 140, textAlign: 'center',
       boxShadow: '0 4px 14px rgba(0,0,0,0.15)', border: '2px solid rgba(255,255,255,0.2)',
+      position: 'relative',
     }}>
       <Handle type="target" position={Position.Top} style={{ background: '#fff' }} />
+      {data.taskCode && (
+        <Typography variant="caption" sx={{ position: 'absolute', top: -18, left: 0, fontWeight: 800, color: 'text.secondary', fontSize: '0.6rem' }}>
+          {data.taskCode}
+        </Typography>
+      )}
       <Typography variant="body2" fontWeight={700}>{data.label}</Typography>
       {data.description && (
         <Typography variant="caption" sx={{ opacity: 0.85, display: 'block', mt: 0.3 }}>{data.description}</Typography>
@@ -78,6 +100,16 @@ function ProcessNode({ data }: { data: DiagramNodeData }) {
       <Handle type="source" position={Position.Bottom} style={{ background: '#fff' }} />
     </Box>
   );
+}
+
+function getStatusColor(status?: string) {
+  switch (status) {
+    case 'done': return '#10b981';
+    case 'inprogress': return '#3b82f6';
+    case 'blocked': return '#ef4444';
+    case 'todo': return '#94a3b8';
+    default: return undefined;
+  }
 }
 
 function DecisionNode({ data }: { data: DiagramNodeData }) {
@@ -176,7 +208,7 @@ const shapeOptions = [
   { type: 'group', label: 'Group', icon: <CircleOutlinedIcon fontSize="small" />, color: '#6366f1' },
 ];
 
-const templateDiagrams: Record<string, { nodes: Node[]; edges: Edge[] }> = {
+const templateDiagrams: Record<string, { nodes: Node<DiagramNodeData>[]; edges: Edge[] }> = {
   flowchart: {
     nodes: [
       { id: '1', type: 'process', position: { x: 250, y: 0 }, data: { label: 'Start', color: '#10b981', description: '' } },
@@ -247,16 +279,24 @@ export default function WhiteboardPage() {
 
   // ──── Context Menu (right-click) state ────
   const [ctxMenu, setCtxMenu] = useState<{ mouseX: number; mouseY: number; nodeId: string } | null>(null);
-  const [convertedNodeIds, setConvertedNodeIds] = useState<Record<string, string>>({}); // nodeId -> taskId
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const navigate = useNavigate();
 
   // ──── Freeform (tldraw) state ────
   const [editor, setEditor] = useState<Editor | null>(null);
 
+  // ──── Project Stats state ────
+  const [projectStats, setProjectStats] = useState<ProjectStats | null>(null);
+
+  // ──── Project Tasks for Drawer ────
+  const [projectTasks, setProjectTasks] = useState<TaskType[]>([]);
+  const [taskSearch, setTaskSearch] = useState('');
+  const [tasksLoading, setTasksLoading] = useState(false);
+
   // ──── Diagram (ReactFlow) state ────
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<DiagramNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const [editNode, setEditNode] = useState<Node | null>(null);
+  const [editNode, setEditNode] = useState<Node<DiagramNodeData> | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editColor, setEditColor] = useState('#3b82f6');
@@ -273,7 +313,7 @@ export default function WhiteboardPage() {
 
   const addNode = useCallback((shapeType: string, color: string) => {
     const id = `node_${++nodeCounter.current}`;
-    const newNode: Node = {
+    const newNode: Node<DiagramNodeData> = {
       id,
       type: shapeType,
       position: { x: 200 + Math.random() * 200, y: 100 + Math.random() * 200 },
@@ -291,11 +331,11 @@ export default function WhiteboardPage() {
     }
   }, [setNodes, setEdges]);
 
-  const handleNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
+  const handleNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node<DiagramNodeData>) => {
     setEditNode(node);
-    setEditLabel((node.data as DiagramNodeData).label);
-    setEditDesc((node.data as DiagramNodeData).description || '');
-    setEditColor((node.data as DiagramNodeData).color || '#3b82f6');
+    setEditLabel(node.data.label);
+    setEditDesc(node.data.description || '');
+    setEditColor(node.data.color || '#3b82f6');
   }, []);
 
   const saveNodeEdit = useCallback(() => {
@@ -316,7 +356,7 @@ export default function WhiteboardPage() {
   }, [setNodes, setEdges]);
 
   // ──── Context Menu Handlers ────
-  const handleNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
+  const handleNodeContextMenu = useCallback((event: React.MouseEvent, node: Node<DiagramNodeData>) => {
     event.preventDefault();
     setCtxMenu({ mouseX: event.clientX, mouseY: event.clientY, nodeId: node.id });
   }, []);
@@ -347,11 +387,14 @@ export default function WhiteboardPage() {
           scope: 'work',
         }
       );
-      setConvertedNodeIds(prev => ({ ...prev, [ctxMenu.nodeId]: newTask.id }));
-      // Visual feedback: update node border
+      // Visual feedback: update node border and data
       setNodes(nds => nds.map(n =>
         n.id === ctxMenu.nodeId
-          ? { ...n, style: { ...n.style, outline: '3px solid #10b981', outlineOffset: '2px' } }
+          ? {
+            ...n,
+            data: { ...n.data, taskId: newTask.id, taskCode: newTask.taskCode, taskStatus: newTask.status },
+            style: { ...n.style, outline: '3px solid #10b981', outlineOffset: '2px' }
+          }
           : n
       ));
       toast.success(`✅ Task "${nodeData.label}" created!`);
@@ -362,21 +405,41 @@ export default function WhiteboardPage() {
     handleCloseCtxMenu();
   }, [ctxMenu, currentProject, user, nodes, setNodes, handleCloseCtxMenu]);
 
-  const handleOpenTask = useCallback(() => {
-    if (!ctxMenu) return;
-    const taskId = convertedNodeIds[ctxMenu.nodeId];
-    if (taskId) {
-      navigate(`/tasks?id=${taskId}`);
+  const handleOpenTask = useCallback((taskId?: string) => {
+    const id = taskId || (ctxMenu ? (nodes.find(n => n.id === ctxMenu.nodeId)?.data as DiagramNodeData)?.taskId : undefined);
+    if (id) {
+      navigate(`/tasks?id=${id}`);
     }
     handleCloseCtxMenu();
-  }, [ctxMenu, convertedNodeIds, navigate, handleCloseCtxMenu]);
+  }, [ctxMenu, nodes, navigate, handleCloseCtxMenu]);
+
+  const importTaskAsNode = useCallback((task: TaskType) => {
+    const id = `node_${++nodeCounter.current}`;
+    const newNode: Node<DiagramNodeData> = {
+      id,
+      type: 'process',
+      position: { x: 300 + Math.random() * 100, y: 150 + Math.random() * 100 },
+      data: {
+        label: task.text,
+        color: '#3b82f6',
+        description: (task as TaskType & { description?: string }).description || '',
+        taskId: task.id,
+        taskCode: task.taskCode,
+        taskStatus: task.status
+      },
+      style: { outline: '3px solid #3b82f6', outlineOffset: '2px' }
+    };
+    setNodes(nds => [...nds, newNode]);
+    toast.info(`Task "${task.taskCode}" imported`);
+    setDrawerOpen(false);
+  }, [setNodes]);
 
   const handleDuplicateNode = useCallback(() => {
     if (!ctxMenu) return;
     const sourceNode = nodes.find(n => n.id === ctxMenu.nodeId);
     if (!sourceNode) { handleCloseCtxMenu(); return; }
     const id = `node_${++nodeCounter.current}`;
-    const newNode: Node = {
+    const newNode: Node<DiagramNodeData> = {
       ...sourceNode,
       id,
       position: { x: sourceNode.position.x + 40, y: sourceNode.position.y + 40 },
@@ -418,7 +481,7 @@ export default function WhiteboardPage() {
 
         if (wb && Object.keys(wb).length > 0) {
           // Diagram data
-          const diagramData = wb.diagram as { nodes?: Node[]; edges?: Edge[] } | undefined;
+          const diagramData = wb.diagram as { nodes?: Node<DiagramNodeData>[]; edges?: Edge[] } | undefined;
           if (diagramData) {
             setNodes(diagramData.nodes || []);
             setEdges(diagramData.edges || []);
@@ -439,9 +502,36 @@ export default function WhiteboardPage() {
         setLoading(false);
       }
     };
+
+    const loadStats = async () => {
+      try {
+        const stats = await api.get<ProjectStats>(`projects/${currentProject.id}/stats/`);
+        setProjectStats(stats);
+      } catch (err) {
+        console.error('Failed to load project stats:', err);
+      }
+    };
+
     loadData();
+    loadStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProject]);
+
+  useEffect(() => {
+    if (!currentProject || !drawerOpen) return;
+    const loadTasks = async () => {
+      setTasksLoading(true);
+      try {
+        const data = await fetchProjectTasks(currentProject.id);
+        setProjectTasks(data);
+      } catch (err) {
+        console.error('Failed to load project tasks:', err);
+      } finally {
+        setTasksLoading(false);
+      }
+    };
+    loadTasks();
+  }, [currentProject, drawerOpen]);
 
   // Auto-save diagram changes (debounced)
   useEffect(() => {
@@ -491,6 +581,34 @@ export default function WhiteboardPage() {
               : <CloudDoneIcon color="success" />}
           </Tooltip>
         </Box>
+
+        {projectStats && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, px: 2, justifyContent: 'center' }}>
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography variant="caption" fontWeight={700} color="text.secondary" display="block">TOTAL</Typography>
+              <Typography variant="body2" fontWeight={800}>{projectStats.total}</Typography>
+            </Box>
+            <Divider orientation="vertical" flexItem sx={{ mx: 0.5, height: 24, alignSelf: 'center' }} />
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography variant="caption" fontWeight={700} color="success.main" display="block">DONE</Typography>
+              <Typography variant="body2" fontWeight={800} color="success.main">{projectStats.completed}</Typography>
+            </Box>
+            <Divider orientation="vertical" flexItem sx={{ mx: 0.5, height: 24, alignSelf: 'center' }} />
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography variant="caption" fontWeight={700} color="primary.main" display="block">ACTIVE</Typography>
+              <Typography variant="body2" fontWeight={800} color="primary.main">{projectStats.in_progress + projectStats.todo}</Typography>
+            </Box>
+            {projectStats.blocked > 0 && (
+              <>
+                <Divider orientation="vertical" flexItem sx={{ mx: 0.5, height: 24, alignSelf: 'center' }} />
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="caption" fontWeight={700} color="error.main" display="block">BLOCKED</Typography>
+                  <Typography variant="body2" fontWeight={800} color="error.main">{projectStats.blocked}</Typography>
+                </Box>
+              </>
+            )}
+          </Box>
+        )}
 
         <ToggleButtonGroup
           exclusive size="small" value={mode}
@@ -605,6 +723,11 @@ export default function WhiteboardPage() {
                         <SaveIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
+                    <Tooltip title="Import Task">
+                      <IconButton size="small" color="secondary" onClick={() => setDrawerOpen(true)}>
+                        <AssignmentTurnedInIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                   </Box>
                 </Paper>
               </Panel>
@@ -664,17 +787,22 @@ export default function WhiteboardPage() {
         slotProps={{ paper: { sx: { borderRadius: 2, minWidth: 200, boxShadow: '0 8px 32px rgba(0,0,0,0.12)' } } }}
       >
         <MenuItem
-          onClick={ctxMenu && convertedNodeIds[ctxMenu.nodeId] ? handleOpenTask : handleConvertToTask}
+          onClick={() => {
+            const target = nodes.find(n => n.id === ctxMenu?.nodeId);
+            const taskId = target?.data?.taskId;
+            if (taskId) handleOpenTask(taskId);
+            else handleConvertToTask();
+          }}
           disabled={!currentProject}
         >
           <ListItemIcon>
-            {ctxMenu && convertedNodeIds[ctxMenu.nodeId]
+            {ctxMenu && nodes.find(n => n.id === ctxMenu.nodeId)?.data?.taskId
               ? <LaunchIcon fontSize="small" sx={{ color: '#6366f1' }} />
               : <AssignmentTurnedInIcon fontSize="small" sx={{ color: '#10b981' }} />
             }
           </ListItemIcon>
           <ListItemText
-            primary={ctxMenu && convertedNodeIds[ctxMenu.nodeId] ? 'Open Task' : 'Convert to Task'}
+            primary={ctxMenu && nodes.find(n => n.id === ctxMenu.nodeId)?.data?.taskId ? 'Open Task' : 'Convert to Task'}
             primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600 }}
           />
         </MenuItem>
@@ -688,6 +816,73 @@ export default function WhiteboardPage() {
           <ListItemText primary="Delete" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600, color: 'error.main' }} />
         </MenuItem>
       </Menu>
+
+      {/* ─── Import Tasks Drawer ─── */}
+      <Drawer anchor="right" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+        <Box sx={{ width: 320, p: 3 }}>
+          <Typography variant="h6" fontWeight={800} gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <AssignmentTurnedInIcon color="primary" /> Import Tasks
+          </Typography>
+          <Typography variant="caption" color="text.secondary" paragraph>
+            Choose a task from the current project to add as a diagram node.
+          </Typography>
+
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Search tasks..."
+            value={taskSearch}
+            onChange={(e) => setTaskSearch(e.target.value)}
+            sx={{ mb: 2 }}
+          />
+
+          <Divider sx={{ mb: 2 }} />
+
+          <List>
+            {tasksLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : projectTasks.length === 0 ? (
+              <Typography variant="body2" sx={{ opacity: 0.6, fontStyle: 'italic', textAlign: 'center', py: 4 }}>
+                No tasks found in this project.
+              </Typography>
+            ) : (
+              projectTasks
+                .filter(t => t.text.toLowerCase().includes(taskSearch.toLowerCase()) || t.taskCode?.toLowerCase().includes(taskSearch.toLowerCase()))
+                .map(task => (
+                  <ListItem key={task.id} disablePadding sx={{ mb: 1 }}>
+                    <ListItemButton
+                      onClick={() => importTaskAsNode(task)}
+                      sx={{
+                        borderRadius: 2,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        gap: 0.5
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                        <Typography variant="caption" fontWeight={800} color="primary">
+                          {task.taskCode}
+                        </Typography>
+                        <Chip
+                          label={task.status}
+                          size="small"
+                          sx={{ height: 16, fontSize: '0.6rem', fontWeight: 700, bgcolor: alpha(getStatusColor(task.status) || '#94a3b8', 0.1), color: getStatusColor(task.status) }}
+                        />
+                      </Box>
+                      <Typography variant="body2" fontWeight={600} noWrap sx={{ width: '100%' }}>
+                        {task.text}
+                      </Typography>
+                    </ListItemButton>
+                  </ListItem>
+                ))
+            )}
+          </List>
+        </Box>
+      </Drawer>
     </Box>
   );
 }

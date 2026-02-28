@@ -85,6 +85,8 @@ export interface Subtask {
   id: string;
   text: string;
   completed: boolean;
+  dueDate?: string;
+  assigneeName?: string;
 }
 
 export interface TaskRelation {
@@ -139,6 +141,9 @@ export interface Task {
   triageStatus?: 'pending' | 'accepted' | 'declined' | 'snoozed';
   archived?: boolean;
   totalTimeSpent?: number;
+  recurringConfig?: Record<string, unknown>;
+  reminders?: unknown[];
+  attachments?: unknown[];
 }
 
 // --- Time Entry ---
