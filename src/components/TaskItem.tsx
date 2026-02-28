@@ -14,6 +14,7 @@ import FolderIcon from '@mui/icons-material/Folder';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SubdirectoryArrowRightIcon from '@mui/icons-material/SubdirectoryArrowRight';
 import TimerIcon from '@mui/icons-material/Timer';
+import RepeatIcon from '@mui/icons-material/Repeat';
 import confetti from 'canvas-confetti';
 import { useNavigate } from 'react-router-dom';
 
@@ -281,6 +282,19 @@ const TaskItem = ({
                       height: 20, fontSize: '0.6rem', fontWeight: 700,
                       bgcolor: priorityColor + '15', color: priorityColor,
                       '& .MuiChip-icon': { ml: 0.5 },
+                    }}
+                  />
+                )}
+                {/* Recurring */}
+                {task.recurringConfig?.frequency && (
+                  <Chip
+                    icon={<RepeatIcon sx={{ fontSize: '12px !important' }} />}
+                    label={task.recurringConfig.frequency} size="small"
+                    sx={{
+                      height: 20, fontSize: '0.6rem', fontWeight: 700,
+                      bgcolor: '#14b8a615', color: '#0d9488',
+                      '& .MuiChip-icon': { ml: 0.5 },
+                      textTransform: 'capitalize'
                     }}
                   />
                 )}

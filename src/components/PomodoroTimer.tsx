@@ -1,9 +1,10 @@
-import { Box, Typography, IconButton, Chip, Dialog, DialogContent } from '@mui/material';
+import { Box, Typography, IconButton, Chip, Dialog, DialogContent, Collapse, TextField } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import StopIcon from '@mui/icons-material/Stop';
 import SkipNextIcon from '@mui/icons-material/SkipNext';
 import TimerIcon from '@mui/icons-material/Timer';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { usePomodoro } from '../contexts/PomodoroContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useState } from 'react';
@@ -49,32 +50,43 @@ export const MiniPomodoroTimer = () => {
 
 // 포모도로 다이얼로그 (확장 뷰)
 export const PomodoroDialog = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
-    const { activeTaskText, timeLeft, isRunning, mode, pauseTimer, resumeTimer, resetTimer, skipBreak } = usePomodoro();
-    const { t } = useLanguage();
+    const { activeTaskText, timeLeft, isRunning, mode, pauseTimer, resumeTimer, resetTimer, skipBreak, settings, updateSettings, completedPomodoros } = usePomodoro();
+    const { t, lang } = useLanguage();
+    const [showSettings, setShowSettings] = useState(false);
 
-    const progress = mode === 'focus'
-        ? ((25 * 60 - timeLeft) / (25 * 60)) * 100
-        : ((5 * 60 - timeLeft) / (5 * 60)) * 100;
+    let maxTime = settings.focusDuration * 60;
+    if (mode === 'break') maxTime = settings.shortBreakDuration * 60;
+    if (mode === 'long_break') maxTime = settings.longBreakDuration * 60;
+
+    const progress = ((maxTime - timeLeft) / maxTime) * 100;
 
     return (
         <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+            <Box sx={{ position: 'absolute', top: 8, right: 8 }}>
+                <IconButton onClick={() => setShowSettings(!showSettings)} size="small" sx={{ color: 'text.secondary' }}>
+                    <SettingsIcon fontSize="small" />
+                </IconButton>
+            </Box>
             <DialogContent sx={{ textAlign: 'center', py: 4 }}>
-                <Typography variant="caption" fontWeight="bold" color={mode === 'focus' ? 'error.main' : 'success.main'} sx={{ textTransform: 'uppercase', letterSpacing: 2 }}>
-                    {mode === 'focus' ? (t('focusTime') as string) : (t('breakTime') as string)}
+                <Typography variant="caption" fontWeight="bold" color={mode === 'focus' ? 'error.main' : mode === 'long_break' ? 'info.main' : 'success.main'} sx={{ textTransform: 'uppercase', letterSpacing: 2 }}>
+                    {mode === 'focus' ? (t('focusTime') as string) : mode === 'long_break' ? (lang === 'ko' ? '긴 휴식' : 'Long Break') : (t('breakTime') as string)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                    {lang === 'ko' ? `완료된 뽀모도로: ${completedPomodoros}` : `Completed: ${completedPomodoros}`}
                 </Typography>
 
                 {/* 원형 프로그레스 */}
                 <Box sx={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', my: 4 }}>
                     <Box sx={{
                         width: 180, height: 180, borderRadius: '50%',
-                        background: `conic-gradient(${mode === 'focus' ? '#dc2626' : '#16a34a'} ${progress}%, #f1f5f9 ${progress}%)`,
+                        background: `conic-gradient(${mode === 'focus' ? '#dc2626' : mode === 'long_break' ? '#3b82f6' : '#16a34a'} ${progress}%, #f1f5f9 ${progress}%)`,
                         display: 'flex', justifyContent: 'center', alignItems: 'center',
                     }}>
                         <Box sx={{
                             width: 160, height: 160, borderRadius: '50%',
                             bgcolor: 'background.paper', display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column',
                         }}>
-                            <Typography variant="h3" fontWeight="800" color={mode === 'focus' ? 'error.main' : 'success.main'}>
+                            <Typography variant="h3" fontWeight="800" color={mode === 'focus' ? 'error.main' : mode === 'long_break' ? 'info.main' : 'success.main'}>
                                 {formatTime(timeLeft)}
                             </Typography>
                         </Box>
@@ -100,12 +112,51 @@ export const PomodoroDialog = ({ open, onClose }: { open: boolean; onClose: () =
                     <IconButton onClick={resetTimer} sx={{ bgcolor: 'action.hover', width: 56, height: 56 }}>
                         <StopIcon fontSize="large" color="action" />
                     </IconButton>
-                    {mode === 'break' && (
+                    {(mode === 'break' || mode === 'long_break') && (
                         <IconButton onClick={skipBreak} sx={{ bgcolor: 'action.hover', width: 56, height: 56 }}>
                             <SkipNextIcon fontSize="large" color="action" />
                         </IconButton>
                     )}
                 </Box>
+
+                {/* 설정 패널 */}
+                <Collapse in={showSettings}>
+                    <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'divider', textAlign: 'left' }}>
+                        <Typography variant="subtitle2" fontWeight="700" mb={2}>
+                            {lang === 'ko' ? '타이머 설정 (분)' : 'Timer Settings (min)'}
+                        </Typography>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                            <TextField
+                                label={lang === 'ko' ? '집중' : 'Focus'}
+                                type="number"
+                                size="small"
+                                value={settings.focusDuration}
+                                onChange={(e) => updateSettings({ focusDuration: Math.max(1, Number(e.target.value)) })}
+                            />
+                            <TextField
+                                label={lang === 'ko' ? '짧은 휴식' : 'Short Break'}
+                                type="number"
+                                size="small"
+                                value={settings.shortBreakDuration}
+                                onChange={(e) => updateSettings({ shortBreakDuration: Math.max(1, Number(e.target.value)) })}
+                            />
+                            <TextField
+                                label={lang === 'ko' ? '긴 휴식' : 'Long Break'}
+                                type="number"
+                                size="small"
+                                value={settings.longBreakDuration}
+                                onChange={(e) => updateSettings({ longBreakDuration: Math.max(1, Number(e.target.value)) })}
+                            />
+                            <TextField
+                                label={lang === 'ko' ? '긴 휴식 간격' : 'Long Break Interval'}
+                                type="number"
+                                size="small"
+                                value={settings.longBreakInterval}
+                                onChange={(e) => updateSettings({ longBreakInterval: Math.max(1, Number(e.target.value)) })}
+                            />
+                        </Box>
+                    </Box>
+                </Collapse>
             </DialogContent>
         </Dialog>
     );

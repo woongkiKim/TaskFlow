@@ -104,7 +104,7 @@ function mapTask(t: ApiTask): Task {
     triageStatus: t.triageStatus as Task['triageStatus'] || undefined,
     archived: t.archived,
     totalTimeSpent: t.totalTimeSpent,
-    recurringConfig: t.recurringConfig || undefined,
+    recurringConfig: t.recurringConfig as Task['recurringConfig'] || undefined,
     reminders: t.reminders || [],
     attachments: t.attachments || [],
     createdAt: t.createdAt,
@@ -270,6 +270,7 @@ export interface AddTaskOptions {
   parentTaskId?: string;
   parentTaskText?: string;
   estimate?: number;
+  recurringConfig?: Task['recurringConfig'];
 }
 
 export const addTaskToDB = async (
@@ -306,7 +307,10 @@ export const addTaskToDB = async (
     if (options?.workspaceId) body.workspace = Number(options.workspaceId);
     if (options?.teamGroupId) body.teamGroup = Number(options.teamGroupId);
     if (options?.sprintId) body.sprint = Number(options.sprintId);
+    if (options?.taskCode) body.taskCode = options.taskCode;
     if (options?.parentTaskId) body.parentTask = Number(options.parentTaskId);
+    if (options?.estimate !== undefined) body.estimate = options.estimate;
+    if (options?.recurringConfig) body.recurringConfig = options.recurringConfig;
     if (options?.assigneeId) body.assignee = options.assigneeId;
 
     const data = await api.post<ApiTask>('tasks/', body);
@@ -322,6 +326,46 @@ export const toggleTaskStatusInDB = async (id: string, currentStatus: boolean): 
   const status = newCompleted ? 'done' : 'todo';
   const data = await api.patch<ApiTask>(`tasks/${id}/`, { completed: newCompleted, status });
   const updatedTask = mapTask(data);
+
+  // If completing a recurring task, clone it for the next occurrence
+  if (newCompleted && updatedTask.recurringConfig?.frequency) {
+    try {
+      const nextDate = new Date();
+      if (updatedTask.dueDate) {
+        nextDate.setTime(new Date(updatedTask.dueDate).getTime());
+      }
+      
+      const freq = updatedTask.recurringConfig.frequency;
+      const interval = updatedTask.recurringConfig.interval || 1;
+      
+      if (freq === 'daily') nextDate.setDate(nextDate.getDate() + interval);
+      else if (freq === 'weekly') nextDate.setDate(nextDate.getDate() + 7 * interval);
+      else if (freq === 'monthly') nextDate.setMonth(nextDate.getMonth() + interval);
+      
+      const newDueDate = nextDate.toISOString().split('T')[0];
+
+      await addTaskToDB(
+        updatedTask.text, 
+        updatedTask.assigneeId || 'anonymous',
+        new Date(), // Created at
+        updatedTask.tags || [],
+        {
+          description: updatedTask.description,
+          priority: updatedTask.priority,
+          category: updatedTask.category,
+          categoryColor: updatedTask.categoryColor,
+          type: updatedTask.type,
+          projectId: updatedTask.projectId,
+          workspaceId: updatedTask.workspaceId,
+          dueDate: newDueDate,
+          scope: updatedTask.scope,
+          recurringConfig: updatedTask.recurringConfig,
+        }
+      );
+    } catch (e) {
+      console.error('Failed to create next recurring task', e);
+    }
+  }
   
   // Trigger automation check
   checkAutomations(updatedTask, 'status_change');
@@ -369,7 +413,7 @@ export const updateTaskDetailInDB = async (
     'type' | 'taskCode' | 'owners' | 'blockerStatus' | 'blockerDetail' |
     'nextAction' | 'links' | 'delayPeriod' | 'delayReason' | 'aiUsage' |
     'updatedAt' | 'updatedBy' | 'updatedByName' | 'order' | 'relations' |
-    'estimate' | 'parentTaskId' | 'parentTaskText'
+    'estimate' | 'parentTaskId' | 'parentTaskText' | 'recurringConfig'
   >>,
   _workspaceId?: string,
   _oldStatus?: string,

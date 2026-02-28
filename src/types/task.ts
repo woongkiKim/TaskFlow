@@ -141,7 +141,7 @@ export interface Task {
   triageStatus?: 'pending' | 'accepted' | 'declined' | 'snoozed';
   archived?: boolean;
   totalTimeSpent?: number;
-  recurringConfig?: Record<string, unknown>;
+  recurringConfig?: { frequency: 'daily' | 'weekly' | 'monthly'; interval: number; endDate?: string };
   reminders?: unknown[];
   attachments?: unknown[];
 }

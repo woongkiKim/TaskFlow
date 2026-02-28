@@ -3,7 +3,21 @@ import { useLanguage } from './LanguageContext';
 import { useAuth } from './AuthContext';
 import { addTimeEntry } from '../services/timeTrackingService';
 
-type PomodoroMode = 'focus' | 'break' | 'idle';
+export type PomodoroMode = 'focus' | 'break' | 'long_break' | 'idle';
+
+export interface PomodoroSettings {
+    focusDuration: number; // in minutes
+    shortBreakDuration: number; // in minutes
+    longBreakDuration: number; // in minutes
+    longBreakInterval: number; // number of pomodoros
+}
+
+export const defaultPomodoroSettings: PomodoroSettings = {
+    focusDuration: 25,
+    shortBreakDuration: 5,
+    longBreakDuration: 15,
+    longBreakInterval: 4,
+};
 
 interface PomodoroContextType {
     activeTaskId: string | null;
@@ -12,6 +26,8 @@ interface PomodoroContextType {
     isRunning: boolean;
     mode: PomodoroMode;
     completedPomodoros: number;
+    settings: PomodoroSettings;
+    updateSettings: (newSettings: Partial<PomodoroSettings>) => void;
     startTimer: (taskId: string, taskText: string) => void;
     pauseTimer: () => void;
     resumeTimer: () => void;
@@ -19,22 +35,43 @@ interface PomodoroContextType {
     skipBreak: () => void;
 }
 
-const FOCUS_DURATION = 25 * 60; // 25분
-const BREAK_DURATION = 5 * 60;  // 5분
-
 const PomodoroContext = createContext<PomodoroContextType | null>(null);
 
+const SETTINGS_KEY = 'pomodoro_settings';
+
 export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
-    const { t } = useLanguage();
+    const { t, lang } = useLanguage();
     const { user } = useAuth();
+    const [settings, setSettings] = useState<PomodoroSettings>(() => {
+        try {
+            const stored = localStorage.getItem(SETTINGS_KEY);
+            return stored ? { ...defaultPomodoroSettings, ...JSON.parse(stored) } : defaultPomodoroSettings;
+        } catch {
+            return defaultPomodoroSettings;
+        }
+    });
+
     const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
     const [activeTaskText, setActiveTaskText] = useState('');
-    const [timeLeft, setTimeLeft] = useState(FOCUS_DURATION);
+    const [timeLeft, setTimeLeft] = useState(settings.focusDuration * 60);
     const [isRunning, setIsRunning] = useState(false);
     const [mode, setMode] = useState<PomodoroMode>('idle');
     const [completedPomodoros, setCompletedPomodoros] = useState(0);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const focusStartRef = useRef<string | null>(null);
+    const focusDurationStartRef = useRef<number>(settings.focusDuration);
+
+    const updateSettings = useCallback((newSettings: Partial<PomodoroSettings>) => {
+        setSettings(prev => {
+            const updated = { ...prev, ...newSettings };
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
+            // Update time left if idle
+            if (mode === 'idle') {
+                setTimeLeft(updated.focusDuration * 60);
+            }
+            return updated;
+        });
+    }, [mode]);
 
     // 타이머 틱
     useEffect(() => {
@@ -54,21 +91,28 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
                         type: 'pomodoro',
                         startTime: focusStartRef.current,
                         endTime: new Date().toISOString(),
-                        durationMinutes: 25,
+                        durationMinutes: focusDurationStartRef.current, // Use the focus duration when it started
                     }).catch(() => { /* silent */ });
                 }
-                setCompletedPomodoros(prev => prev + 1);
-                setMode('break');
-                setTimeLeft(BREAK_DURATION);
+                const newCompleted = completedPomodoros + 1;
+                setCompletedPomodoros(newCompleted);
+
+                // Determine break type
+                const isLongBreak = newCompleted > 0 && newCompleted % settings.longBreakInterval === 0;
+                setMode(isLongBreak ? 'long_break' : 'break');
+                setTimeLeft((isLongBreak ? settings.longBreakDuration : settings.shortBreakDuration) * 60);
+
                 if ('Notification' in window && Notification.permission === 'granted') {
-                    new Notification(`🍅 ${t('pomodoroComplete') as string}`, { body: t('breakTime') as string });
+                    new Notification(`🍅 ${t('pomodoroComplete') as string}`, {
+                        body: isLongBreak ? (lang === 'ko' ? '긴 휴식 시간입니다!' : 'Time for a long break!') : (t('breakTime') as string)
+                    });
                 }
-            } else if (mode === 'break') {
+            } else if (mode === 'break' || mode === 'long_break') {
                 setMode('idle');
                 setIsRunning(false);
                 setActiveTaskId(null);
                 setActiveTaskText('');
-                setTimeLeft(FOCUS_DURATION);
+                setTimeLeft(settings.focusDuration * 60);
                 focusStartRef.current = null;
                 if ('Notification' in window && Notification.permission === 'granted') {
                     new Notification(`☕ ${t('breakTime') as string}`, { body: t('startFocus') as string });
@@ -79,7 +123,7 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
         };
-    }, [isRunning, timeLeft, mode, t, activeTaskId, user]);
+    }, [isRunning, timeLeft, mode, t, lang, activeTaskId, user, completedPomodoros, settings]);
 
     // 알림 권한 요청
     useEffect(() => {
@@ -92,11 +136,11 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
         setActiveTaskId(taskId);
         setActiveTaskText(taskText);
         setMode('focus');
-        setTimeLeft(FOCUS_DURATION);
+        setTimeLeft(settings.focusDuration * 60);
+        focusDurationStartRef.current = settings.focusDuration;
         setIsRunning(true);
-        setCompletedPomodoros(0);
         focusStartRef.current = new Date().toISOString();
-    }, []);
+    }, [settings.focusDuration]);
 
     const pauseTimer = useCallback(() => {
         setIsRunning(false);
@@ -111,23 +155,23 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
         setMode('idle');
         setActiveTaskId(null);
         setActiveTaskText('');
-        setTimeLeft(FOCUS_DURATION);
-        setCompletedPomodoros(0);
+        setTimeLeft(settings.focusDuration * 60);
         focusStartRef.current = null;
-    }, []);
+    }, [settings.focusDuration]);
 
     const skipBreak = useCallback(() => {
         setMode('idle');
         setIsRunning(false);
         setActiveTaskId(null);
         setActiveTaskText('');
-        setTimeLeft(FOCUS_DURATION);
+        setTimeLeft(settings.focusDuration * 60);
         focusStartRef.current = null;
-    }, []);
+    }, [settings.focusDuration]);
 
     return (
         <PomodoroContext.Provider value={{
             activeTaskId, activeTaskText, timeLeft, isRunning, mode, completedPomodoros,
+            settings, updateSettings,
             startTimer, pauseTimer, resumeTimer, resetTimer, skipBreak
         }}>
             {children}

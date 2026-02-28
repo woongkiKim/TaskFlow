@@ -137,8 +137,8 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
         setTags(task.tags || []);
         setNewTagText('');
 
-        // Advanced
-        setRecurring((task.recurringConfig?.type as string) || 'none');
+        setDueDate(task.dueDate || '');
+        setRecurring((task.recurringConfig?.frequency as string) || 'none');
         setReminders((task.reminders as string[]) || []);
         setAttachments((task.attachments as { name: string, url: string }[]) || []);
 
@@ -174,8 +174,8 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
         if ((estimate ?? undefined) !== (task.estimate ?? undefined)) updates.estimate = estimate ?? undefined;
         if (JSON.stringify(tags) !== JSON.stringify(task.tags || [])) updates.tags = tags;
 
-        const newRecurringConfig = recurring === 'none' ? {} : { type: recurring };
-        if (JSON.stringify(newRecurringConfig) !== JSON.stringify(task.recurringConfig || {})) updates.recurringConfig = newRecurringConfig;
+        const newRecurringConfig = recurring === 'none' ? undefined : { frequency: recurring as 'daily' | 'weekly' | 'monthly', interval: 1 };
+        if (JSON.stringify(newRecurringConfig) !== JSON.stringify(task.recurringConfig || undefined)) updates.recurringConfig = newRecurringConfig;
         if (JSON.stringify(reminders) !== JSON.stringify(task.reminders || [])) updates.reminders = reminders;
         if (JSON.stringify(attachments) !== JSON.stringify(task.attachments || [])) updates.attachments = attachments;
 
@@ -192,7 +192,7 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
             blockerStatus, blockerDetail, nextAction, links, aiUsage, delayReason, relations,
             estimate: estimate ?? undefined,
             tags: tags.length > 0 ? tags : undefined,
-            recurringConfig: recurring === 'none' ? {} : { type: recurring },
+            recurringConfig: recurring === 'none' ? undefined : { frequency: recurring as 'daily' | 'weekly' | 'monthly', interval: 1 },
             reminders,
             attachments,
         };
