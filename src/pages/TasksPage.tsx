@@ -33,19 +33,21 @@ import CategoryFilter from '../components/CategoryFilter';
 import AddTaskDialog from '../components/AddTaskDialog';
 import TaskDetailDialog from '../components/TaskDetailDialog';
 import Calendar from './Calendar';
+import TimeboxView from '../components/TimeboxView';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import SaveIcon from '@mui/icons-material/Save';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import SpeedIcon from '@mui/icons-material/Speed';
 import ArticleIcon from '@mui/icons-material/Article';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import AccessTimeFilledIcon from '@mui/icons-material/AccessTimeFilled';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import { toast } from 'sonner';
 import { handleError } from '../utils/errorHandler';
-import { addTaskToDB } from '../services/taskService';
+import { addTaskToDB, updateTaskDetailInDB } from '../services/taskService';
 
 
 type LocalViewMode = GlobalViewMode;
@@ -78,13 +80,14 @@ const TasksPage = () => {
     const [isRollingOver, setIsRollingOver] = useState(false);
 
     const [taskScope, setTaskScope] = useState<TaskScope>('personal');
+    const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
 
     // Determine available view modes based on iteration type
     const iterationType = currentSprint?.type;
     const availableViews: LocalViewMode[] = useMemo(() => {
         if (iterationType === 'milestone') return ['list'];
         if (iterationType === 'phase') return ['list', 'table', 'calendar'];
-        return ['list', 'board', 'calendar', 'table', 'timeline'];
+        return ['list', 'board', 'calendar', 'table', 'timeline', 'timebox'];
     }, [iterationType]);
 
     // Auto-correct viewMode when iteration type changes
@@ -149,7 +152,7 @@ const TasksPage = () => {
     const {
         pendingDelete,
         handleAddInline, handleQuickAdd, handleBoardInlineAdd, handleAddDialog,
-        handleToggle, handleEdit, handleDelete, handleUndoDelete, handleSnackbarClose,
+        handleToggle, handleBulkToggle, handleEdit, handleDelete, handleBulkDelete, handleUndoDelete, handleSnackbarClose,
         handleKanbanStatusChange, handleColumnsChange, handleTaskUpdate,
         handleMoveListTask, handleReorderTodayTasks, handleMoveBoardTask, handleReorderBoardTasks,
         handleCreateSubIssue, handleRolloverTasks,
@@ -158,6 +161,15 @@ const TasksPage = () => {
         currentProject, currentWorkspace, currentSprint,
         setCurrentProject, updateCurrentSprint,
     });
+
+    const handleSelectTask = useCallback((id: string, selected: boolean, shiftKey: boolean) => {
+        setSelectedTaskIds(prev => {
+            if (!selected) return prev.filter(taskId => taskId !== id);
+            return [...prev, id];
+        });
+    }, []);
+
+    const handleClearSelection = useCallback(() => setSelectedTaskIds([]), []);
 
     // Filter: scope + sprint
     const filteredTasks = useMemo(() => {
@@ -515,6 +527,7 @@ const TasksPage = () => {
                             { id: 'calendar', name: (t('calendarView') as string), icon: <CalendarMonthIcon sx={{ fontSize: 18 }} /> },
                             { id: 'table', name: (t('tableView') as string), icon: <SpeedIcon sx={{ fontSize: 18 }} /> },
                             { id: 'timeline', name: 'Timeline', icon: <TimelineIcon sx={{ fontSize: 18 }} /> },
+                            { id: 'timebox', name: lang === 'ko' ? '타임박스' : 'Timebox', icon: <AccessTimeFilledIcon sx={{ fontSize: 18 }} /> },
                         ].map((v) => (
                             <Button
                                 key={v.id}
@@ -812,12 +825,49 @@ const TasksPage = () => {
                 </Paper>
             )}
 
+            {/* Multi-Select Toolbar */}
+            {selectedTaskIds.length > 0 && (
+                <Paper elevation={3} sx={{
+                    mb: 2, p: 1, px: 2, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    bgcolor: 'primary.dark', color: 'white',
+                }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Typography variant="body2" fontWeight={700}>
+                            {selectedTaskIds.length} {lang === 'ko' ? '개 선택됨' : 'selected'}
+                        </Typography>
+                        <Button
+                            size="small" variant="contained"
+                            onClick={() => {
+                                handleBulkToggle(selectedTaskIds);
+                                handleClearSelection();
+                            }}
+                            sx={{ bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
+                        >
+                            <CheckCircleIcon sx={{ fontSize: 16, mr: 0.5 }} /> {lang === 'ko' ? '상태 변경' : 'Toggle Status'}
+                        </Button>
+                        <Button
+                            size="small" variant="contained" color="error"
+                            onClick={() => {
+                                handleBulkDelete(selectedTaskIds);
+                                handleClearSelection();
+                            }}
+                            sx={{ '&:hover': { bgcolor: 'error.dark' } }}
+                        >
+                            <DeleteIcon sx={{ fontSize: 16, mr: 0.5 }} /> {lang === 'ko' ? '삭제' : 'Delete'}
+                        </Button>
+                    </Box>
+                    <Button size="small" onClick={handleClearSelection} sx={{ color: 'white', opacity: 0.8 }}>
+                        ✕ {lang === 'ko' ? '초기화' : 'Clear'}
+                    </Button>
+                </Paper>
+            )}
+
             {/* Views */}
             <Box sx={{ flex: 1, overflow: 'hidden' }}>
-                {viewMode === 'list' && <ListView tasks={viewFilteredTasks} selectedTag={selectedTag} onAddInline={handleAddInline} onToggle={handleToggle} onDelete={handleDelete} onEdit={handleEdit} onTaskClick={setDetailTask} onMoveTask={handleMoveListTask} onReorderTodayTasks={handleReorderTodayTasks} sprintGroups={sprintGroups} allTasks={tasks} />}
+                {viewMode === 'list' && <ListView tasks={viewFilteredTasks} selectedTag={selectedTag} onAddInline={handleAddInline} onToggle={handleToggle} onDelete={handleDelete} onEdit={handleEdit} onTaskClick={setDetailTask} onMoveTask={handleMoveListTask} onReorderTodayTasks={handleReorderTodayTasks} sprintGroups={sprintGroups} allTasks={tasks} selectedTaskIds={selectedTaskIds} onSelectTask={handleSelectTask} />}
                 {viewMode === 'board' && <BoardView tasks={viewFilteredTasks} columns={currentSprint?.kanbanColumns || currentProject?.kanbanColumns || DEFAULT_KANBAN_COLUMNS} selectedTag={selectedTag} onKanbanStatusChange={handleKanbanStatusChange} onMoveTaskInColumn={handleMoveBoardTask} onReorderTasksInColumn={handleReorderBoardTasks} onTaskClick={setDetailTask} onColumnsChange={handleColumnsChange} onAddTask={handleBoardInlineAdd} />}
                 {viewMode === 'calendar' && <Calendar />}
-                {viewMode === 'table' && <TableView tasks={viewFilteredTasks} selectedTag={selectedTag} onToggle={handleToggle} onTaskClick={setDetailTask} />}
+                {viewMode === 'table' && <TableView tasks={viewFilteredTasks} selectedTag={selectedTag} onToggle={handleToggle} onTaskClick={setDetailTask} selectedTaskIds={selectedTaskIds} onSelectTask={handleSelectTask} />}
                 {viewMode === 'timeline' && (
                     <GanttChart
                         items={viewFilteredTasks.map(t => ({
@@ -831,11 +881,44 @@ const TasksPage = () => {
                         onItemClick={(item) => setDetailTask(tasks.find(t => t.id === item.id) || null)}
                     />
                 )}
+                {viewMode === 'timebox' && (
+                    <TimeboxView
+                        tasks={viewFilteredTasks}
+                        currentDate={new Date()}
+                        onUpdateTask={async (taskId, patch) => {
+                            setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...patch } : t));
+                            try {
+                                await updateTaskDetailInDB(taskId, patch);
+                            } catch (e) { handleError(e); }
+                        }}
+                        onAddTask={async (text, timeboxStart, timeboxEnd) => {
+                            if (!user) return;
+                            try {
+                                const saved = await addTaskToDB(text, user.uid, undefined, undefined, {
+                                    projectId: currentProject?.id,
+                                    workspaceId: currentWorkspace?.id,
+                                    sprintId: currentSprint?.id,
+                                    assigneeId: user.uid,
+                                    assigneeName: user.displayName || 'User',
+                                    assigneePhoto: user.photoURL || '',
+                                });
+                                const withTimebox = { ...saved, timeboxStart, timeboxEnd };
+                                setTasks(prev => [withTimebox, ...prev]);
+                                setTasks(prev => prev.map(t => t.id === saved.id ? { ...t, timeboxStart, timeboxEnd } : t));
+                            } catch (e) { handleError(e); }
+                        }}
+                        onToggle={handleToggle}
+                        onTaskClick={setDetailTask}
+                    />
+                )}
             </Box>
 
 
             <AddTaskDialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} onSubmit={handleAddDialog} />
-            <TaskDetailDialog open={!!detailTask} task={detailTask} allTasks={tasks} onClose={() => setDetailTask(null)} onUpdate={handleTaskUpdate} onCreateSubIssue={handleCreateSubIssue} onTaskClick={(task) => setDetailTask(task)} />
+            <TaskDetailDialog open={!!detailTask} task={detailTask} allTasks={tasks} onClose={() => setDetailTask(null)} onUpdate={handleTaskUpdate} onBulkUpdate={(updatedTasks) => {
+                const map = new Map(updatedTasks.map(t => [t.id, t]));
+                setTasks(prev => prev.map(t => map.has(t.id) ? map.get(t.id)! : t));
+            }} onCreateSubIssue={handleCreateSubIssue} onTaskClick={(task) => setDetailTask(task)} />
 
             {/* Save View Dialog */}
             <Dialog open={saveViewDialogOpen} onClose={() => setSaveViewDialogOpen(false)} maxWidth="xs" fullWidth>

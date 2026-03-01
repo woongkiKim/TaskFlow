@@ -46,6 +46,7 @@ import { decomposeTask, refineDescription, type SuggestedSubtask } from '../serv
 import { toast } from 'sonner';
 import { api } from '../services/apiClient';
 import { addTaskToDB, watchTask, unwatchTask, isWatchingTask } from '../services/taskService';
+import { checkAutomations } from '../services/automationService';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 
@@ -55,11 +56,12 @@ interface TaskDetailDialogProps {
     allTasks?: Task[];  // all project tasks for relation autocomplete
     onClose: () => void;
     onUpdate: (task: Task) => void;
+    onBulkUpdate?: (tasks: Task[]) => void;
     onCreateSubIssue?: (parentTask: Task, subIssueText: string) => void;
     onTaskClick?: (task: Task) => void;
 }
 
-const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCreateSubIssue, onTaskClick }: TaskDetailDialogProps) => {
+const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onBulkUpdate, onCreateSubIssue, onTaskClick }: TaskDetailDialogProps) => {
     const { t, lang } = useLanguage();
     const textByLang = (en: string, ko: string) => (lang === 'ko' ? ko : en);
     const { projects } = useWorkspace();
@@ -196,6 +198,82 @@ const TaskDetailDialog = ({ open, task, allTasks = [], onClose, onUpdate, onCrea
             reminders,
             attachments,
         };
+
+        // ─── Auto-shift dependencies logic ───
+        if (task.dueDate && dueDate && task.dueDate !== dueDate && allTasks && onBulkUpdate) {
+            const oldD = new Date(task.dueDate);
+            const newD = new Date(dueDate);
+            const diffTime = newD.getTime() - oldD.getTime();
+            const diffDays = Math.round(diffTime / 86400000);
+
+            if (diffDays !== 0) {
+                const tasksToShift = new Map<string, Task>();
+                const shiftQueue = [task.id];
+
+                while (shiftQueue.length > 0) {
+                    const currentId = shiftQueue.shift()!;
+                    const currentTask = currentId === task.id ? updatedTask : Object.assign({}, tasksToShift.get(currentId) || allTasks.find(t => t.id === currentId));
+                    if (!currentTask) continue;
+
+                    const blockedTargetIds = (currentTask.relations || [])
+                        .filter(r => r.type === 'blocks')
+                        .map(r => r.targetTaskId);
+
+                    const tasksSayingBlockedByThis = allTasks
+                        .filter(t => (t.relations || []).some(r => r.type === 'blocked_by' && r.targetTaskId === currentId))
+                        .map(t => t.id);
+
+                    const allBlockedIds = Array.from(new Set([...blockedTargetIds, ...tasksSayingBlockedByThis]));
+
+                    for (const blockedId of allBlockedIds) {
+                        if (tasksToShift.has(blockedId)) continue;
+                        const blockedTask = allTasks.find(t => t.id === blockedId);
+                        if (blockedTask) {
+                            const patch: Partial<Task> = {};
+                            let shifted = false;
+                            if (blockedTask.dueDate) {
+                                const nd = new Date(blockedTask.dueDate);
+                                nd.setDate(nd.getDate() + diffDays);
+                                patch.dueDate = nd.toISOString().split('T')[0];
+                                shifted = true;
+                            }
+                            if (blockedTask.startDate) {
+                                const ns = new Date(blockedTask.startDate);
+                                ns.setDate(ns.getDate() + diffDays);
+                                patch.startDate = ns.toISOString().split('T')[0];
+                                shifted = true;
+                            }
+                            if (shifted) {
+                                tasksToShift.set(blockedId, { ...blockedTask, ...patch });
+                                shiftQueue.push(blockedId);
+                            }
+                        }
+                    }
+                }
+
+                if (tasksToShift.size > 0) {
+                    const shiftedTasks = Array.from(tasksToShift.values());
+                    try {
+                        await Promise.all(shiftedTasks.map(t => updateTaskDetailInDB(t.id, { dueDate: t.dueDate, startDate: t.startDate })));
+                        onBulkUpdate(shiftedTasks);
+                        toast.success(`일정 자동 조정: 연관된 후행 작업 ${shiftedTasks.length}개의 시작/마감일이 변경되었습니다.`);
+                    } catch (e) { console.error(e); }
+                }
+            }
+        }
+
+        // ─── Automation Checking ───
+        if (task.status !== status) {
+            checkAutomations(updatedTask, 'status_change').catch(console.error);
+        }
+        if (task.dueDate !== dueDate) {
+            checkAutomations(updatedTask, 'due_date').catch(console.error);
+        }
+        const tagsChanged = JSON.stringify(task.tags || []) !== JSON.stringify(tags || []);
+        if (tagsChanged) {
+            checkAutomations(updatedTask, 'tag_added').catch(console.error);
+        }
+
         onUpdate(updatedTask);
     };
 
