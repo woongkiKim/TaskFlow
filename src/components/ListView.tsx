@@ -33,6 +33,8 @@ interface ListViewProps {
   onMoveTask?: (taskId: string, direction: 'up' | 'down', orderedIds: string[]) => void;
   onReorderTodayTasks?: (orderedIds: string[]) => void;
   allTasks?: Task[];  // for sub-issue count calculation
+  selectedTaskIds?: string[];
+  onSelectTask?: (id: string, selected: boolean, shiftKey: boolean) => void;
 }
 
 const sortByOrder = (arr: Task[]) => [...arr].sort((a, b) => {
@@ -106,6 +108,8 @@ const ListView = ({
   onReorderTodayTasks,
   sprintGroups,
   allTasks,
+  selectedTaskIds = [],
+  onSelectTask,
 }: ListViewProps) => {
   const { user } = useAuth();
   const { lang, t } = useLanguage();
@@ -384,12 +388,12 @@ const ListView = ({
                   </Box>
                   {/* Tasks in this sprint */}
                   {sortByOrder(group.tasks.filter(tk => !tk.completed)).map(task => (
-                    <TaskItem key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onClick={onTaskClick} subIssueCount={subIssueCountMap[task.id] || 0} />
+                    <TaskItem key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onClick={onTaskClick} subIssueCount={subIssueCountMap[task.id] || 0} selected={selectedTaskIds.includes(task.id)} onSelect={onSelectTask} />
                   ))}
                   {group.tasks.some(tk => tk.completed) && (
                     <Box sx={{ opacity: 0.6, mt: 0.5 }}>
                       {sortByOrder(group.tasks.filter(tk => tk.completed)).map(task => (
-                        <TaskItem key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onClick={onTaskClick} subIssueCount={subIssueCountMap[task.id] || 0} />
+                        <TaskItem key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onClick={onTaskClick} subIssueCount={subIssueCountMap[task.id] || 0} selected={selectedTaskIds.includes(task.id)} onSelect={onSelectTask} />
                       ))}
                     </Box>
                   )}
@@ -433,6 +437,8 @@ const ListView = ({
                         disableMoveUp={index === 0}
                         disableMoveDown={index === todayIncompleteTasks.length - 1}
                         subIssueCount={subIssueCountMap[task.id] || 0}
+                        selected={selectedTaskIds.includes(task.id)}
+                        onSelect={onSelectTask}
                       />
                     </SortableTodayTaskRow>
                   ))}
@@ -452,6 +458,8 @@ const ListView = ({
                   disableMoveUp={index === 0}
                   disableMoveDown={index === todayIncompleteTasks.length - 1}
                   subIssueCount={subIssueCountMap[task.id] || 0}
+                  selected={selectedTaskIds.includes(task.id)}
+                  onSelect={onSelectTask}
                 />
               ))
             )}
@@ -470,7 +478,7 @@ const ListView = ({
                   {format(new Date(dateKey), lang === 'ko' ? 'MM-dd (EEEE)' : 'MMM d (EEE)', { locale: dateLocale })}
                 </Typography>
                 {sortByOrder(dateTasks).map(task => (
-                  <TaskItem key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onClick={onTaskClick} subIssueCount={subIssueCountMap[task.id] || 0} />
+                  <TaskItem key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onClick={onTaskClick} subIssueCount={subIssueCountMap[task.id] || 0} selected={selectedTaskIds.includes(task.id)} onSelect={onSelectTask} />
                 ))}
               </Box>
             ))}
@@ -490,7 +498,7 @@ const ListView = ({
 
       <Box sx={{ opacity: 0.8 }}>
         {completedTasks.map(task => (
-          <TaskItem key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onClick={onTaskClick} subIssueCount={subIssueCountMap[task.id] || 0} />
+          <TaskItem key={task.id} task={task} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onClick={onTaskClick} subIssueCount={subIssueCountMap[task.id] || 0} selected={selectedTaskIds.includes(task.id)} onSelect={onSelectTask} />
         ))}
       </Box>
     </Box>

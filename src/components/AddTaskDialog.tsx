@@ -48,6 +48,7 @@ interface AddTaskDialogProps {
         estimate?: number;
         recurringConfig?: { type: string; interval: number };
         attachments?: { name: string; url: string }[];
+        subtasks?: string[];
     }) => void;
     defaultDate?: Date;
 }
@@ -91,6 +92,7 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
     // Advanced Sub
     const [recurring, setRecurring] = useState<string>('none');
     const [attachments, setAttachments] = useState<{ name: string, url: string }[]>([]);
+    const [subtasks, setSubtasks] = useState<string[]>([]);
 
     // Issue Templates
     const [templates, setTemplates] = useState<IssueTemplate[]>([]);
@@ -122,7 +124,8 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
         if (template.defaultTags) setTags(template.defaultTags);
         if (template.defaultCategory) setCategory(template.defaultCategory);
         if (template.defaultCategoryColor) setCategoryColor(template.defaultCategoryColor);
-        if (template.defaultDescription || template.defaultCategory || template.defaultTags?.length) {
+        if (template.defaultSubtasks) setSubtasks(template.defaultSubtasks);
+        if (template.defaultDescription || template.defaultCategory || template.defaultTags?.length || template.defaultSubtasks?.length) {
             setDetailMode(true);
         }
     };
@@ -133,6 +136,7 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
         defaultType?: TaskType; defaultPriority?: PriorityLevel;
         defaultTags?: string[]; defaultCategory?: string; defaultCategoryColor?: string;
         defaultBlockerStatus?: 'none' | 'blocked';
+        defaultSubtasks?: string[];
     }) => {
         if (editingTemplate) {
             try {
@@ -230,6 +234,7 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
             estimate: estimate ?? undefined,
             recurringConfig: recurring === 'none' ? undefined : { type: recurring, interval: 1 },
             attachments: attachments.length > 0 ? attachments : undefined,
+            subtasks: subtasks.length > 0 ? subtasks : undefined,
         });
         // Reset
         setText(''); setDescription(''); descriptionRef.current = ''; setPriority(''); setTaskType('task');
@@ -241,6 +246,7 @@ const AddTaskDialog = ({ open, onClose, onSubmit, defaultDate }: AddTaskDialogPr
         setEstimate(null);
         setRecurring('none');
         setAttachments([]);
+        setSubtasks([]);
         setDetailMode(false);
         onClose();
     };

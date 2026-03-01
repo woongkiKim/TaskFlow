@@ -1,4 +1,4 @@
-import { Box, Typography, IconButton, Chip, Dialog, DialogContent, Collapse, TextField } from '@mui/material';
+import { Box, Typography, IconButton, Chip, Dialog, DialogContent, Collapse, TextField, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import StopIcon from '@mui/icons-material/Stop';
@@ -14,6 +14,8 @@ const formatTime = (seconds: number) => {
     const s = (seconds % 60).toString().padStart(2, '0');
     return `${m}:${s}`;
 };
+
+import type { AmbientSound } from '../contexts/PomodoroContext';
 
 // 미니 타이머: Header에 표시
 export const MiniPomodoroTimer = () => {
@@ -154,6 +156,19 @@ export const PomodoroDialog = ({ open, onClose }: { open: boolean; onClose: () =
                                 value={settings.longBreakInterval}
                                 onChange={(e) => updateSettings({ longBreakInterval: Math.max(1, Number(e.target.value)) })}
                             />
+                            <FormControl size="small" fullWidth sx={{ gridColumn: 'span 2', mt: 1 }}>
+                                <InputLabel>{lang === 'ko' ? '백그라운드 소음 (집중 중)' : 'Background Sound (Focus)'}</InputLabel>
+                                <Select
+                                    value={settings.ambientSound}
+                                    label={lang === 'ko' ? '백그라운드 소음 (집중 중)' : 'Background Sound (Focus)'}
+                                    onChange={(e) => updateSettings({ ambientSound: e.target.value as AmbientSound })}
+                                >
+                                    <MenuItem value="none">{lang === 'ko' ? '없음' : 'None'}</MenuItem>
+                                    <MenuItem value="white">{lang === 'ko' ? '백색 소음 (비행기, 비트)' : 'White Noise (Airplane, Fan)'}</MenuItem>
+                                    <MenuItem value="brown">{lang === 'ko' ? '갈색 소음 (강한 빗소리, 폭포)' : 'Brown Noise (Heavy Rain, Waterfall)'}</MenuItem>
+                                    <MenuItem value="pink">{lang === 'ko' ? '핑크 소음 (자연, 나뭇잎)' : 'Pink Noise (Nature, Leaves)'}</MenuItem>
+                                </Select>
+                            </FormControl>
                         </Box>
                     </Box>
                 </Collapse>

@@ -144,6 +144,8 @@ export interface Task {
   recurringConfig?: { frequency: 'daily' | 'weekly' | 'monthly'; interval: number; endDate?: string };
   reminders?: unknown[];
   attachments?: unknown[];
+  timeboxStart?: string; // ISO date-time string e.g. "2026-03-01T09:00:00"
+  timeboxEnd?: string;   // ISO date-time string e.g. "2026-03-01T10:00:00"
 }
 
 // --- Time Entry ---
@@ -189,6 +191,7 @@ export interface IssueTemplate {
   defaultCategory?: string;
   defaultCategoryColor?: string;
   defaultBlockerStatus?: 'none' | 'blocked';
+  defaultSubtasks?: string[];
   projectId?: string;
   workspaceId: string;
   createdBy: string;

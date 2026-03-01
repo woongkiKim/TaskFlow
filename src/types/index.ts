@@ -36,7 +36,7 @@ export interface ViewFilter {
   initiativeId?: string;
 }
 
-export type ViewMode = 'list' | 'board' | 'calendar' | 'table' | 'timeline';
+export type ViewMode = 'list' | 'board' | 'calendar' | 'table' | 'timeline' | 'timebox';
 
 export interface CustomView {
   id: string;

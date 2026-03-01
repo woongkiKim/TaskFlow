@@ -17,12 +17,13 @@ interface IssueTemplateDialogProps {
         defaultType?: TaskType; defaultPriority?: PriorityLevel;
         defaultTags?: string[]; defaultCategory?: string; defaultCategoryColor?: string;
         defaultBlockerStatus?: 'none' | 'blocked';
+        defaultSubtasks?: string[];
     }) => void;
     editTemplate?: IssueTemplate | null;
 }
 
 const IssueTemplateDialog = ({ open, onClose, onSave, editTemplate }: IssueTemplateDialogProps) => {
-    const { t } = useLanguage();
+    const { t, lang } = useLanguage();
 
     const [name, setName] = useState('');
     const [nameError, setNameError] = useState(false);
@@ -37,6 +38,7 @@ const IssueTemplateDialog = ({ open, onClose, onSave, editTemplate }: IssueTempl
     const [defaultTags, setDefaultTags] = useState<string[]>([]);
     const [tagText, setTagText] = useState('');
     const [defaultCategory, setDefaultCategory] = useState('');
+    const [defaultSubtasksText, setDefaultSubtasksText] = useState('');
 
     // Populate from editTemplate
     useEffect(() => {
@@ -50,12 +52,13 @@ const IssueTemplateDialog = ({ open, onClose, onSave, editTemplate }: IssueTempl
             setDefaultPriority(editTemplate.defaultPriority || '');
             setDefaultTags(editTemplate.defaultTags || []);
             setDefaultCategory(editTemplate.defaultCategory || '');
+            setDefaultSubtasksText((editTemplate.defaultSubtasks || []).join('\n'));
         } else {
             setName(''); setIcon('📋'); setDescription('');
             setTitlePattern(''); setDefaultDescription('');
             setDefaultType(''); setDefaultPriority('');
             setDefaultTags([]); setTagText('');
-            setDefaultCategory('');
+            setDefaultCategory(''); setDefaultSubtasksText('');
         }
         setNameError(false);
     }, [editTemplate, open]);
@@ -74,6 +77,7 @@ const IssueTemplateDialog = ({ open, onClose, onSave, editTemplate }: IssueTempl
             defaultPriority: (defaultPriority || undefined) as PriorityLevel | undefined,
             defaultTags: defaultTags.length > 0 ? defaultTags : undefined,
             defaultCategory: defaultCategory.trim() || undefined,
+            defaultSubtasks: defaultSubtasksText.split('\n').map(s => s.trim()).filter(s => s.length > 0),
         });
         onClose();
     };
@@ -225,6 +229,13 @@ const IssueTemplateDialog = ({ open, onClose, onSave, editTemplate }: IssueTempl
                 {/* Default Category */}
                 <TextField fullWidth size="small" label="Default Category" placeholder="e.g. Frontend, Backend"
                     value={defaultCategory} onChange={e => setDefaultCategory(e.target.value)}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+
+                {/* Default Subtasks */}
+                <TextField fullWidth size="small" label="Default Subtasks (One per line)" multiline rows={3}
+                    placeholder="e.g. &#10;Design reviewing&#10;Write unit tests"
+                    value={defaultSubtasksText} onChange={e => setDefaultSubtasksText(e.target.value)}
+                    helperText={lang === 'ko' ? '각 줄은 개별 하위 작업으로 생성됩니다.' : 'Each line will be created as a separate subtask.'}
                     sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
 
             </DialogContent>

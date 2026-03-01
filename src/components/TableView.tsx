@@ -24,9 +24,11 @@ interface TableViewProps {
     selectedTag: string | null;
     onToggle: (id: string) => void;
     onTaskClick: (task: Task) => void;
+    selectedTaskIds?: string[];
+    onSelectTask?: (id: string, selected: boolean, shiftKey: boolean) => void;
 }
 
-const TableView = ({ tasks, selectedTag, onToggle, onTaskClick }: TableViewProps) => {
+const TableView = ({ tasks, selectedTag, onToggle, onTaskClick, selectedTaskIds = [], onSelectTask }: TableViewProps) => {
     const { t } = useLanguage();
     const [sortKey, setSortKey] = useState<SortKey>('updatedAt');
     const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -110,6 +112,27 @@ const TableView = ({ tasks, selectedTag, onToggle, onTaskClick }: TableViewProps
             <Table stickyHeader size="small">
                 <TableHead>
                     <TableRow>
+                        <TableCell padding="checkbox" sx={{ bgcolor: 'background.paper' }}>
+                            {onSelectTask && (
+                                <Checkbox
+                                    size="small"
+                                    checked={sortedTasks.length > 0 && selectedTaskIds.length === sortedTasks.length}
+                                    indeterminate={selectedTaskIds.length > 0 && selectedTaskIds.length < sortedTasks.length}
+                                    onChange={(e) => {
+                                        if (e.target.checked) {
+                                            const allIds = sortedTasks.map(t => t.id);
+                                            allIds.forEach(id => {
+                                                if (!selectedTaskIds.includes(id)) {
+                                                    onSelectTask(id, true, false);
+                                                }
+                                            });
+                                        } else {
+                                            selectedTaskIds.forEach(id => onSelectTask(id, false, false));
+                                        }
+                                    }}
+                                />
+                            )}
+                        </TableCell>
                         <TableCell padding="checkbox" sx={{ bgcolor: 'background.paper' }}></TableCell>
                         {/* ID */}
                         <TableCell sx={{ ...headerSx, width: 70 }}>
@@ -191,24 +214,41 @@ const TableView = ({ tasks, selectedTag, onToggle, onTaskClick }: TableViewProps
                                     key={task.id} hover
                                     sx={{
                                         cursor: 'pointer',
-                                        bgcolor: task.completed ? 'action.hover' : isBlocked ? '#fef2f2' : 'inherit',
+                                        bgcolor: selectedTaskIds.includes(task.id) ? 'action.selected' : task.completed ? 'action.hover' : isBlocked ? '#fef2f2' : 'inherit',
                                         '&:hover': { bgcolor: 'action.selected' },
                                         borderLeft: isBlocked ? '3px solid #ef4444' : undefined,
                                     }}
+                                    onClick={(e) => {
+                                        if (onSelectTask && (e.shiftKey || e.metaKey || e.ctrlKey)) {
+                                            e.preventDefault();
+                                            onSelectTask(task.id, !selectedTaskIds.includes(task.id), e.shiftKey);
+                                        } else {
+                                            onTaskClick(task);
+                                        }
+                                    }}
                                 >
-                                    <TableCell padding="checkbox">
+                                    {onSelectTask && (
+                                        <TableCell padding="checkbox">
+                                            <Checkbox
+                                                checked={selectedTaskIds.includes(task.id)}
+                                                onChange={(e) => { e.stopPropagation(); onSelectTask(task.id, e.target.checked, (e.nativeEvent as PointerEvent).shiftKey); }}
+                                                size="small"
+                                            />
+                                        </TableCell>
+                                    )}
+                                    <TableCell padding="checkbox" onClick={e => e.stopPropagation()}>
                                         <Checkbox checked={task.completed} onChange={(e) => { e.stopPropagation(); onToggle(task.id); }} size="small" />
                                     </TableCell>
                                     {/* ID */}
-                                    <TableCell onClick={() => onTaskClick(task)}>
+                                    <TableCell>
                                         <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 700, color: 'text.secondary' }}>
                                             {task.taskCode || '—'}
                                         </Typography>
                                     </TableCell>
                                     {/* Type */}
-                                    <TableCell onClick={() => onTaskClick(task)}>{getTypeChip(task.type)}</TableCell>
+                                    <TableCell>{getTypeChip(task.type)}</TableCell>
                                     {/* Title */}
-                                    <TableCell onClick={() => onTaskClick(task)}>
+                                    <TableCell>
                                         <Typography variant="body2" fontWeight={500} sx={{
                                             textDecoration: task.completed ? 'line-through' : 'none',
                                             color: task.completed ? 'text.secondary' : 'text.primary',
@@ -216,11 +256,11 @@ const TableView = ({ tasks, selectedTag, onToggle, onTaskClick }: TableViewProps
                                         }}>{task.text}</Typography>
                                     </TableCell>
                                     {/* Priority */}
-                                    <TableCell onClick={() => onTaskClick(task)}>{getPriorityChip(task.priority)}</TableCell>
+                                    <TableCell>{getPriorityChip(task.priority)}</TableCell>
                                     {/* Status */}
-                                    <TableCell onClick={() => onTaskClick(task)}>{getStatusChip(task)}</TableCell>
+                                    <TableCell>{getStatusChip(task)}</TableCell>
                                     {/* Owner */}
-                                    <TableCell onClick={() => onTaskClick(task)}>
+                                    <TableCell>
                                         {owners.length > 0 ? (
                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                                 <AvatarGroup max={3} sx={{ '& .MuiAvatar-root': { width: 22, height: 22, fontSize: 10, border: '1px solid white' } }}>
@@ -236,7 +276,7 @@ const TableView = ({ tasks, selectedTag, onToggle, onTaskClick }: TableViewProps
                                         )}
                                     </TableCell>
                                     {/* Due Date */}
-                                    <TableCell onClick={() => onTaskClick(task)}>
+                                    <TableCell>
                                         <Typography variant="caption" sx={{
                                             color: isOverdue ? '#dc2626' : 'text.secondary',
                                             fontWeight: isOverdue ? 700 : 400,
@@ -245,7 +285,7 @@ const TableView = ({ tasks, selectedTag, onToggle, onTaskClick }: TableViewProps
                                         </Typography>
                                     </TableCell>
                                     {/* Blocker */}
-                                    <TableCell onClick={() => onTaskClick(task)}>
+                                    <TableCell>
                                         {isBlocked ? (
                                             <Tooltip title={task.blockerDetail || 'Blocked'}>
                                                 <Chip icon={<BlockIcon />} label="Yes" size="small" color="error"
@@ -256,13 +296,13 @@ const TableView = ({ tasks, selectedTag, onToggle, onTaskClick }: TableViewProps
                                         )}
                                     </TableCell>
                                     {/* Next Action */}
-                                    <TableCell onClick={() => onTaskClick(task)}>
+                                    <TableCell>
                                         <Typography variant="caption" color="text.secondary" sx={{ maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
                                             {task.nextAction || '—'}
                                         </Typography>
                                     </TableCell>
                                     {/* Links */}
-                                    <TableCell>
+                                    <TableCell onClick={e => e.stopPropagation()}>
                                         {task.links && task.links.length > 0 ? (
                                             <Tooltip title={task.links.join('\n')}>
                                                 <IconButton size="small" component="a" href={task.links[0]} target="_blank" onClick={e => e.stopPropagation()}
@@ -275,7 +315,7 @@ const TableView = ({ tasks, selectedTag, onToggle, onTaskClick }: TableViewProps
                                         )}
                                     </TableCell>
                                     {/* Updated */}
-                                    <TableCell onClick={() => onTaskClick(task)}>
+                                    <TableCell>
                                         <Box>
                                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                                                 {(task.updatedAt || task.createdAt).substring(0, 10)}
@@ -288,7 +328,7 @@ const TableView = ({ tasks, selectedTag, onToggle, onTaskClick }: TableViewProps
                                         </Box>
                                     </TableCell>
                                     {/* Open */}
-                                    <TableCell>
+                                    <TableCell onClick={e => e.stopPropagation()}>
                                         <IconButton size="small" onClick={() => onTaskClick(task)} sx={{ color: 'text.secondary' }}>
                                             <OpenInNewIcon sx={{ fontSize: 16 }} />
                                         </IconButton>

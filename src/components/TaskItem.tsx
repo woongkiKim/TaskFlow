@@ -37,6 +37,8 @@ interface TaskItemProps {
   disableMoveUp?: boolean;
   disableMoveDown?: boolean;
   subIssueCount?: number;
+  selected?: boolean;
+  onSelect?: (id: string, selected: boolean, shiftKey: boolean) => void;
 }
 
 const TaskItem = ({
@@ -52,6 +54,8 @@ const TaskItem = ({
   disableMoveUp,
   disableMoveDown,
   subIssueCount = 0,
+  selected = false,
+  onSelect,
 }: TaskItemProps) => {
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -211,10 +215,29 @@ const TaskItem = ({
           transform: !isEditing ? 'translateY(-1px)' : 'none',
           '& .action-buttons': { opacity: 1 },
         },
-        backgroundColor: task.completed ? 'action.hover' : isBlocked ? '#fef2f2' : 'background.paper',
+        backgroundColor: selected ? 'action.selected' : task.completed ? 'action.hover' : isBlocked ? '#fef2f2' : 'background.paper',
       }}
-      onClick={handleClick}
+      onClick={(e) => {
+        if (onSelect && (e.shiftKey || e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          onSelect(task.id, !selected, e.shiftKey);
+          return;
+        }
+        handleClick();
+      }}
     >
+      {/* Multi-select Checkbox */}
+      {onSelect && (
+        <Checkbox
+          checked={selected}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(task.id, !selected, e.shiftKey);
+          }}
+          sx={{ mr: 1, p: 0.5, '&.Mui-checked': { color: 'primary.main' } }}
+        />
+      )}
+
       {/* Checkbox with DOPAMINE effect */}
       <Checkbox
         ref={checkboxRef}

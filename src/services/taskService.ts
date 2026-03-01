@@ -19,6 +19,8 @@ export interface ApiTask {
   description: string;
   startDate: string | null;
   dueDate: string | null;
+  timeboxStart: string | null;
+  timeboxEnd: string | null;
   subtasks: Subtask[];
   category: string;
   categoryColor: string;
@@ -77,6 +79,8 @@ function mapTask(t: ApiTask): Task {
     description: t.description || undefined,
     startDate: t.startDate || undefined,
     dueDate: t.dueDate || undefined,
+    timeboxStart: t.timeboxStart || undefined,
+    timeboxEnd: t.timeboxEnd || undefined,
     subtasks: t.subtasks || [],
     category: t.category || undefined,
     categoryColor: t.categoryColor || undefined,
@@ -408,7 +412,7 @@ export const updateTaskKanbanStatusInDB = async (
 export const updateTaskDetailInDB = async (
   id: string,
   updates: Partial<Pick<Task,
-    'text' | 'description' | 'priority' | 'dueDate' | 'category' | 'categoryColor' |
+    'text' | 'description' | 'priority' | 'startDate' | 'dueDate' | 'category' | 'categoryColor' |
     'tags' | 'status' | 'assigneeId' | 'assigneeName' | 'assigneePhoto' | 'sprintId' |
     'type' | 'taskCode' | 'owners' | 'blockerStatus' | 'blockerDetail' |
     'nextAction' | 'links' | 'delayPeriod' | 'delayReason' | 'aiUsage' |

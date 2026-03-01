@@ -18,6 +18,7 @@ interface ApiIssueTemplate {
   defaultCategory: string;
   defaultCategoryColor: string;
   defaultBlockerStatus: string;
+  defaultSubtasks: string[];
   createdBy: number;
   createdAt: string;
 }
@@ -37,6 +38,7 @@ function mapTemplate(t: ApiIssueTemplate): IssueTemplate {
     defaultCategory: t.defaultCategory || '',
     defaultCategoryColor: t.defaultCategoryColor || '',
     defaultBlockerStatus: (t.defaultBlockerStatus || 'none') as IssueTemplate['defaultBlockerStatus'],
+    defaultSubtasks: t.defaultSubtasks || [],
     createdBy: String(t.createdBy),
     createdAt: t.createdAt,
   };
@@ -71,6 +73,7 @@ export const createIssueTemplate = async (
     defaultCategory: data.defaultCategory || '',
     defaultCategoryColor: data.defaultCategoryColor || '',
     defaultBlockerStatus: data.defaultBlockerStatus || 'none',
+    defaultSubtasks: data.defaultSubtasks || [],
   };
   const result = await api.post<ApiIssueTemplate>('issue-templates/', body);
   return mapTemplate(result);
@@ -79,7 +82,7 @@ export const createIssueTemplate = async (
 /** Update an existing issue template */
 export const updateIssueTemplate = async (
   id: string,
-  data: Partial<Pick<IssueTemplate, 'name' | 'icon' | 'description' | 'titlePattern' | 'defaultDescription' | 'defaultType' | 'defaultPriority' | 'defaultTags' | 'defaultCategory' | 'defaultCategoryColor' | 'defaultBlockerStatus'>>
+  data: Partial<Pick<IssueTemplate, 'name' | 'icon' | 'description' | 'titlePattern' | 'defaultDescription' | 'defaultType' | 'defaultPriority' | 'defaultTags' | 'defaultCategory' | 'defaultCategoryColor' | 'defaultBlockerStatus' | 'defaultSubtasks'>>
 ): Promise<void> => {
   await api.patch(`issue-templates/${id}/`, data);
 };

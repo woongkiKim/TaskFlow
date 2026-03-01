@@ -5,11 +5,14 @@ import { addTimeEntry } from '../services/timeTrackingService';
 
 export type PomodoroMode = 'focus' | 'break' | 'long_break' | 'idle';
 
+export type AmbientSound = 'none' | 'white' | 'brown' | 'pink';
+
 export interface PomodoroSettings {
     focusDuration: number; // in minutes
     shortBreakDuration: number; // in minutes
     longBreakDuration: number; // in minutes
     longBreakInterval: number; // number of pomodoros
+    ambientSound: AmbientSound;
 }
 
 export const defaultPomodoroSettings: PomodoroSettings = {
@@ -17,6 +20,34 @@ export const defaultPomodoroSettings: PomodoroSettings = {
     shortBreakDuration: 5,
     longBreakDuration: 15,
     longBreakInterval: 4,
+    ambientSound: 'none',
+};
+
+const playDing = () => {
+    try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextClass) return;
+
+        const audioCtx = new AudioContextClass();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(110, audioCtx.currentTime + 1);
+
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.start(audioCtx.currentTime);
+        oscillator.stop(audioCtx.currentTime + 1);
+    } catch (e) {
+        console.warn('Audio API not supported', e);
+    }
 };
 
 interface PomodoroContextType {
@@ -60,6 +91,90 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const focusStartRef = useRef<string | null>(null);
     const focusDurationStartRef = useRef<number>(settings.focusDuration);
+
+    // Ambient Sound Logic
+    const audioCtxRef = useRef<AudioContext | null>(null);
+    const noiseSourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+    const stopAmbientSound = useCallback(() => {
+        if (noiseSourceRef.current) {
+            try { noiseSourceRef.current.stop(); } catch (e) { /* silent */ }
+            noiseSourceRef.current.disconnect();
+            noiseSourceRef.current = null;
+        }
+        if (audioCtxRef.current && audioCtxRef.current.state === 'running') {
+            audioCtxRef.current.suspend();
+        }
+    }, []);
+
+    const playAmbientSound = useCallback((type: AmbientSound) => {
+        if (type === 'none') {
+            stopAmbientSound();
+            return;
+        }
+        try {
+            if (!audioCtxRef.current) {
+                const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+                if (!AudioContextClass) return; // not supported
+                audioCtxRef.current = new AudioContextClass();
+            }
+            const ctx = audioCtxRef.current;
+            if (ctx.state === 'suspended') ctx.resume();
+
+            if (noiseSourceRef.current) {
+                stopAmbientSound();
+                if (ctx.state === 'suspended') ctx.resume();
+            }
+
+            const bufferSize = ctx.sampleRate * 2;
+            const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+            const output = buffer.getChannelData(0);
+
+            let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+            let lastOut = 0;
+
+            for (let i = 0; i < bufferSize; i++) {
+                const white = Math.random() * 2 - 1;
+                if (type === 'white') {
+                    output[i] = white * 0.1;
+                } else if (type === 'brown') {
+                    lastOut = (lastOut + (0.02 * white)) / 1.02;
+                    output[i] = lastOut * 3.5 * 0.1;
+                } else if (type === 'pink') {
+                    b0 = 0.99886 * b0 + white * 0.0555179;
+                    b1 = 0.99332 * b1 + white * 0.0750759;
+                    b2 = 0.96900 * b2 + white * 0.1538520;
+                    b3 = 0.86650 * b3 + white * 0.3104856;
+                    b4 = 0.55000 * b4 + white * 0.5329522;
+                    b5 = -0.7616 * b5 - white * 0.0168980;
+                    output[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.02;
+                    b6 = white * 0.115926;
+                }
+            }
+
+            noiseSourceRef.current = ctx.createBufferSource();
+            noiseSourceRef.current.buffer = buffer;
+            noiseSourceRef.current.loop = true;
+
+            const gainNode = ctx.createGain();
+            gainNode.gain.setValueAtTime(0, ctx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 1);
+
+            noiseSourceRef.current.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            noiseSourceRef.current.start();
+        } catch (e) {
+            console.warn('Ambient sound play error', e);
+        }
+    }, [stopAmbientSound]);
+
+    useEffect(() => {
+        if (isRunning && mode === 'focus' && settings.ambientSound !== 'none') {
+            playAmbientSound(settings.ambientSound);
+        } else {
+            stopAmbientSound();
+        }
+    }, [isRunning, mode, settings.ambientSound, playAmbientSound, stopAmbientSound]);
 
     const updateSettings = useCallback((newSettings: Partial<PomodoroSettings>) => {
         setSettings(prev => {
@@ -107,6 +222,7 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
                         body: isLongBreak ? (lang === 'ko' ? '긴 휴식 시간입니다!' : 'Time for a long break!') : (t('breakTime') as string)
                     });
                 }
+                playDing();
             } else if (mode === 'break' || mode === 'long_break') {
                 setMode('idle');
                 setIsRunning(false);
@@ -117,6 +233,7 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
                 if ('Notification' in window && Notification.permission === 'granted') {
                     new Notification(`☕ ${t('breakTime') as string}`, { body: t('startFocus') as string });
                 }
+                playDing();
             }
         }
 

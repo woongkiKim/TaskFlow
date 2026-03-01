@@ -100,6 +100,7 @@ export function useTaskActions(
         sprintId?: string; type?: TaskType; owners?: TaskOwner[];
         blockerStatus?: 'none' | 'blocked'; blockerDetail?: string;
         nextAction?: string; links?: string[];
+        subtasks?: string[];
     }) => {
         if (!user) return;
         try {
@@ -115,7 +116,24 @@ export function useTaskActions(
                 blockerStatus: data.blockerStatus, blockerDetail: data.blockerDetail,
                 nextAction: data.nextAction, links: data.links,
             });
-            setTasks(prev => [savedTask, ...prev]);
+            let newTasks = [savedTask];
+            if (data.subtasks && data.subtasks.length > 0) {
+                const subtaskList = await Promise.all(data.subtasks.map(stText => 
+                    addTaskToDB(stText, user.uid, undefined, undefined, {
+                        projectId: savedTask.projectId,
+                        workspaceId: savedTask.workspaceId,
+                        sprintId: savedTask.sprintId,
+                        parentTaskId: savedTask.id,
+                        parentTaskText: savedTask.text,
+                        status: 'todo',
+                        assigneeId: user.uid,
+                        assigneeName: user.displayName || 'User',
+                        assigneePhoto: user.photoURL || '',
+                    })
+                ));
+                newTasks = newTasks.concat(subtaskList);
+            }
+            setTasks(prev => [...newTasks, ...prev]);
         } catch (e) { handleError(e, { fallbackMessage: t('addFailed') as string }); }
     }, [user, currentProject, currentWorkspace, currentSprint, t, setTasks]);
 
@@ -174,6 +192,44 @@ export function useTaskActions(
         setTasks(prev => [pendingDelete.task, ...prev]);
         setPendingDelete(null);
     }, [pendingDelete, setTasks]);
+
+    // ─── Bulk Actions ───
+    const handleBulkToggle = useCallback(async (taskIds: string[]) => {
+        const toToggle = tasks.filter(t => taskIds.includes(t.id));
+        if (!toToggle.length) return;
+        
+        const allCompletedBefore = toToggle.every(t => t.completed);
+        const newCompleted = !allCompletedBefore;
+        const originalTasks = [...tasks];
+
+        setTasks(prev => prev.map(t => 
+            taskIds.includes(t.id) 
+                ? { ...t, completed: newCompleted, status: newCompleted ? ('done' as const) : ('todo' as const) } 
+                : t
+        ));
+
+        try {
+            await Promise.all(toToggle.map(t => toggleTaskStatusInDB(t.id, t.completed)));
+            toast.success(lang === 'ko' ? `${taskIds.length}개 작업 상태 변경` : `${taskIds.length} tasks updated`);
+        } catch (e) {
+            setTasks(originalTasks);
+            handleError(e);
+        }
+    }, [tasks, setTasks, lang]);
+
+    const handleBulkDelete = useCallback(async (taskIds: string[]) => {
+        if (!taskIds.length) return;
+        const originalTasks = [...tasks];
+        setTasks(prev => prev.filter(t => !taskIds.includes(t.id)));
+
+        try {
+            await Promise.all(taskIds.map(id => deleteTaskFromDB(id)));
+            toast.success(lang === 'ko' ? `${taskIds.length}개 작업 삭제` : `${taskIds.length} tasks deleted`);
+        } catch (e) {
+            setTasks(originalTasks);
+            handleError(e);
+        }
+    }, [tasks, setTasks, lang]);
 
     const handleSnackbarClose = useCallback((_event?: React.SyntheticEvent | Event, reason?: string) => {
         if (reason === 'clickaway') return;
@@ -326,8 +382,10 @@ export function useTaskActions(
         handleBoardInlineAdd,
         handleAddDialog,
         handleToggle,
+        handleBulkToggle,
         handleEdit,
         handleDelete,
+        handleBulkDelete,
         handleUndoDelete,
         handleSnackbarClose,
         handleKanbanStatusChange,
